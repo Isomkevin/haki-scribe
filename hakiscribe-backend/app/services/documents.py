@@ -126,7 +126,7 @@ _AMOUNT_RE = re.compile(
 )
 
 _DIGIT_AMOUNT_RE = re.compile(
-    r"(?:ksh\.?|kes|shillings?)\s*([\d,]+(?:\.\d+)?)\s*(million|billion|thousand)?",
+    r"(?:ksh\.?|kes|shillings?)\s*(\d[\d,]*(?:\.\d+)?)\s*(million|billion|thousand)?",
     re.IGNORECASE,
 )
 
@@ -164,7 +164,10 @@ def _parse_word_amounts(text: str) -> list[str]:
         if formatted not in amounts:
             amounts.append(formatted)
     for match in _DIGIT_AMOUNT_RE.finditer(text):
-        raw = float(match.group(1).replace(",", ""))
+        digits = match.group(1).replace(",", "")
+        if not digits or not digits.strip("."):
+            continue
+        raw = float(digits)
         scale = (match.group(2) or "").lower()
         raw *= {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}.get(scale, 1)
         formatted = _format_money(raw)
