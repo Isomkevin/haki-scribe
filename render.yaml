@@ -15,7 +15,9 @@ services:
         - render.yaml
     envVars:
       - key: ASR_PROVIDER
-        value: openai
+        value: openrouter
+      - key: ASR_MODEL
+        value: openai/whisper-large-v3
       - key: DETECTION_MODEL
         value: openai/gpt-4o
       - key: DRAFTING_MODEL

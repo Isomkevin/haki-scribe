@@ -247,8 +247,10 @@ automatically as keys are added.
 
 - **OpenAI + OpenRouter** — `DETECTION_MODEL`/`DRAFTING_MODEL` default
   to `openai/gpt-4o`, routed through OpenRouter (`action_detector.py`,
-  `action_executor.py`). `ASR_PROVIDER` defaults to OpenAI Whisper
-  (`transcription.py`). Both are real, load-bearing calls, not decoration.
+  `action_executor.py`). `ASR_PROVIDER` defaults to OpenRouter Whisper
+  (`openai/whisper-large-v3` via `/api/v1/audio/transcriptions` in
+  `transcription.py`), so live captions share the same key. Direct
+  OpenAI or Groq Whisper remain available by switching `ASR_PROVIDER`.
 - **Ambiguous AI** (`app/integrations/ambiguous_client.py`) — real REST
   calls into a live Ambiguous workspace: `POST /api/documents` for
   draft_document, `POST /api/calendar/events` for calendar_event,

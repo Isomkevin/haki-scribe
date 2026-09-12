@@ -32,10 +32,60 @@ def chunk_filename(audio_bytes: bytes) -> str:
     return "chunk.webm"
 
 
+def audio_format(audio_bytes: bytes) -> str:
+    """OpenRouter STT wants wav/mp3/flac/m4a/ogg/webm/aac, not mp4."""
+    ext = chunk_filename(audio_bytes).rsplit(".", 1)[-1]
+    return "m4a" if ext == "mp4" else ext
+
+
+def whisper_language(language_hint: Optional[str]) -> Optional[str]:
+    return language_hint if language_hint in ("en", "sw") else None
+
+
 class TranscriptionProvider(ABC):
     @abstractmethod
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
         ...
+
+
+class OpenRouterWhisperProvider(TranscriptionProvider):
+    """Live captions through the same OpenRouter key used for detection
+    and drafting. Default model is openai/whisper-large-v3 — a Whisper
+    slug on OpenRouter, not a second OpenAI account."""
+
+    def __init__(self):
+        self.api_key = os.environ["OPENROUTER_API_KEY"]
+        self.model = os.environ.get("ASR_MODEL", "openai/whisper-large-v3")
+
+    async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
+        import base64
+
+        import httpx
+
+        payload: dict = {
+            "model": self.model,
+            "input_audio": {
+                "data": base64.b64encode(audio_bytes).decode("ascii"),
+                "format": audio_format(audio_bytes),
+            },
+        }
+        language = whisper_language(language_hint)
+        if language:
+            payload["language"] = language
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=payload,
+                )
+                response.raise_for_status()
+                body = response.json()
+        except Exception:  # noqa: BLE001 — keep the live session open
+            return TranscriptionResult(text="", raw={"error": "openrouter_transcription_failed"})
+
+        return TranscriptionResult(text=body.get("text") or "", raw=body if isinstance(body, dict) else {})
 
 
 class GroqWhisperProvider(TranscriptionProvider):
@@ -54,15 +104,13 @@ class GroqWhisperProvider(TranscriptionProvider):
         resp = await self.client.audio.transcriptions.create(
             file=file_,
             model="whisper-large-v3",
-            language=language_hint if language_hint in ("en", "sw") else None,
+            language=whisper_language(language_hint),
         )
         return TranscriptionResult(text=resp.text, raw=resp.model_dump() if hasattr(resp, "model_dump") else {})
 
 
 class OpenAIWhisperProvider(TranscriptionProvider):
-    """Default ASR provider — genuinely exercises the OpenAI sponsor
-    integration, not just decoratively. Slower than Groq but often more
-    accurate on code-switched Swahili/English in practice."""
+    """Optional direct OpenAI Whisper when ASR_PROVIDER=openai."""
 
     def __init__(self):
         from openai import AsyncOpenAI
@@ -76,7 +124,7 @@ class OpenAIWhisperProvider(TranscriptionProvider):
         resp = await self.client.audio.transcriptions.create(
             file=file_,
             model="whisper-1",
-            language=language_hint if language_hint in ("en", "sw") else None,
+            language=whisper_language(language_hint),
         )
         return TranscriptionResult(text=resp.text)
 
@@ -98,7 +146,9 @@ class UnavailableProvider(TranscriptionProvider):
 
 
 def get_provider() -> TranscriptionProvider:
-    name = os.environ.get("ASR_PROVIDER", "openai").lower()
+    name = os.environ.get("ASR_PROVIDER", "openrouter").lower()
+    if name == "openrouter":
+        return OpenRouterWhisperProvider() if os.environ.get("OPENROUTER_API_KEY") else UnavailableProvider()
     if name == "groq":
         return GroqWhisperProvider() if os.environ.get("GROQ_API_KEY") else UnavailableProvider()
     if name == "openai":

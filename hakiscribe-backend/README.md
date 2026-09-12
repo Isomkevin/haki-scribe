@@ -4,7 +4,7 @@
 
 ```
 pip install -r requirements.txt
-cp .env.example .env   # fill in at least one ASR provider key + OPENROUTER_API_KEY
+cp .env.example .env   # fill in OPENROUTER_API_KEY (captions + detect + draft)
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -21,7 +21,7 @@ Create from the Blueprint (after this file is on `main`):
 
 https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe
 
-Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. `DETECTION_MODEL` / `DRAFTING_MODEL` values like `openai/gpt-4o` are OpenRouter model slugs, so they do **not** need a separate OpenAI key. Add `OPENAI_API_KEY` later in the Render Dashboard only if you want live Whisper captions; without it, ASR no-ops and the rest of the pipeline still works. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
+Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and drafting use the same key. Model slugs like `openai/gpt-4o` are OpenRouter IDs, not a second vendor account. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
 
 Everything works with zero sponsor keys configured — Ambiguous AI,
 Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
@@ -45,8 +45,9 @@ local-only behavior. Add keys incrementally to light up real integrations.
 
 | Sponsor | Where | Behavior without a key |
 |---|---|---|
-| OpenAI | Default ASR provider (`transcription.py`) | N/A — pick a different `ASR_PROVIDER` |
-| OpenRouter | Detection + drafting LLM calls, pointed at an OpenAI model by default | N/A — required for `/detect` and `draft_document` either way |
+| OpenRouter | Live captions (`transcription.py`) plus detection + drafting | Captions no-op; `/detect` and `draft_document` fall back to local text |
+| OpenAI | Optional direct Whisper if `ASR_PROVIDER=openai` | Use OpenRouter (default) or Groq instead |
+| Groq | Optional faster Whisper if `ASR_PROVIDER=groq` | Stay on OpenRouter unless you want a dedicated Groq key |
 | Ambiguous AI | Docs/Calendar/CRM/Chat (`app/integrations/ambiguous_client.py`) | Every generated action still works, just stays local-only |
 | Trigger.dev | Background execution of `/detect` and `/generate` (`app/services/trigger_client.py` + `trigger/`) | Same logic runs directly in-process instead |
 | Exa | Company/counterparty enrichment (`app/integrations/exa_client.py`) | Detected actions just skip the `background_info` field |
