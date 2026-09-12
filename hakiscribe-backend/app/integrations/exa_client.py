@@ -8,10 +8,13 @@ reference the user sees alongside the card.
 No-ops (returns None) if EXA_API_KEY isn't set.
 """
 
+import logging
 import os
 from typing import Any, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://api.exa.ai/search"
 
@@ -115,16 +118,11 @@ async def search_web(query: str, num_results: int = 5) -> list[dict[str, Any]]:
     as background only — never folded into drafted legal text."""
     if not _api_key() or not query.strip():
         return []
-    async with httpx.AsyncClient(timeout=45) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": query,
-                "type": "auto",
-                "numResults": num_results,
-                "contents": {"highlights": True, "text": {"maxCharacters": 800}},
-            },
-        )
-        resp.raise_for_status()
-        return _normalise(resp.json().get("results", []))
+    return await _search(
+        {
+            "query": query,
+            "type": "auto",
+            "numResults": num_results,
+            "contents": {"highlights": True, "text": {"maxCharacters": 800}},
+        }
+    )
