@@ -186,7 +186,16 @@ async def search_company(name: str) -> Optional[dict[str, Any]]:
         },
     )
     results = _normalise((data or {}).get("results", []))
-    return results[0] if results else None
+    if not results:
+        return None
+    top = results[0]
+    return {
+        "title": top.get("title"),
+        "url": top.get("url"),
+        "highlight": top.get("extract"),
+        "published": top.get("published"),
+        "extract": top.get("extract"),
+    }
 
 
 async def crawl_urls(urls: list[str]) -> list[dict[str, Any]]:
