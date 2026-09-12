@@ -89,6 +89,9 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
                 "actions": [a.model_dump(mode="json") for a in to_run],
                 "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
             },
+            # Research + model passes are slower than drafting — wait longer
+            # before falling back, instead of timing out mid-generation.
+            timeout_s=240.0,
         )
         if trigger_output is not None:
             run_results = [ActionResult(**r) for r in trigger_output]
