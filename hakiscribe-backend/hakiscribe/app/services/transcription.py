@@ -17,6 +17,21 @@ class TranscriptionResult:
         self.raw = raw or {}
 
 
+def chunk_filename(audio_bytes: bytes) -> str:
+    """Browsers (MediaRecorder) send WebM/Ogg Opus, not WAV. Whisper APIs
+    pick the decoder from the filename extension, so sniff the container
+    instead of always claiming .wav."""
+    if audio_bytes[:4] == b"\x1a\x45\xdf\xa3":
+        return "chunk.webm"
+    if audio_bytes[:4] == b"OggS":
+        return "chunk.ogg"
+    if audio_bytes[:4] == b"RIFF":
+        return "chunk.wav"
+    if audio_bytes[4:8] == b"ftyp":
+        return "chunk.mp4"
+    return "chunk.webm"
+
+
 class TranscriptionProvider(ABC):
     @abstractmethod
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
@@ -35,7 +50,7 @@ class GroqWhisperProvider(TranscriptionProvider):
         # Groq's API wants a file-like object; wrap the raw bytes.
         import io
 
-        file_ = ("chunk.wav", io.BytesIO(audio_bytes))
+        file_ = (chunk_filename(audio_bytes), io.BytesIO(audio_bytes))
         resp = await self.client.audio.transcriptions.create(
             file=file_,
             model="whisper-large-v3",
@@ -57,7 +72,7 @@ class OpenAIWhisperProvider(TranscriptionProvider):
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
         import io
 
-        file_ = ("chunk.wav", io.BytesIO(audio_bytes))
+        file_ = (chunk_filename(audio_bytes), io.BytesIO(audio_bytes))
         resp = await self.client.audio.transcriptions.create(
             file=file_,
             model="whisper-1",
