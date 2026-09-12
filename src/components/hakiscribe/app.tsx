@@ -35,8 +35,10 @@ import { cn } from "@/lib/utils";
 import {
   type ActionResult,
   type ActionType,
+  type Contact,
   type DetectedAction,
   type FlaggedMoment,
+  type Matter,
   type Session,
   type SessionDetail,
   type SessionSource,
@@ -103,6 +105,18 @@ export function HomePage() {
     enabled: hasApiConfiguration,
     retry: false,
   });
+  const matters = useQuery({
+    queryKey: ["matters"],
+    queryFn: hakiApi.listMatters,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+  const contacts = useQuery({
+    queryKey: ["contacts"],
+    queryFn: hakiApi.listContacts,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
   const create = useMutation({
     mutationFn: () =>
       hakiApi.createSession({
@@ -156,7 +170,7 @@ export function HomePage() {
 
         <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
           <div className="mb-6 flex items-end justify-between">
-            <div><p className="text-xs font-semibold uppercase text-primary">Workspace</p><h2 className="mt-1 font-serif text-3xl font-semibold">Past sessions</h2></div>
+            <div><p className="text-xs font-semibold uppercase text-primary">Session Library</p><h2 className="mt-1 font-serif text-3xl font-semibold">Past sessions</h2></div>
             {sessions.data && <span className="text-sm text-muted-foreground">{sessions.data.length} total</span>}
           </div>
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
@@ -166,6 +180,7 @@ export function HomePage() {
           <div className="divide-y divide-border border-y border-border">
             {sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}
           </div>
+          <LibraryMatters matters={matters.data ?? []} contacts={contacts.data ?? []} />
         </section>
       </main>
     </PageShell>
@@ -174,12 +189,56 @@ export function HomePage() {
 
 function SessionRow({ session }: { session: Session }) {
   const Icon = session.source === "mic" ? Mic : Headphones;
+  const matterNames = session.matters?.map((matter) => matter.matter_name).filter(Boolean) ?? [];
+  const contactNames = session.contacts?.map((contact) => contact.name).filter(Boolean) ?? [];
   return (
     <Link to="/sessions/$sessionId" params={{ sessionId: session.id }} search={{ fresh: false }} className="grid grid-cols-[auto_1fr_auto] items-center gap-4 bg-background py-4 transition-colors hover:bg-card sm:px-3">
       <span className="grid size-10 place-items-center rounded-md border border-border bg-card text-primary"><Icon className="size-4" /></span>
-      <span className="min-w-0"><span className="block truncate font-medium text-foreground">{session.title}</span><span className="mt-1 block text-xs text-muted-foreground">{new Date(session.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · {session.source === "omi" ? "Omi wearable" : "Microphone"}</span></span>
+      <span className="min-w-0">
+        <span className="block truncate font-medium text-foreground">{session.title}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">{new Date(session.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · {session.source === "omi" ? "Omi wearable" : "Microphone"}</span>
+        {(matterNames.length > 0 || contactNames.length > 0) && (
+          <span className="mt-2 flex flex-wrap gap-1.5">
+            {matterNames.map((name) => <Badge key={name} variant="secondary">{name}</Badge>)}
+            {contactNames.map((name) => <Badge key={name} variant="outline">{name}</Badge>)}
+          </span>
+        )}
+      </span>
       <Badge variant={session.status === "exported" ? "default" : "outline"} className="capitalize">{session.status}</Badge>
     </Link>
+  );
+}
+
+function LibraryMatters({ matters, contacts }: { matters: Matter[]; contacts: Contact[] }) {
+  const contactsByMatter = (matterId: string) => contacts.filter((contact) => contact.matter_id === matterId);
+  return (
+    <div className="mt-14">
+      <div className="mb-6 flex items-end justify-between">
+        <div><p className="text-xs font-semibold uppercase text-primary">Workspace</p><h2 className="mt-1 font-serif text-3xl font-semibold">Matters and contacts</h2></div>
+        <span className="text-sm text-muted-foreground">{matters.length} matter{matters.length === 1 ? "" : "s"}</span>
+      </div>
+      {matters.length === 0 && <div className="border-y border-border py-10 text-center text-muted-foreground">Generated workspace matters and linked contacts will persist here.</div>}
+      <div className="grid gap-3 md:grid-cols-2">
+        {matters.map((matter) => {
+          const linked = contactsByMatter(matter.id);
+          return (
+            <article key={matter.id} className="border border-border bg-card p-5">
+              <div className="flex items-start gap-3">
+                <span className="grid size-10 place-items-center rounded-md bg-secondary text-secondary-foreground"><BriefcaseBusiness className="size-4" /></span>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-foreground">{matter.matter_name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Client: {matter.client_name}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {linked.length === 0 && <span className="text-xs text-muted-foreground">No linked contacts yet</span>}
+                    {linked.map((contact) => <Badge key={contact.id} variant="outline">{contact.name}</Badge>)}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -202,7 +261,7 @@ export function SessionPage({ sessionId, fresh }: { sessionId: string; fresh: bo
 
   const session = detail.data;
   if (step === "recording") return <RecordingScreen session={session} onStopped={(next) => { queryClient.setQueryData(["session", sessionId], next); setStep("speakers"); }} />;
-  if (step === "speakers") return <SpeakerScreen session={session} onNext={() => { void detail.refetch(); setStep("redact"); }} />;
+  if (step === "speakers") return <SpeakerScreen session={session} onNext={async () => { await detail.refetch(); setStep("redact"); }} />;
   if (step === "redact") return <RedactScreen session={session} onNext={() => setStep("analyzing")} />;
   if (step === "analyzing") return <AnalyzingScreen sessionId={session.id} onComplete={() => { void detail.refetch(); setStep("tray"); }} />;
   return <PageShell back><ActionWorkspace session={session} initialResults={session.action_results ?? []} showResults={step === "results"} onResults={() => setStep("results")} onTray={() => setStep("tray")} /></PageShell>;
@@ -330,10 +389,26 @@ function AnalyzingScreen({ sessionId, onComplete }: { sessionId: string; onCompl
 }
 
 function ActionWorkspace({ session, initialResults, showResults, onResults, onTray }: { session: SessionDetail; initialResults: ActionResult[]; showResults: boolean; onResults: () => void; onTray: () => void }) {
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState(() => new Set(session.detected_actions.filter((action) => action.pre_checked).map((action) => action.id)));
   const [actions, setActions] = useState(session.detected_actions);
   const [results, setResults] = useState(initialResults);
-  const generate = useMutation({ mutationFn: () => hakiApi.generate(session.id, Array.from(selected)), onSuccess: (data) => { setResults(data); onResults(); } });
+  const generate = useMutation({
+    mutationFn: () => {
+      const fieldOverrides = Object.fromEntries(
+        actions.filter((action) => selected.has(action.id)).map((action) => [action.id, action.extracted_fields]),
+      );
+      return hakiApi.generate(session.id, Array.from(selected), fieldOverrides);
+    },
+    onSuccess: (data) => {
+      setResults(data);
+      onResults();
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["session", session.id] });
+      void queryClient.invalidateQueries({ queryKey: ["matters"] });
+      void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    },
+  });
   const select = (id: string, checked: boolean) => setSelected((current) => { const next = new Set(current); checked ? next.add(id) : next.delete(id); return next; });
   return <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
     <div className="flex flex-col justify-between gap-5 border-b border-border pb-7 sm:flex-row sm:items-end"><div><p className="text-xs font-semibold uppercase text-primary">{showResults ? "Generated work" : "Action tray"}</p><h1 className="mt-2 font-serif text-3xl font-semibold sm:text-4xl">{session.title}</h1><p className="mt-2 text-sm text-muted-foreground">{showResults ? "Review and edit before anything leaves your workspace." : `${actions.length} possible legal actions, each grounded in the transcript.`}</p></div><TrustLine /></div>
@@ -371,8 +446,9 @@ function ResultCard({ result }: { result: ActionResult }) {
   const [documentText, setDocumentText] = useState(displayValue(result.result["document_text"] ?? ""));
   if (result.status === "error") return <article className="border border-destructive/30 bg-card p-5"><div className="flex items-center gap-3"><AlertCircle className="size-5 text-destructive" /><div><h2 className="font-semibold">This item was not generated</h2><p className="mt-1 text-sm text-muted-foreground">{result.error ?? "The service returned an error for this item."}</p></div></div></article>;
   const calendarHref = typeof result.result["ics"] === "string" ? `data:text/calendar;charset=utf-8,${encodeURIComponent(result.result["ics"])}` : null;
+  const longText = result.type === "time_entry" ? displayValue(result.result["narrative"] ?? result.result["activity_description"] ?? "") : result.type === "calendar_event" ? displayValue(result.result["description"] ?? "") : "";
   return <article className="border border-border bg-card"><header className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-6"><span className="grid size-9 place-items-center rounded-md bg-success text-success-foreground"><Icon className="size-4" /></span><div><p className="text-xs font-semibold uppercase text-success-foreground">Generated</p><h2 className="font-semibold capitalize">{result.type.replaceAll("_", " ")}</h2></div></header>
-    {result.type === "draft_document" ? <div className="p-4 sm:p-8"><div className="mb-3 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(documentText)}><Copy /> Copy</Button></div><Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[28rem] resize-y border-0 bg-background p-6 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:p-10" /></div> : <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 sm:p-6">{Object.entries(result.result).filter(([key]) => key !== "ics").map(([key, value]) => <div key={key}><p className="text-xs font-semibold uppercase text-muted-foreground">{key.replaceAll("_", " ")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6">{displayValue(value)}</p></div>)}{calendarHref && <div className="sm:col-span-2"><Button asChild variant="outline"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button></div>}</div>}
-    <footer className="border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-6">{Object.keys(result.result).some((key) => ["document_id", "calendar_id", "contact_id", "matter_id"].includes(key)) ? "Delivered through connected HakiChain tools" : "Saved as a local HakiScribe result"}</footer>
+    {result.type === "draft_document" ? <div className="p-4 sm:p-8"><div className="mb-3 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(documentText)}><Copy /> Copy</Button></div><Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[28rem] resize-y border-0 bg-background p-6 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:p-10" /></div> : <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 sm:p-6">{Object.entries(result.result).filter(([key]) => !["ics", "narrative", "description", "document_text"].includes(key)).map(([key, value]) => <div key={key}><p className="text-xs font-semibold uppercase text-muted-foreground">{key.replaceAll("_", " ")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6">{displayValue(value)}</p></div>)}{longText && <div className="sm:col-span-2"><p className="text-xs font-semibold uppercase text-muted-foreground">{result.type === "time_entry" ? "Narrative" : "Description"}</p><p className="mt-2 whitespace-pre-wrap font-serif text-base leading-7">{longText}</p></div>}{calendarHref && <div className="sm:col-span-2"><Button asChild variant="outline"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button></div>}</div>}
+    <footer className="border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-6">{Object.keys(result.result).some((key) => ["document_id", "ambiguous_document_id", "calendar_id", "ambiguous_event_id", "contact_id", "matter_id"].includes(key)) ? "Saved to the Session Library and connected tools" : "Saved as a local HakiScribe result"}</footer>
   </article>;
 }

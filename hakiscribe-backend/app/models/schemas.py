@@ -76,6 +76,8 @@ class Matter(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     client_name: str
     matter_name: str
+    session_ids: list[uuid.UUID] = []
+    contact_ids: list[uuid.UUID] = []
     ambiguous_deal_id: Optional[str] = None  # set once mirrored into Ambiguous CRM
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -83,6 +85,26 @@ class Matter(BaseModel):
 class MatterCreate(BaseModel):
     client_name: str
     matter_name: str
+    session_id: Optional[uuid.UUID] = None
+
+
+class Contact(BaseModel):
+    """A client or counterpart persisted from a workspace_matter or CRM card."""
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    name: str
+    updates: dict[str, Any] = {}
+    matter_id: Optional[uuid.UUID] = None
+    session_id: Optional[uuid.UUID] = None
+    ambiguous_contact_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ContactCreate(BaseModel):
+    name: str
+    updates: dict[str, Any] = {}
+    matter_id: Optional[uuid.UUID] = None
+    session_id: Optional[uuid.UUID] = None
 
 
 class ActionType(str, Enum):
@@ -117,6 +139,7 @@ class DetectedAction(BaseModel):
 
 class GenerateActionsRequest(BaseModel):
     action_ids: list[uuid.UUID]
+    field_overrides: dict[str, dict[str, Any]] = {}  # action_id -> edited extracted_fields
 
 
 class ActionResult(BaseModel):
@@ -127,10 +150,46 @@ class ActionResult(BaseModel):
     error: Optional[str] = None
 
 
+class DraftDocumentResult(BaseModel):
+    document_text: str
+    document_kind: Optional[str] = None
+    source: str = "transcript"
+    ambiguous_document_id: Optional[str] = None
+
+
+class CalendarEventResult(BaseModel):
+    title: str
+    start: str
+    end: str
+    description: str
+    location: Optional[str] = None
+    attendees: list[str] = []
+    ics: str
+    ambiguous_event_id: Optional[str] = None
+
+
+class TimeEntryResult(BaseModel):
+    duration_hours: float
+    activity_description: str
+    narrative: str
+    matter_name: Optional[str] = None
+    billable: bool = True
+
+
+class SessionLibraryItem(Session):
+    """Session row as shown in the Session Library, with persisted matters/contacts."""
+
+    matters: list[Matter] = []
+    contacts: list[Contact] = []
+
+
 class SessionDetail(Session):
     transcript: list[TranscriptSegment] = []
     detected_actions: list[DetectedAction] = []
     flagged_moments: list[FlaggedMoment] = []
+    action_results: list[ActionResult] = []
+    matters: list[Matter] = []
+    contacts: list[Contact] = []
 
 
 class OmiWebhookPayload(BaseModel):

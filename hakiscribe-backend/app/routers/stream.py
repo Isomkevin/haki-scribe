@@ -29,10 +29,21 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID):
             chunk_ms = 3000  # assumes the client sends fixed ~3s chunks
 
             result = await provider.transcribe_chunk(audio_bytes, language_hint=detail.language_hint)
+            if not (result.text or "").strip():
+                elapsed_ms += chunk_ms
+                continue
+
+            speaker = None
+            if isinstance(result.raw, dict):
+                speaker = result.raw.get("speaker") or result.raw.get("speaker_label")
+            if not speaker:
+                existing = storage.get_transcript(session_id)
+                speaker = existing[-1].speaker if existing and existing[-1].speaker else "Speaker 1"
 
             segment = TranscriptSegment(
                 session_id=session_id,
-                text=result.text,
+                speaker=speaker,
+                text=result.text.strip(),
                 start_ms=elapsed_ms,
                 end_ms=elapsed_ms + chunk_ms,
                 confidence=result.confidence,

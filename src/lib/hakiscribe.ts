@@ -8,6 +8,24 @@ export type ActionType =
   | "private_note"
   | "time_entry";
 
+export interface Matter {
+  id: string;
+  client_name: string;
+  matter_name: string;
+  session_ids?: string[];
+  contact_ids?: string[];
+  created_at: string;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  updates: Record<string, unknown>;
+  matter_id: string | null;
+  session_id: string | null;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   title: string;
@@ -16,6 +34,8 @@ export interface Session {
   status: SessionStatus;
   created_at: string;
   updated_at: string;
+  matters?: Matter[];
+  contacts?: Contact[];
 }
 
 export interface TranscriptSegment {
@@ -63,13 +83,6 @@ export interface SessionDetail extends Session {
   detected_actions: DetectedAction[];
   flagged_moments: FlaggedMoment[];
   action_results?: ActionResult[];
-}
-
-export interface Matter {
-  id: string;
-  client_name: string;
-  matter_name: string;
-  created_at: string;
 }
 
 export class ApiError extends Error {
@@ -145,14 +158,17 @@ export const hakiApi = {
   finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
   detect: (id: string) => request<DetectedAction[]>(`/sessions/${id}/detect`, { method: "POST" }),
   listActions: (id: string) => request<DetectedAction[]>(`/sessions/${id}/actions`),
-  generate: (id: string, actionIds: string[]) =>
+  generate: (id: string, actionIds: string[], fieldOverrides?: Record<string, Record<string, unknown>>) =>
     request<ActionResult[]>(`/sessions/${id}/generate`, {
       method: "POST",
-      body: JSON.stringify({ action_ids: actionIds }),
+      body: JSON.stringify({ action_ids: actionIds, field_overrides: fieldOverrides ?? {} }),
     }),
   listMatters: () => request<Matter[]>("/matters"),
-  createMatter: (body: { client_name: string; matter_name: string }) =>
+  createMatter: (body: { client_name: string; matter_name: string; session_id?: string }) =>
     request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),
+  listContacts: () => request<Contact[]>("/contacts"),
+  createContact: (body: { name: string; updates?: Record<string, unknown>; matter_id?: string; session_id?: string }) =>
+    request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
   health: () => request<{ status: string }>("/health"),
 };
 

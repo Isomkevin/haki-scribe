@@ -1,255 +1,81 @@
-# Haki Scribe
+# HakiScribe
 
-Build a mobile-first web app called HakiScribe — a legal work companion that records conversations (client meetings, court proceedings) and turns them into a tray of ready-to-generate legal artifacts, not just a transcript.
+**The conversation is the work. The transcript is only the witness.**
 
-Product framing (important — read before building)
+HakiScribe is a legal work companion for the rooms where justice is actually spoken: client meetings, chambers, court. It listens — from a phone, a laptop, or a wearable on the collar — and returns not a wall of text to be re-read, but a tray of ready legal artifacts. A demand letter. A hearing date. A matter opened. A billable hour. A private note that will still be true on Monday.
 
-This is NOT a transcription app with a transcript viewer. The transcript is a means, not the deliverable. The core interaction is: record (with the ability to flag important moments hands-free) → relabel speakers → the app analyzes what was said → it shows a tray of concrete, individually-selectable, source-traceable legal artifacts it detected → the user picks which ones they want → the app generates them. Think Granola's "AI notes" reveal, but the output is legal work product, not meeting notes — and every claim it makes has to be verifiable against the actual transcript, because a legal professional is liable for what gets generated.
+It is built for lawyers, judges, and clerks. Not for one role. For anyone whose profession still depends on remembering what was said, then doing something about it.
 
-Design for legal professionals broadly — lawyers, judges, clerks — not one specific role. Mobile is the primary surface (used in courtrooms and client meetings, hands often not free), but it needs to work well on desktop too, where review/editing happens.
+---
 
-Visual direction
+Justice in Kenya — *haki* — is still, too often, handwritten. A judge converts notes into a proceeding after the fact. A lawyer reconstructs a client conversation from memory, and the detail that mattered is already gone. The delay is not a lack of intelligence. It is a lack of a record that can become work.
 
-Trustworthy and precise, not "AI startup generic." Avoid purple gradients, glowing orbs, or anything that reads as a demo toy — this handles real legal work, often privileged. Lean toward: a restrained, mostly-neutral palette (deep navy or charcoal as the anchor, one warm accent used sparingly for primary actions), a serif or high-legibility sans for document/transcript text (this is legal reading material), clean sans for UI chrome, generous whitespace, subtle borders over heavy shadows. Confidence and calm, not excitement. A small, persistent trust line ("Not used to train models · Kenya DPA-aligned") should be visible during recording and on the action tray — for this audience, that line is why they trust the tool at all, not decoration.
+Most tools stop at the recording. They give you a transcript and call it done. A transcript is a means. It is not the deliverable. A legal professional is liable for what leaves their desk. They do not need another document to read. They need the next document to write — grounded, selectable, and traceable to the words that were actually spoken.
 
-Screens
+HakiScribe is that next document. Many of them. Chosen, not imposed.
 
-1. Home / New Session
+---
 
-Minimal. A record button (large, unmistakable) and a source toggle: Mic or Omi wearable. No document-type picker — that's the whole point, don't add one.
+## What it does
 
-Below the fold: a list of past sessions (see Session Library below), so this doubles as the dashboard.
+You record. You may never look at the screen.
 
-2. Recording
+A thumb-sized control — **Flag this moment** — lets you mark what mattered without breaking eye contact. The contract term. The date. The admission. The instruction. Those flags become memory the product can honour later.
 
-Full-screen, unambiguous "recording" state: elapsed time, a live waveform or pulse animation.
+When the room goes quiet, HakiScribe does not dump a transcript on you. It asks two brief, serious questions first:
 
-A large, thumb-reachable "Flag this moment" button — designed to be tappable without looking at the screen, mid-conversation. Each tap drops a timestamped chip in a horizontal scroll row above the waveform (e.g. "09:12 · Contract terms"). This is a first-class control, not a minor extra — it's how a lawyer marks "this mattered" without breaking eye contact with their client. Calls POST /sessions/{id}/flags with {"at_ms": ..., "label"?: ...} on every tap.
+1. **Who was speaking?** Speaker 1 is not a name. A generated letter cannot say Speaker 1. You name the people, because this record may matter evidentially.
+2. **What must never leave this room?** Privileged and off-record lines stay visible, struck through, and excluded from everything that follows. Nothing is silently deleted. Nothing is silently used.
 
-Live captions scroll in small, muted italic text below — they prove it's working but are secondary, not the headline.
+Then it reads.
 
-Live captions come from the WebSocket (see API contract) when source is Mic. When source is Omi, show a "listening via Omi" state instead (Omi transcribes on its own and pushes segments via webhook — no client-side audio capture needed for that path).
+What returns is the Action Tray — the heart of the product. Not a chat. Not a summary. A vertical list of concrete, individually selectable pieces of legal work, each one grounded in a line that was said:
 
-A clear Stop button.
+- a draft letter, brief, or memo
+- a follow-up on the calendar
+- a matter opened or linked in the HakiChain workspace
+- a contact brought up to date
+- a billable time entry
+- a private note
 
-3. Speaker check (new, brief — appears right after Stop)
+Every card tells you *why* it exists — explicitly stated, or inferred from context — and offers **View source**. That link is not polish. It is the reason a professional will check the box. Confidence is visible. Speculation is muted, and starts unchecked.
 
-A short screen listing each distinct raw speaker label found in the transcript (e.g. "Speaker 1", "Speaker 2") with a text field next to each to type the real name. Pre-fill nothing — force a deliberate entry, since this feeds directly into generated documents. A "Skip" option is fine (keeps raw labels), but don't skip past this silently.
+You choose. You generate. The draft arrives as a document you can still edit — never as a locked verdict. The calendar event is a real invitation. The time entry looks like a timesheet line, because that is what it is. Work that belongs in HakiChain lands there. Work that should stay local stays local.
 
-On submit, POST /sessions/{id}/speakers with {"mapping": {"Speaker 1": "John Kamau", ...}}.
+Nothing is a dead end. Every session can be reopened. Every artifact can be reviewed. The library is a record of work done, not of recordings stored.
 
-4. Review & redact (new, brief — appears right after speaker check)
+---
 
-The full transcript as a simple scrollable list of speaker-labeled lines. Each line has a small toggle (e.g. a lock icon) to mark it privileged/off-record. Toggling calls PATCH /sessions/{id}/segments/{segment_id} with {"redacted": true|false}.
+## Designed for the room, not the desk
 
-Redacted lines stay visible but visually muted/struck-through, with a small "won't be used" label — the user should always be able to see and reverse what they've excluded, never have it silently vanish.
+The primary surface is a phone in a courtroom or across a table. Hands are often not free. The record button is unmistakable. The flag is large enough to find without looking. Live captions exist only to prove the tool is listening; they are never the headline.
 
-A single "Continue" button moves to analysis. This screen should feel like a 10-second skim, not a chore — most sessions have zero redactions.
+Desktop is where review happens — the longer read, the careful edit, the decision about what leaves the building.
 
-5. Analyzing (transition state)
+Capture can come from the microphone in front of you, or from an **Omi** wearable already in the room. The product does not ask you to choose a document type before you speak. That would be the old world: templates first, reality second. HakiScribe listens first.
 
-Brief, calm loading state — "Reviewing what happened..." Not a generic spinner; something that feels like careful reading, not frantic processing.
+It hears English, Kiswahili, and the code-switched speech in which so much of this work actually happens.
 
-Calls POST /sessions/{id}/finalize then POST /sessions/{id}/detect in sequence, then transitions to the Action Tray.
+---
 
-6. Action Tray (the core screen)
+## Trust is the product
 
-A vertical list of cards, one per detected action. Each card shows:
+This is privileged speech. The interface is calm on purpose: deep ink, restrained gold, the typography of documents rather than of demos. No glowing orbs. No theatre. Confidence, not excitement.
 
-An icon distinguishing the type (document / calendar / briefcase for matter / contact for CRM / clock for time entry / note)
+A line stays visible while you record and while you choose:
 
-Title (e.g. "Draft: Demand Letter")
+**Not used to train models · Kenya DPA-aligned**
 
-One-line preview grounding it in what was said
+For this audience, that line is not decoration. It is why the tool is allowed in the room.
 
-A checkbox — pre-checked or unchecked per the pre_checked field from the API, all editable
+HakiScribe will propose. It will never pretend the proposal is the professional. You name the speakers. You redact what must not travel. You see the source. You select the work. You edit the draft before it leaves. The agent is in the room. The liability stays with the human who was always going to carry it.
 
-A footer row with the confidence_reason as a short tag ("Explicitly stated" / "Inferred from context") and a "View source" link that jumps to (or expands inline) the transcript line at source_segment_id — this is not optional polish, it's the thing that makes a legal professional trust an individual card enough to check it
+---
 
-Lower-confidence / speculative cards render visually muted and start unchecked (see the design reference — the "new matter" card is a good example of this treatment)
+## A chapter of HakiChain
 
-Tapping a card expands it to show its extracted_fields in a simple editable form (e.g. for a calendar event: title, date, time — all editable before generating).
+HakiScribe is not a sidecar chatbot. It is the listening instrument of [HakiChain](https://hakichain.com) — the parent product for legal work that already has a workspace, a matter, a calendar, a file. What is spoken becomes what the practice already uses.
 
-A "Generate all high-confidence" shortcut sits above the list — one tap selects every card with pre_checked: true without requiring the user to review each one individually; they can still deselect before generating. Below the list, a sticky "Generate selected (N)" button, N = count of checked cards, disabled at zero.
+The ambition is simple, and large enough:
 
-Calls POST /sessions/{id}/generate with the selected action_ids.
-
-7. Results
-
-Each generated action becomes a result card:
-
-draft_document → shows the generated text in a document-styled reader (serif, generous line height, looks like a real legal doc, not a chat bubble), with copy/export affordances, and stays editable inline — never present it as a locked final artifact, lawyers will always want to edit before it leaves the app.
-
-calendar_event → shows the event details with a "download .ics / add to calendar" action (the API returns real .ics content).
-
-time_entry → shows duration, activity description, and which matter it's billed to, styled like a timesheet line item.
-
-private_note → shown inline as a saved note.
-
-workspace_matter → if the result's note says "linked to existing matter", show it as "Added to existing matter: {matter_name}"; if it says a new matter was created, show "New matter opened: {matter_name}".
-
-crm_entry → shown as a generic confirmation card ("Contact updated: ...") — this is a backend stub today, so render whatever result object comes back generically (key/value), don't assume fields beyond what's documented below.
-
-Any action that comes back with status: "error" shows a quiet inline error on that card only — never blocks the rest of the results.
-
-8. Session Library / Session Detail
-
-List view: each past session as a row/card showing title, date, source (mic/Omi icon), status, and small badges for what got generated from it (icons matching the action types that reached generated status).
-
-Detail view: reopens the Action Tray + Results state for that session (fetch via GET /sessions/{id} which includes detected_actions and flagged_moments), so nothing is a dead end — everything's reviewable later.
-
-API contract
-
-Base URL: configurable via an environment variable (VITE_API_BASE_URL or equivalent) — don't hardcode a host, the backend URL isn't final yet.
-
-POST   /sessions
-  body: { "title": string, "source": "mic" | "omi", "language_hint"?: string }
-  returns: Session
-
-GET    /sessions
-  returns: Session[]
-
-GET    /sessions/{id}
-  returns: Session & { transcript: TranscriptSegment[], detected_actions: DetectedAction[], flagged_moments: FlaggedMoment[] }
-
-WS     /sessions/{id}/stream
-  client sends: raw audio chunk bytes (binary frames, ~2-3s each)
-  server sends back: TranscriptSegment (JSON) per chunk
-
-POST   /webhooks/omi        (backend-to-backend, frontend doesn't call this)
-
-POST   /sessions/{id}/finalize
-  returns: Session (status becomes "ready")
-
-POST   /sessions/{id}/flags
-  body: { "at_ms": number, "label"?: string }
-  returns: FlaggedMoment
-
-POST   /sessions/{id}/speakers
-  body: { "mapping": { [rawLabel: string]: string } }
-  returns: TranscriptSegment[]   (the full updated transcript)
-
-PATCH  /sessions/{id}/segments/{segment_id}
-  body: { "redacted": boolean }
-  returns: TranscriptSegment
-
-POST   /sessions/{id}/detect
-  returns: DetectedAction[]
-
-GET    /sessions/{id}/actions
-  returns: DetectedAction[]
-
-POST   /sessions/{id}/generate
-  body: { "action_ids": string[] }
-  returns: ActionResult[]
-
-GET    /matters
-  returns: Matter[]
-
-ts
-
-type Session = {
-  id: string
-  title: string
-  source: "mic" | "omi"
-  language_hint: string | null
-  status: "recording" | "processing" | "ready" | "exported"
-  created_at: string
-  updated_at: string
-}
-
-type TranscriptSegment = {
-  id: string
-  session_id: string
-  speaker: string | null
-  text: string
-  start_ms: number
-  end_ms: number
-  confidence: number | null
-  redacted: boolean
-}
-
-type FlaggedMoment = {
-  id: string
-  session_id: string
-  at_ms: number
-  label: string | null
-}
-
-type Matter = {
-  id: string
-  client_name: string
-  matter_name: string
-  created_at: string
-}
-
-type DetectedAction = {
-  id: string
-  session_id: string
-  type: "draft_document" | "calendar_event" | "workspace_matter" | "crm_entry" | "private_note" | "time_entry"
-  title: string
-  preview: string
-  confidence: number
-  confidence_reason: string | null       // "Explicitly stated" | "Inferred from context"
-  source_segment_id: string | null       // drives the "View source" link
-  extracted_fields: Record<string, any>  // shape varies by type, see below
-  pre_checked: boolean
-  status: "detected" | "generated" | "dismissed" | "error"
-}
-
-type ActionResult = {
-  action_id: string
-  type: DetectedAction["type"]
-  status: "success" | "error"
-  result: Record<string, any>   // shape varies by type, see below
-  error: string | null
-}
-
-extracted_fields / result shapes by type (render generically — these are the common fields, but don't hard-fail on missing ones):
-
-draft_document: fields { document_kind, parties, key_facts } → result { document_text, document_kind }
-
-calendar_event: fields { title, date, time } → result { title, start, ics } (ics is raw .ics file content as a string — build a download link from it, e.g. a data:text/calendar URI)
-
-workspace_matter: fields { matter_name, client, existing_matter_id? } → result { matter_id, matter_name, note } (note tells you whether it was linked to an existing matter or a new one was created — see Results screen above)
-
-crm_entry: fields { contact_name, updates } → result { contact_id, contact_name, note }
-
-private_note: fields { note_text } → result { note_text }
-
-time_entry: fields { duration_hours, activity_description, matter_name } → result { duration_hours, activity_description, matter_name, billable }
-
-State handling notes
-
-Session flow is a state machine driven by Session.status plus where the user is in the post-recording sequence: recording → (stop) → speaker check → review & redact → processing/ready with no actions yet → (detect completes) → tray shown → (generate completes) → results shown. Reopening an old session should be able to resume at whatever state it's actually in — don't assume every session was just recorded, and don't force a completed session back through speaker check or redaction.
-
-Mic audio capture: use the browser's MediaRecorder/Web Audio API, chunk into ~2-3 second segments, send each as a binary WebSocket frame. Show each returned TranscriptSegment appended to the live caption feed immediately.
-
-Handle the WebSocket disconnecting gracefully (e.g. on Stop) — closing it is expected, not an error state.
-
-This is a real product handling real legal conversations — no fake placeholder data once wired up. If the backend isn't reachable, show a clear connection error, not silently-empty screens.
-
-I have connected the Backend folder and product Specs
-
-make sure the UI Theme Marches the one in HakiChain.com(The Parent Product)
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/1bf8b7a1-38d0-4cb9-8bb6-a2a06ed0178b).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
-```
+**Leave the room with the work already begun.**

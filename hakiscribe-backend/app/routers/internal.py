@@ -37,7 +37,13 @@ async def internal_detect(body: dict, x_internal_secret: str = Header(default=""
     flags = [FlaggedMoment(**f) for f in body.get("flags", [])]
     known_matters = [Matter(**m) for m in body.get("known_matters", [])]
 
-    actions = await action_detector.detect_actions(session_id, transcript, flags=flags, known_matters=known_matters)
+    actions = await action_detector.detect_actions(
+        session_id,
+        transcript,
+        flags=flags,
+        known_matters=known_matters,
+        session_title=body.get("session_title"),
+    )
     return [a.model_dump(mode="json") for a in actions]
 
 
@@ -45,9 +51,10 @@ async def internal_detect(body: dict, x_internal_secret: str = Header(default=""
 async def internal_generate(body: dict, x_internal_secret: str = Header(default="")):
     _check_secret(x_internal_secret)
     actions = [DetectedAction(**a) for a in body.get("actions", [])]
+    transcript = [TranscriptSegment(**seg) for seg in body.get("transcript", [])]
 
     results = []
     for action in actions:
-        result = await action_executor.execute_action(action)
+        result = await action_executor.execute_action(action, transcript=transcript or None)
         results.append(result.model_dump(mode="json"))
     return results

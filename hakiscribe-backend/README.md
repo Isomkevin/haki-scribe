@@ -1,6 +1,7 @@
 # HakiScribe backend (scaffold)
 
 ## Run it
+
 ```
 pip install -r requirements.txt
 cp .env.example .env   # fill in at least one ASR provider key + OPENROUTER_API_KEY
@@ -12,6 +13,7 @@ Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
 local-only behavior. Add keys incrementally to light up real integrations.
 
 ## Quick demo path (fastest to a working end-to-end demo)
+
 1. `POST /sessions` with `{"title": "Demo", "source": "omi", "language_hint": "code-switch"}` -> note the `id`.
 2. `POST /webhooks/omi` with that `id` as `session_external_id` and a fake `segments` list (use raw labels like "Speaker 1") to prove ingestion works before touching real Omi payloads.
 3. `GET /sessions/{id}` to see the transcript assembled.
@@ -38,6 +40,7 @@ See `trigger/README.md` for deploying the Trigger.dev tasks — they need
 a **publicly reachable** `BACKEND_INTERNAL_URL`, not `localhost`.
 
 ## What's stubbed and needs real wiring before it's more than a demo
+
 - `app/services/storage.py` — in-memory, swap for Supabase.
 - `app/integrations/ambiguous_client.create_contact` — best-effort route (`/api/crm/contacts`); confirm the exact path against Ambiguous's live API reference.
 - `app/routers/omi_webhook.py` — field names guessed; check Omi's actual webhook payload docs.

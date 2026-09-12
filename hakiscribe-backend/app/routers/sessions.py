@@ -9,6 +9,7 @@ from app.models.schemas import (
     Session,
     SessionCreate,
     SessionDetail,
+    SessionLibraryItem,
     SessionStatus,
     SpeakerRelabelRequest,
     TranscriptSegment,
@@ -24,9 +25,9 @@ def create_session(payload: SessionCreate):
     return storage.create_session(session)
 
 
-@router.get("", response_model=list[Session])
+@router.get("", response_model=list[SessionLibraryItem])
 def list_sessions():
-    return storage.list_sessions()
+    return storage.list_library_sessions()
 
 
 @router.get("/{session_id}", response_model=SessionDetail)

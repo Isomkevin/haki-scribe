@@ -7,7 +7,18 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.bun
+.pnpm-store
+
+# Frontend / Vite / TanStack / Nitro
 dist
 dist-ssr
 .output
@@ -15,16 +26,75 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+*.tsbuildinfo
+.eslintcache
+.cache
+.turbo
 
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+
+# Environment and secrets — keep *.example committed
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.p12
+*.key
+credentials.json
+service-account*.json
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+*.egg
+.installed.cfg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Trigger.dev
+.trigger/
+
+# Test / coverage (JS)
+coverage
+*.lcov
+.nyc_output
+
+# Local runtime data
+tmp/
+temp/
+uploads/
+*.sqlite
+*.sqlite3
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 *.suo
 *.ntvs*
 *.njsproj

@@ -18,6 +18,7 @@ app.include_router(stream.router, prefix="/sessions", tags=["stream"])
 app.include_router(actions.router, prefix="/sessions", tags=["actions"])
 app.include_router(omi_webhook.router, prefix="/webhooks", tags=["omi"])
 app.include_router(matters.router, prefix="/matters", tags=["matters"])
+app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
 app.include_router(internal.router, prefix="/internal", tags=["internal"])
 
 

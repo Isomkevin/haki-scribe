@@ -28,13 +28,18 @@ async def detect_actions(session_id: uuid.UUID):
             "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
             "flags": [f.model_dump(mode="json") for f in detail.flagged_moments],
             "known_matters": [m.model_dump(mode="json") for m in known_matters],
+            "session_title": detail.title,
         },
     )
     if trigger_output is not None:
         actions = [DetectedAction(**a) for a in trigger_output]
     else:
         actions = await action_detector.detect_actions(
-            session_id, detail.transcript, flags=detail.flagged_moments, known_matters=known_matters
+            session_id,
+            detail.transcript,
+            flags=detail.flagged_moments,
+            known_matters=known_matters,
+            session_title=detail.title,
         )
 
     actions = await enrichment.enrich_with_exa(actions)
@@ -51,7 +56,8 @@ def list_actions(session_id: uuid.UUID):
 
 @router.post("/{session_id}/generate", response_model=list[ActionResult])
 async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsRequest):
-    if storage.get_session(session_id) is None:
+    detail = storage.get_session(session_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
     to_run: list[DetectedAction] = []
@@ -63,22 +69,30 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
                 ActionResult(action_id=action_id, type="draft_document", status="error", error="Action not found")
             )
             continue
+        overrides = payload.field_overrides.get(str(action_id), {})
+        if overrides:
+            action = storage.update_action_fields(session_id, action_id, overrides) or action
         to_run.append(action)
 
     if to_run:
         # Same durable-task-with-fallback pattern as detection.
         trigger_output = await trigger_client.trigger_and_wait(
-            "generate-actions", {"actions": [a.model_dump(mode="json") for a in to_run]}
+            "generate-actions",
+            {
+                "actions": [a.model_dump(mode="json") for a in to_run],
+                "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
+            },
         )
         if trigger_output is not None:
             run_results = [ActionResult(**r) for r in trigger_output]
         else:
-            run_results = [await action_executor.execute_action(a) for a in to_run]
+            run_results = [await action_executor.execute_action(a, transcript=detail.transcript) for a in to_run]
 
         for result in run_results:
             storage.update_action_status(
                 session_id, result.action_id, ActionStatus.generated if result.status == "success" else ActionStatus.error
             )
         results.extend(run_results)
+        storage.upsert_action_results(session_id, results)
 
     return results

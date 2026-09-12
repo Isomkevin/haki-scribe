@@ -89,12 +89,20 @@ class IntronVoiceProvider(TranscriptionProvider):
         raise NotImplementedError("Wire this up against Intron Voice AI's API before the CodeSwitch submission.")
 
 
+class UnavailableProvider(TranscriptionProvider):
+    """Keeps a live mic session open when no ASR key is configured.
+    Chunks produce no captions; Flag / Stop / later segment injection still work."""
+
+    async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
+        return TranscriptionResult(text="", raw={"error": "ASR is not configured"})
+
+
 def get_provider() -> TranscriptionProvider:
     name = os.environ.get("ASR_PROVIDER", "openai").lower()
     if name == "groq":
-        return GroqWhisperProvider()
+        return GroqWhisperProvider() if os.environ.get("GROQ_API_KEY") else UnavailableProvider()
     if name == "openai":
-        return OpenAIWhisperProvider()
+        return OpenAIWhisperProvider() if os.environ.get("OPENAI_API_KEY") else UnavailableProvider()
     if name == "intron":
         return IntronVoiceProvider()
     raise ValueError(f"Unknown ASR_PROVIDER: {name}")
