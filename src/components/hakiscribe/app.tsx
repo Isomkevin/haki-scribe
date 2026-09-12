@@ -642,6 +642,20 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
               <p className="mt-2 text-muted-foreground">The verified transcript did not contain enough information to propose legal work.</p>
             </div>
           )}
+          <article className="chamber-card mt-3 rounded-xl border border-border bg-card">
+            <div className="grid grid-cols-[auto_1fr] gap-3 p-4 sm:p-5">
+              <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Scale className="size-5" /></span>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-foreground">Kenyan legal research on this matter</h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Case law, statutes and precedent for the issues raised on this record, each with a citation you can open.
+                </p>
+                <Button asChild variant="outline" size="sm" className="mt-3">
+                  <Link to="/research" search={{ session: session.id }}>Open research</Link>
+                </Button>
+              </div>
+            </div>
+          </article>
           <AskComposer
             sessionId={session.id}
             onResult={(result) => {
