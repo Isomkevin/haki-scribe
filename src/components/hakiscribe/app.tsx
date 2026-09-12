@@ -40,6 +40,7 @@ import {
   type DetectedAction,
   type FlaggedMoment,
   type Matter,
+  type ResearchSource,
   type Session,
   type SessionDetail,
   type SessionSource,
@@ -641,6 +642,14 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
               <p className="mt-2 text-muted-foreground">The verified transcript did not contain enough information to propose legal work.</p>
             </div>
           )}
+          <AskComposer
+            sessionId={session.id}
+            onResult={(result) => {
+              setResults((current) => [result, ...current.filter((item) => item.action_id !== result.action_id)]);
+              void queryClient.invalidateQueries({ queryKey: ["session", session.id] });
+              onResults();
+            }}
+          />
           {generate.error && <div className="mt-5"><ConnectionError message={generate.error.message} /></div>}
           <div className="sticky bottom-0 mt-8 border-t border-border bg-background/90 py-4 backdrop-blur-md">
             <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate()}>
