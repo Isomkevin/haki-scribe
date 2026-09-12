@@ -144,11 +144,16 @@ export const hakiApi = {
     }),
   finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
   detect: (id: string) => request<DetectedAction[]>(`/sessions/${id}/detect`, { method: "POST" }),
+  listActions: (id: string) => request<DetectedAction[]>(`/sessions/${id}/actions`),
   generate: (id: string, actionIds: string[]) =>
     request<ActionResult[]>(`/sessions/${id}/generate`, {
       method: "POST",
       body: JSON.stringify({ action_ids: actionIds }),
     }),
+  listMatters: () => request<Matter[]>("/matters"),
+  createMatter: (body: { client_name: string; matter_name: string }) =>
+    request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),
+  health: () => request<{ status: string }>("/health"),
 };
 
 export function websocketUrl(sessionId: string) {
