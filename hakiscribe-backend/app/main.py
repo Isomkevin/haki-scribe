@@ -22,6 +22,11 @@ app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"
 app.include_router(internal.router, prefix="/internal", tags=["internal"])
 
 
+@app.get("/")
+def root():
+    return {"service": "HakiScribe", "status": "ok", "docs": "/docs"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

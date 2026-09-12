@@ -8,6 +8,21 @@ cp .env.example .env   # fill in at least one ASR provider key + OPENROUTER_API_
 uvicorn app.main:app --reload --port 8000
 ```
 
+## Deploy on Render
+
+The repo-root `render.yaml` Blueprint deploys this folder as a Python web service.
+
+- Binds to `0.0.0.0:$PORT` (required on Render)
+- Health check: `GET /health`
+- Root directory: `hakiscribe-backend`
+- Storage is in-memory: sessions reset on every restart or free-tier spin-down
+
+Create from the Blueprint (after this file is on `main`):
+
+https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe
+
+Fill `OPENAI_API_KEY` and `OPENROUTER_API_KEY` when prompted. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
+
 Everything works with zero sponsor keys configured — Ambiguous AI,
 Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
 local-only behavior. Add keys incrementally to light up real integrations.

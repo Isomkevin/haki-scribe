@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: hakiscribe-backend
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: hakiscribe-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - hakiscribe-backend/**
+        - render.yaml
+    envVars:
+      - key: ASR_PROVIDER
+        value: openai
+      - key: DETECTION_MODEL
+        value: openai/gpt-4o
+      - key: DRAFTING_MODEL
+        value: openai/gpt-4o
+      - key: AMBIGUOUS_NOTIFY_CHANNEL
+        value: general
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: BACKEND_INTERNAL_SECRET
+        generateValue: true
