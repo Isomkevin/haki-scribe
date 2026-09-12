@@ -187,7 +187,22 @@ _STATUTE_RE = re.compile(
 )
 
 _LR_RE = re.compile(r"\b(?:l\.?r\.?\s*(?:number|no\.?)?|title\s+number)\s*([\w/ ]{3,40})", re.IGNORECASE)
-_CAUSE_RE = re.compile(r"\b(cause|civil suit|petition|succession cause|e?case)\s+(?:number|no\.?)\s+([\w/ ]{1,30})", re.IGNORECASE)
+_CAUSE_RE = re.compile(
+    r"\b(cause|civil suit|petition|succession cause|e?case)\s+(?:number|no\.?)\s+"
+    r"((?:(?:" + "|".join(NUMBER_WORDS) + r")[\s-]*)+|[\d/]+)",
+    re.IGNORECASE,
+)
+
+
+def _spoken_number(phrase: str) -> str:
+    """'three one seven' -> '317'; 'forty-two' -> '42'."""
+    words = [w for w in re.split(r"[\s-]+", phrase.strip().lower()) if w]
+    if not words:
+        return phrase.strip()
+    if all(w in NUMBER_WORDS for w in words) and all(NUMBER_WORDS[w] < 10 for w in words) and len(words) > 1:
+        return "".join(str(NUMBER_WORDS[w]) for w in words)
+    value = _words_to_number(phrase)
+    return str(int(value)) if value else phrase.strip()
 _DEADLINE_RE = re.compile(
     r"\b((?:" + "|".join(NUMBER_WORDS) + r")|\d{1,3})[\s-]+(days?|weeks?|months?)\b", re.IGNORECASE
 )
@@ -243,7 +258,10 @@ def extract_facts(transcript: list[TranscriptSegment] | None) -> dict:
             deadlines.append(value)
 
     lr_numbers = [m.group(1).strip(" .,") for m in _LR_RE.finditer(text)]
-    causes = [f"{m.group(1).title()} No. {m.group(2).strip()}" for m in _CAUSE_RE.finditer(text)]
+    causes = [
+        f"{m.group(1).title()} No. {_spoken_number(m.group(2))} OF {datetime.utcnow().year}"
+        for m in _CAUSE_RE.finditer(text)
+    ]
 
     court = None
     for name, label in (
@@ -291,22 +309,73 @@ def facts_brief(facts: dict) -> str:
 # --------------------------------------------------------------------------
 
 
+_ORG_RE = re.compile(
+    r"\b([A-Z][\w'’&]+(?:\s+(?:&|and|[A-Z][\w'’]+)){0,3}\s+"
+    r"(?:Contractors|Limited|Ltd|Enterprises|Traders|Logistics|Sacco|Holdings|Properties|Company|Bank|Group))\b"
+)
+
+_BANKS = ("Barclays", "Absa", "Equity", "KCB", "Stanbic", "Co-operative Bank", "NCBA")
+
+
+def organisations(facts: dict) -> list[str]:
+    found: list[str] = []
+    for match in _ORG_RE.finditer(facts["text"]):
+        name = match.group(1).strip()
+        if name not in found:
+            found.append(name)
+    for speaker in facts["speakers"]:
+        inner = re.search(r"\(([^)]+)\)", speaker)
+        if inner:
+            org = inner.group(1).split(",")[-1].strip()
+            if len(org) > 2 and org not in found:
+                found.insert(0, org)
+    for bank in _BANKS:
+        if bank.lower() in facts["text"].lower() and not any(bank in f for f in found):
+            found.insert(0, bank)
+    return found
+
+
+def _clean_speaker(name: str) -> str:
+    return re.sub(r"\s*\([^)]*\)", "", name).strip()
+
+
+def client_entity(facts: dict, fallback: str = "[CLIENT]") -> str:
+    """Who we act for: the organisation a non-advocate speaker represents,
+    otherwise that speaker's own name."""
+    orgs = organisations(facts)
+    for speaker in facts["speakers"]:
+        if speaker.lower().startswith(("adv.", "hon.", "justice", "lady justice")):
+            continue
+        inner = re.search(r"\(([^)]+)\)", speaker)
+        if inner:
+            org = inner.group(1).split(",")[-1].strip()
+            if org:
+                return org
+        return _clean_speaker(speaker)
+    return orgs[0] if orgs else fallback
+
+
 def _party(facts: dict, index: int, fallback: str) -> str:
     speakers = facts["speakers"]
     return speakers[index] if len(speakers) > index else fallback
 
 
 def _counterparty(facts: dict, action: DetectedAction) -> str:
-    fields = action.extracted_fields
-    parties = fields.get("parties")
-    if isinstance(parties, list) and len(parties) > 1:
-        return str(parties[1])
-    # Look for a capitalised company-style name in the record.
-    match = re.search(
-        r"\b([A-Z][\w'’]+(?:\s+[A-Z][\w'’]+){0,3}\s+(?:Contractors|Limited|Ltd|Enterprises|Traders|Logistics|Sacco|Holdings|Company))\b",
-        facts["text"],
-    )
-    return match.group(1) if match else "[COUNTERPARTY]"
+    """The adverse party: an organisation on the record that is not our client."""
+    client = client_entity(facts, "")
+    for org in organisations(facts):
+        if client and (org.lower() in client.lower() or client.lower() in org.lower()):
+            continue
+        if any(org.lower() in _clean_speaker(s).lower() for s in facts["speakers"]):
+            continue
+        return org
+    parties = action.extracted_fields.get("parties")
+    if isinstance(parties, list):
+        for item in parties:
+            name = _clean_speaker(str(item))
+            if name and client and name.lower() not in client.lower():
+                return name
+    return "[COUNTERPARTY]"
 
 
 def _numbered(paragraphs: list[str]) -> str:
@@ -328,7 +397,7 @@ def _letterhead(today: str) -> str:
 
 
 def _demand_letter(action, facts, today) -> str:
-    claimant = _party(facts, 1, "[CLIENT]")
+    claimant = client_entity(facts, "[CLIENT]")
     respondent = _counterparty(facts, action)
     amount = facts["amounts"][-1] if facts["amounts"] else "[SUM CLAIMED]"
     contract_sum = facts["amounts"][0] if facts["amounts"] else "[CONTRACT SUM]"
@@ -368,7 +437,7 @@ def _demand_letter(action, facts, today) -> str:
 
 def _statutory_notice(action, facts, today) -> str:
     borrower = _counterparty(facts, action)
-    lender = _party(facts, 1, "[CHARGEE]")
+    lender = client_entity(facts, "[CHARGEE]")
     amount = facts["amounts"][0] if facts["amounts"] else "[SUM OUTSTANDING]"
     lr = facts["lr_numbers"][0] if facts["lr_numbers"] else "[L.R. NUMBER]"
     statute = next((s for s in facts["statutes"] if "90" in s or "Land Act" in s), "section 90 of the Land Act, 2012")
@@ -400,9 +469,9 @@ def _statutory_notice(action, facts, today) -> str:
 
 
 def _affidavit(action, facts, today, replying: bool) -> str:
-    court = facts["court"] or "THE HIGH COURT OF KENYA AT NAIROBI"
+    court = facts["court"] or "THE HIGH COURT OF KENYA"
     cause = facts["causes"][0] if facts["causes"] else "[CAUSE NO. ……… OF 20………]"
-    deponent = _party(facts, 1, "[DEPONENT]")
+    deponent = _clean_speaker(client_entity(facts, "[DEPONENT]"))
     heading = "REPLYING AFFIDAVIT" if replying else "SUPPORTING AFFIDAVIT"
     statute = facts["statutes"][0] if facts["statutes"] else None
 
@@ -433,7 +502,7 @@ def _affidavit(action, facts, today, replying: bool) -> str:
         "REPUBLIC OF KENYA\n"
         f"IN {court} AT NAIROBI\n"
         f"{cause}\n\n"
-        f"{_party(facts, 1, '[CLAIMANT]').upper()} …………………………………………… CLAIMANT\n"
+        f"{client_entity(facts, '[CLAIMANT]').upper()} …………………………………………… CLAIMANT\n"
         "VERSUS\n"
         f"{_counterparty(facts, action).upper()} ………………………………… RESPONDENT\n\n"
         f"{heading}\n\n"
@@ -451,7 +520,7 @@ def _affidavit(action, facts, today, replying: bool) -> str:
 
 def _plaint(action, facts, today) -> str:
     court_name = facts["court"] or "THE CHIEF MAGISTRATE'S COURT"
-    plaintiff = _party(facts, 1, "[PLAINTIFF]")
+    plaintiff = client_entity(facts, "[PLAINTIFF]")
     defendant = _counterparty(facts, action)
     amount = facts["amounts"][0] if facts["amounts"] else "[SUM CLAIMED]"
     paragraphs = [
@@ -487,7 +556,7 @@ def _plaint(action, facts, today) -> str:
 
 
 def _notice_of_arbitration(action, facts, today) -> str:
-    claimant = _party(facts, 1, "[CLAIMANT]")
+    claimant = client_entity(facts, "[CLAIMANT]")
     respondent = _counterparty(facts, action)
     amount = facts["amounts"][-1] if facts["amounts"] else "[SUM IN DISPUTE]"
     clause = re.search(r"clause\s+(\d{1,3})", facts["text"], re.IGNORECASE)
@@ -515,7 +584,7 @@ def _notice_of_arbitration(action, facts, today) -> str:
 
 
 def _revocation_of_grant(action, facts, today) -> str:
-    applicant = _party(facts, 1, "[APPLICANT]")
+    applicant = _clean_speaker(client_entity(facts, "[APPLICANT]"))
     statute = next((s for s in facts["statutes"] if "76" in s), "section 76 of the Law of Succession Act")
     paragraphs = [
         f"THAT the deceased died on the date stated in the record, leaving the estate described in the Applicant's "
@@ -583,7 +652,7 @@ def _attendance_note(action, facts, today) -> str:
 
 
 def _engagement_letter(action, facts, today) -> str:
-    client = _party(facts, 1, "[CLIENT]")
+    client = client_entity(facts, "[CLIENT]")
     return (
         f"{_letterhead(today)}\n"
         f"{client}\n[ADDRESS]\n\nDear {client},\n\n"
