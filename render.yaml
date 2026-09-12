@@ -22,9 +22,12 @@ services:
         value: openai/gpt-4o
       - key: AMBIGUOUS_NOTIFY_CHANNEL
         value: general
-      - key: OPENAI_API_KEY
-        sync: false
+      # GPT detection/drafting goes through OpenRouter. The openai/ prefix
+      # on the model names is an OpenRouter slug, not a second vendor key.
       - key: OPENROUTER_API_KEY
         sync: false
+      # Optional: add OPENAI_API_KEY in the Dashboard later if you want
+      # live Whisper captions. Without it, ASR no-ops and the rest of
+      # the pipeline still works.
       - key: BACKEND_INTERNAL_SECRET
         generateValue: true

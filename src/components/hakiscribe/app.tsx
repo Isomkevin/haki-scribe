@@ -263,7 +263,11 @@ export function SessionPage({ sessionId, fresh }: { sessionId: string; fresh: bo
   if (step === "recording") return <RecordingScreen session={session} onStopped={(next) => { queryClient.setQueryData(["session", sessionId], next); setStep("speakers"); }} />;
   if (step === "speakers") return <SpeakerScreen session={session} onNext={async () => { await detail.refetch(); setStep("redact"); }} />;
   if (step === "redact") return <RedactScreen session={session} onNext={() => setStep("analyzing")} />;
-  if (step === "analyzing") return <AnalyzingScreen sessionId={session.id} onComplete={() => { void detail.refetch(); setStep("tray"); }} />;
+  if (step === "analyzing") return <AnalyzingScreen sessionId={session.id} onComplete={async (actions) => {
+    queryClient.setQueryData(["session", sessionId], (current: SessionDetail | undefined) => current ? { ...current, detected_actions: actions } : current);
+    await detail.refetch();
+    setStep("tray");
+  }} />;
   return <PageShell back><ActionWorkspace session={session} initialResults={session.action_results ?? []} showResults={step === "results"} onResults={() => setStep("results")} onTray={() => setStep("tray")} /></PageShell>;
 }
 
@@ -378,13 +382,15 @@ function RedactScreen({ session, onNext }: { session: SessionDetail; onNext: () 
   </main></PageShell>;
 }
 
-function AnalyzingScreen({ sessionId, onComplete }: { sessionId: string; onComplete: () => void }) {
+function AnalyzingScreen({ sessionId, onComplete }: { sessionId: string; onComplete: (actions: DetectedAction[]) => void }) {
   const [error, setError] = useState<string | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   useEffect(() => {
     let active = true;
-    void hakiApi.finalize(sessionId).then(() => hakiApi.detect(sessionId)).then(() => { if (active) onComplete(); }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Analysis could not be completed."); });
+    void hakiApi.finalize(sessionId).then(() => hakiApi.detect(sessionId)).then((actions) => { if (active) void onCompleteRef.current(actions); }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Analysis could not be completed."); });
     return () => { active = false; };
-  }, [sessionId, onComplete]);
+  }, [sessionId]);
   return <PageShell back><main className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center px-5 text-center"><div className="w-40 space-y-2" aria-hidden>{[0,1,2,3].map((item) => <div key={item} className="h-1 origin-left animate-reading-line bg-primary" style={{ animationDelay: `${item * 220}ms` }} />)}</div><h1 className="mt-10 font-serif text-3xl font-semibold">Reviewing what happened…</h1><p className="mt-3 leading-7 text-muted-foreground">Checking the verified record for documents, dates, matters, contacts, notes, and billable work.</p><p className="mt-5 text-xs text-muted-foreground">OpenAI/OpenRouter analysis · Trigger.dev durable processing</p>{error && <div className="mt-8 w-full"><ConnectionError message={error} retry={() => window.location.reload()} /></div>}</main></PageShell>;
 }
 
@@ -393,6 +399,13 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
   const [selected, setSelected] = useState(() => new Set(session.detected_actions.filter((action) => action.pre_checked).map((action) => action.id)));
   const [actions, setActions] = useState(session.detected_actions);
   const [results, setResults] = useState(initialResults);
+  useEffect(() => {
+    setActions(session.detected_actions);
+    setSelected(new Set(session.detected_actions.filter((action) => action.pre_checked).map((action) => action.id)));
+  }, [session.detected_actions]);
+  useEffect(() => {
+    if (initialResults.length) setResults(initialResults);
+  }, [initialResults]);
   const generate = useMutation({
     mutationFn: () => {
       const fieldOverrides = Object.fromEntries(

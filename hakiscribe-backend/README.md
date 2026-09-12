@@ -21,7 +21,7 @@ Create from the Blueprint (after this file is on `main`):
 
 https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe
 
-Fill `OPENAI_API_KEY` and `OPENROUTER_API_KEY` when prompted. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
+Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. `DETECTION_MODEL` / `DRAFTING_MODEL` values like `openai/gpt-4o` are OpenRouter model slugs, so they do **not** need a separate OpenAI key. Add `OPENAI_API_KEY` later in the Render Dashboard only if you want live Whisper captions; without it, ASR no-ops and the rest of the pipeline still works. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
 
 Everything works with zero sponsor keys configured — Ambiguous AI,
 Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
