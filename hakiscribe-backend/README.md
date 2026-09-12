@@ -19,7 +19,7 @@ The repo-root `render.yaml` Blueprint deploys this folder as a Python web servic
 
 Create from the Blueprint (after this file is on `main`):
 
-https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe
+<https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe>
 
 Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and drafting use the same key. Model slugs like `openai/gpt-4o` are OpenRouter IDs, not a second vendor account. Other sponsor keys are optional and fall back to local-only behavior. The Lovable frontend already points at `https://hakiscribe-backend.onrender.com` via the repo-root `.env` (`VITE_API_BASE_URL`).
 
