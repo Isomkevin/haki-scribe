@@ -33,7 +33,8 @@ professional would want generated from this conversation.
 
 For each candidate artifact, output an object with:
 - "type": one of "draft_document", "calendar_event", "workspace_matter", \
-"crm_entry", "private_note", "time_entry"
+"crm_entry", "private_note", "time_entry", "legal_research", "web_search", \
+"llm_task"
 - "title": short human-readable label, e.g. "Draft: Demand Letter"
 - "preview": one sentence grounding it in what was actually said
 - "confidence": 0.0-1.0
@@ -53,6 +54,14 @@ moment — keep it under 15 words)
   - private_note: {"note_text": "..."}
   - time_entry: {"duration_hours": 0.6, "activity_description": "...", \
 "matter_name": "..."}
+  - legal_research: {"question": "a precise legal question actually raised \
+in the conversation, e.g. 'What notice period does section 90 of the Land \
+Act require before realising a charge?'"} — only when a point of law, \
+statute, limitation period or procedure was genuinely in issue
+  - web_search: {"query": "a company, person or entity named on the record \
+to run a background check on"} — background only, never a source of law
+  - llm_task: {"instruction": "a useful free-form instruction over this \
+transcript, e.g. 'List every commitment the client made and its deadline'"}
 - "pre_checked": true if this is a high-confidence, clearly-wanted \
 artifact; false if it's speculative and the user should opt in
 
