@@ -9,4 +9,4 @@
 
 ## External setup
 
-- [ ] Set `VITE_API_BASE_URL` to the deployed FastAPI URL; no backend URL is currently available in this project.
+- [x] Set `VITE_API_BASE_URL` to the deployed FastAPI URL (`https://hakiscribe-backend.onrender.com`).

@@ -35,11 +35,14 @@ dist-ssr
 .wrangler/
 .dev.vars
 
-# Environment and secrets — keep *.example committed
+# Environment and secrets — keep *.example committed.
+# Lovable embeds VITE_* from the root .env at preview/publish time.
+# That file only holds the public API URL, so it is tracked on purpose.
 .env
 .env.*
 !.env.example
 !**/.env.example
+!/.env
 *.pem
 *.p12
 *.key

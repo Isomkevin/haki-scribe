@@ -94,10 +94,12 @@ export class ApiError extends Error {
   }
 }
 
-const configuredBaseUrl = (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.replace(
-  /\/$/,
-  "",
-);
+const PRODUCTION_API_URL = "https://hakiscribe-backend.onrender.com";
+
+const configuredBaseUrl = (
+  (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.trim() ||
+  (import.meta.env.PROD ? PRODUCTION_API_URL : "")
+).replace(/\/$/, "");
 
 export const hasApiConfiguration = Boolean(configuredBaseUrl);
 

@@ -177,7 +177,7 @@ npm install
 npm run dev
 ```
 
-Deploy the API with the repo-root [Render Blueprint](https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe). Demo the HTTP path without a microphone via the steps in [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md). Architecture and API contract live in [`SPEC.md`](./SPEC.md).
+Deploy the API with the repo-root [Render Blueprint](https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe). The published Lovable app at [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) reads `VITE_API_BASE_URL` from the repo-root `.env` (`https://hakiscribe-backend.onrender.com`). Republish after changing that value. Demo the HTTP path without a microphone via the steps in [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md). Architecture and API contract live in [`SPEC.md`](./SPEC.md).
 
 ---
 

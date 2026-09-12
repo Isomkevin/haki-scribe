@@ -21,7 +21,7 @@ Create from the Blueprint (after this file is on `main`):
 
 https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe
 
-Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and drafting use the same key. Model slugs like `openai/gpt-4o` are OpenRouter IDs, not a second vendor account. Other sponsor keys are optional and fall back to local-only behavior. Then set the Lovable frontend `VITE_API_BASE_URL` to the `https://*.onrender.com` URL Render shows after the service is live.
+Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and drafting use the same key. Model slugs like `openai/gpt-4o` are OpenRouter IDs, not a second vendor account. Other sponsor keys are optional and fall back to local-only behavior. The Lovable frontend already points at `https://hakiscribe-backend.onrender.com` via the repo-root `.env` (`VITE_API_BASE_URL`).
 
 Everything works with zero sponsor keys configured — Ambiguous AI,
 Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
