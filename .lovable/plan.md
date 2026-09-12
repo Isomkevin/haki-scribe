@@ -27,7 +27,14 @@ Build the full HakiScribe frontend around the existing FastAPI contract, with th
    - Support select-all-high-confidence, individual selection, expandable editable extracted fields, and inline source transcript expansion.
    - Keep the selected-count generation action reachable at the bottom on mobile.
 
-5. **Results and session detail**
+5. **Sponsor-backed outcomes**
+   - Preserve the backend-owned OpenAI/OpenRouter detection and drafting path; the frontend calls `/detect` and `/generate` rather than duplicating model logic.
+   - Treat Trigger.dev as the backend’s durable execution layer and show a calm in-progress state while detection or generation runs.
+   - Surface Ambiguous delivery outcomes for Docs, Calendar, CRM, and notifications whenever returned by generated result objects, while retaining local artifacts when that integration falls back.
+   - Render Exa counterparty enrichment from dynamic `extracted_fields` as supporting context only, never as transcript evidence or drafted fact.
+   - Make the privileged lock/redaction control explicit, reversible, and guaranteed to occur before `/detect`.
+
+6. **Results and session detail**
    - Render editable legal document text, calendar details with downloadable `.ics`, time entries, private notes, matter outcomes, and generic CRM results.
    - Isolate action-level failures so successful outputs remain usable.
    - Reopen existing sessions directly into their actual tray/results state without replaying completed speaker and redaction steps.
