@@ -10,6 +10,7 @@ import {
   ContactRound,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   Flag,
   Globe,
@@ -22,6 +23,8 @@ import {
   Radio,
   RefreshCw,
   Scale,
+  Search,
+  ShieldCheck,
   Sparkles,
   Square,
   UnlockKeyhole,
@@ -1025,6 +1028,8 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
 }
 
 function NewsDesk({ topic }: { topic?: string }) {
+  const [filter, setFilter] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const news = useQuery({ queryKey: ["news"], queryFn: hakiApi.listNews, enabled: hasApiConfiguration, retry: false });
   const watch = useMutation({
     mutationFn: () => hakiApi.watchNews(topic?.trim() || "Kenya legal and commercial news"),
@@ -1035,32 +1040,133 @@ function NewsDesk({ topic }: { topic?: string }) {
     onError: (error) => toast.error(error.message),
   });
   const hits = news.data?.hits ?? [];
+  const visibleHits = hits
+    .filter((hit) => `${hit.title ?? ""} ${hit.extract ?? ""} ${hit.topic ?? ""}`.toLowerCase().includes(filter.trim().toLowerCase()))
+    .slice(0, 6);
+  const monitorCount = news.data?.monitors.length ?? 0;
+
+  const sourceName = (hit: NewsHit) => {
+    if (!hit.url) return "Source unavailable";
+    try {
+      return new URL(hit.url).hostname.replace(/^www\./, "");
+    } catch {
+      return "External source";
+    }
+  };
+
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
-    <section className="chamber-card mt-10 rounded-xl border border-border p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Web search & news</p>
-          <h2 className="mt-1 font-serif text-xl font-semibold">Citation crawl and news monitoring</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Exa retrieves authorities and watches latest reporting. Hits stay labelled as background — never filed as fact.</p>
+    <section className="mt-10 overflow-hidden rounded-lg border border-intelligence-border bg-intelligence text-intelligence-foreground shadow-desk font-interface">
+      <div className="border-b border-intelligence-border px-5 py-5 sm:px-6 sm:py-6">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:flex sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-intelligence-accent">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-intelligence-accent animate-live-dot" />
+              Intelligence stream
+            </div>
+            <h2 className="truncate font-editorial text-2xl font-semibold sm:text-3xl">Web Search &amp; News</h2>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-intelligence-muted sm:text-sm">
+              Current reporting and source material, kept separate from verified transcript evidence.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-intelligence-border bg-intelligence-panel text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
+            onClick={() => watch.mutate()}
+            disabled={watch.isPending || !hasApiConfiguration}
+          >
+            <Newspaper /> <span className="hidden sm:inline">{watch.isPending ? "Searching…" : topic ? `Watch “${topic.slice(0, 28)}”` : "Watch Kenya legal news"}</span>
+            <span className="sm:hidden">{watch.isPending ? "Searching…" : "Watch"}</span>
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={() => watch.mutate()} disabled={watch.isPending || !hasApiConfiguration}>
-          <Newspaper /> {watch.isPending ? "Searching…" : topic ? `Watch “${topic.slice(0, 40)}”` : "Watch Kenya legal news"}
-        </Button>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <label className="relative block min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-intelligence-muted" />
+            <input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter headlines and summaries"
+              className="h-10 w-full rounded-md border border-intelligence-border bg-intelligence-panel pl-10 pr-3 text-sm text-intelligence-foreground outline-none placeholder:text-intelligence-muted focus:ring-1 focus:ring-intelligence-accent"
+            />
+          </label>
+          <div className="flex items-center gap-4 text-[10px] font-medium uppercase tracking-[0.1em] text-intelligence-muted">
+            <span>{hits.length} signals</span>
+            <span>{monitorCount} {monitorCount === 1 ? "watch" : "watches"}</span>
+          </div>
+        </div>
       </div>
-      {!hits.length && <p className="mt-4 text-sm text-muted-foreground">No monitor hits yet. Start a watch to pull the latest stories.</p>}
-      <ol className="mt-4 space-y-3">
-        {hits.slice(0, 6).map((hit: NewsHit, index) => (
-          <li key={hit.id ?? hit.url ?? index} className="text-sm">
-            {hit.url ? (
-              <a href={hit.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{hit.title ?? hit.url}</a>
-            ) : (
-              <span className="font-medium">{hit.title ?? "Untitled"}</span>
-            )}
-            {hit.published && <span className="ml-2 text-xs text-muted-foreground">{hit.published.slice(0, 10)}</span>}
-            {hit.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{hit.extract}</p>}
-          </li>
-        ))}
+
+      {!hits.length && (
+        <div className="px-5 py-12 text-center sm:px-6">
+          <Newspaper className="mx-auto size-5 text-intelligence-muted" />
+          <p className="mt-3 text-sm text-intelligence-muted">No signals yet. Start a watch to retrieve the latest reporting.</p>
+        </div>
+      )}
+
+      {!!hits.length && !visibleHits.length && (
+        <p className="px-5 py-12 text-center text-sm text-intelligence-muted sm:px-6">No signals match this filter.</p>
+      )}
+
+      <ol className="grid sm:grid-cols-2 xl:grid-cols-3">
+        {visibleHits.map((hit: NewsHit, index) => {
+          const key = hit.id ?? hit.url ?? String(index);
+          const isExpanded = expanded.has(key);
+          return (
+            <li key={key} className="group flex min-w-0 flex-col border-b border-intelligence-border p-5 sm:border-r sm:p-6 xl:[&:nth-child(3n)]:border-r-0">
+              <div className="flex items-center justify-between gap-3 text-[10px] font-medium uppercase tracking-[0.1em] text-intelligence-muted">
+                <span className="rounded border border-intelligence-accent/30 bg-intelligence-accent/10 px-2 py-1 text-intelligence-accent">Background</span>
+                <time dateTime={hit.published ?? undefined}>{hit.published?.slice(0, 10) ?? "Date unavailable"}</time>
+              </div>
+
+              <h3 className="mt-4 font-editorial text-lg font-semibold leading-6 sm:text-xl">
+                {hit.url ? (
+                  <a href={hit.url} target="_blank" rel="noreferrer" className="transition-colors hover:text-intelligence-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-intelligence-accent">
+                    {hit.title ?? hit.url}
+                  </a>
+                ) : hit.title ?? "Untitled signal"}
+              </h3>
+
+              {hit.extract && (
+                <div className="mt-3 flex-1">
+                  <p className={cn("text-xs leading-5 text-intelligence-muted sm:text-sm sm:leading-6", !isExpanded && "line-clamp-3")}>
+                    {hit.extract}
+                  </p>
+                  <Button variant="ghost" size="sm" className="mt-2 h-7 px-0 text-xs text-intelligence-accent hover:bg-transparent hover:text-intelligence-foreground" onClick={() => toggleExpanded(key)}>
+                    {isExpanded ? "Show less" : "Read summary"} <ChevronDown className={cn("transition-transform", isExpanded && "rotate-180")} />
+                  </Button>
+                </div>
+              )}
+
+              <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-intelligence-border pt-4">
+                <div className="min-w-0">
+                  <span className="block text-[9px] font-medium uppercase tracking-[0.12em] text-intelligence-muted">Source</span>
+                  <span className="mt-1 block truncate text-xs font-medium">{sourceName(hit)}</span>
+                </div>
+                {hit.url && (
+                  <a href={hit.url} target="_blank" rel="noreferrer" aria-label={`Open ${hit.title ?? "source"}`} className="grid size-8 shrink-0 place-items-center rounded-md border border-intelligence-border text-intelligence-muted transition-colors hover:bg-intelligence-hover hover:text-intelligence-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-intelligence-accent">
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ol>
+
+      <div className="grid gap-2 border-t border-intelligence-border px-5 py-4 text-[10px] uppercase tracking-[0.1em] text-intelligence-muted sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+        <span className="flex min-w-0 items-center gap-2"><ShieldCheck className="size-3.5 shrink-0 text-intelligence-accent" /> Background reference only — verify before relying on it.</span>
+        <span>Latest six signals</span>
+      </div>
     </section>
   );
 }
