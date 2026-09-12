@@ -718,6 +718,88 @@ function ActionCard({ action, transcript, checked, onChecked, onFields }: { acti
   );
 }
 
+function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (result: ActionResult) => void }) {
+  const [instruction, setInstruction] = useState("");
+  const catalogue = useQuery({ queryKey: ["models"], queryFn: hakiApi.listModels, retry: false });
+  const [model, setModel] = useState("");
+  const ask = useMutation({
+    mutationFn: () => hakiApi.ask(sessionId, { instruction: instruction.trim(), ...(model ? { model } : {}) }),
+    onSuccess: (result) => { setInstruction(""); onResult(result); },
+  });
+  const suggestions = [
+    "Summarise this meeting for the partner in five bullet points.",
+    "List every commitment my client made and its deadline.",
+    "Draft talking points for the next mention.",
+  ];
+  return (
+    <section className="chamber-card mt-8 rounded-xl border border-border p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Sparkles className="size-5" /></span>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-foreground">Ask anything about this session</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Runs against the verified, non-redacted record only. Locked lines are never sent.
+          </p>
+        </div>
+      </div>
+      <Textarea
+        aria-label="Instruction for this session"
+        className="mt-4 min-h-24 bg-background"
+        placeholder="e.g. List every deadline agreed on the record"
+        value={instruction}
+        onChange={(event) => setInstruction(event.target.value)}
+      />
+      <div className="mt-2 flex flex-wrap gap-2">
+        {suggestions.map((item) => (
+          <button key={item} type="button" className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground" onClick={() => setInstruction(item)}>
+            {item}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Model
+          <select
+            className="mt-2 block h-11 w-full rounded-md border border-input bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:ring-1 focus:ring-ring sm:w-64"
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+          >
+            <option value="">{catalogue.data ? `Default (${catalogue.data.default})` : "Default"}</option>
+            {catalogue.data?.models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+          </select>
+        </label>
+        <Button className="h-11 sm:self-end" disabled={!instruction.trim() || ask.isPending} onClick={() => ask.mutate()}>
+          {ask.isPending ? "Working…" : "Run on this session"}
+        </Button>
+      </div>
+      {catalogue.data?.configured === false && (
+        <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing.</p>
+      )}
+      {ask.error && <p className="mt-3 text-sm text-destructive">{ask.error.message}</p>}
+    </section>
+  );
+}
+
+function SourceList({ sources }: { sources: ResearchSource[] }) {
+  if (!sources.length) return null;
+  return (
+    <ol className="mt-5 space-y-3 border-t border-border pt-4">
+      {sources.map((source, index) => (
+        <li key={`${source.url ?? index}`} className="text-sm">
+          <span className="mr-2 font-mono text-xs text-muted-foreground">[{index + 1}]</span>
+          {source.url ? (
+            <a href={source.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{source.title ?? source.url}</a>
+          ) : (
+            <span className="font-medium">{source.title ?? "Untitled source"}</span>
+          )}
+          {source.published && <span className="ml-2 text-xs text-muted-foreground">{source.published.slice(0, 10)}</span>}
+          {source.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{source.extract}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ResultsList({ results }: { results: ActionResult[] }) {
   return <div className="mt-8 space-y-4">{results.map((item) => <ResultCard key={item.action_id} result={item} />)}</div>;
 }
