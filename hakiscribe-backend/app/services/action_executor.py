@@ -49,6 +49,9 @@ async def _generate_draft_document(action: DetectedAction, transcript: list[Tran
     doc = await ambiguous_client.create_document(title=action.title, body_text=drafted.document_text)
     if doc:
         result["ambiguous_document_id"] = doc.get("id")
+        doc_url = doc.get("url") or (f"https://app.ambiguous.ai/documents/{doc['id']}" if doc.get("id") else None)
+        if doc_url:
+            result["ambiguous_document_url"] = doc_url
         await ambiguous_client.post_chat_message(
             f"Draft ready for review: **{action.title}** — {action.preview}"
         )
