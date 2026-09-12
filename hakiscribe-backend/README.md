@@ -50,7 +50,7 @@ local-only behavior. Add keys incrementally to light up real integrations.
 | Groq | Optional faster Whisper if `ASR_PROVIDER=groq` | Stay on OpenRouter unless you want a dedicated Groq key |
 | Ambiguous AI | Docs/Calendar/CRM/Chat (`app/integrations/ambiguous_client.py`) | Every generated action still works, just stays local-only |
 | Trigger.dev | Background execution of `/detect` and `/generate` (`app/services/trigger_client.py` + `trigger/`) | Same logic runs directly in-process instead |
-| Exa | Company/counterparty enrichment (`app/integrations/exa_client.py`) | Detected actions just skip the `background_info` field |
+| Exa | Citation crawl (`/search` + `/contents`), web search, company lookup, news monitors (`/news/watch`, `/webhooks/exa`) | Research cards and news desk stay empty; pipeline still completes |
 
 See `trigger/README.md` for deploying the Trigger.dev tasks — they need
 a **publicly reachable** `BACKEND_INTERNAL_URL`, not `localhost`.

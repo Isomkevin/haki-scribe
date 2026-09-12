@@ -16,6 +16,18 @@ export interface ResearchSource {
   url: string | null;
   published: string | null;
   extract: string | null;
+  citation?: string | null;
+  kind?: string | null;
+}
+
+export interface NewsHit {
+  id?: string;
+  title: string | null;
+  url: string | null;
+  published: string | null;
+  extract: string | null;
+  topic?: string;
+  received_at?: string;
 }
 
 export interface ModelOption {
@@ -214,6 +226,17 @@ export const hakiApi = {
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
+  searchNews: (query: string, sessionId?: string) =>
+    request<{ query: string; hits: NewsHit[]; configured: boolean }>("/news/search", {
+      method: "POST",
+      body: JSON.stringify({ query, session_id: sessionId }),
+    }),
+  watchNews: (topic: string, sessionId?: string) =>
+    request<{ monitor: { id?: string; topic: string; status?: string }; hits: NewsHit[]; created: boolean }>(
+      "/news/watch",
+      { method: "POST", body: JSON.stringify({ topic, session_id: sessionId }) },
+    ),
+  listNews: () => request<{ hits: NewsHit[]; monitors: { topic: string; status?: string }[] }>("/news/hits"),
 };
 
 export function omiWebhookUrl(sessionId: string) {

@@ -28,7 +28,7 @@ def _load_env_files() -> None:
 _load_env_files()
 
 from app.integrations import llm_client
-from app.routers import actions, demo, internal, matters, sessions, omi_webhook, stream
+from app.routers import actions, demo, internal, matters, news, sessions, omi_webhook, stream
 
 app = FastAPI(title="HakiScribe", version="0.1.0")
 
@@ -48,6 +48,8 @@ app.include_router(matters.router, prefix="/matters", tags=["matters"])
 app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
 app.include_router(internal.router, prefix="/internal", tags=["internal"])
 app.include_router(demo.router, prefix="/demo", tags=["demo"])
+app.include_router(news.router, prefix="/news", tags=["news"])
+app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
 
 
 @app.get("/")
@@ -67,8 +69,13 @@ def health():
             "omi": True,
             "omi_secret": bool(os.environ.get("OMI_SHARED_SECRET")),
         },
-        "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous"],
+        "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous", "web:exa"],
         "webhook": "/webhooks/omi?session_id=<session-uuid>",
+        "exa": {
+            "search": "/news/search",
+            "watch": "/news/watch",
+            "monitor_webhook": "/webhooks/exa",
+        },
     }
 
 

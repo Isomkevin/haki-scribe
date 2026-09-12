@@ -215,17 +215,28 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
     fields = action.extracted_fields
     question = str(fields.get("question") or fields.get("query") or action.preview or action.title).strip()
 
-    sources = (
-        await exa_client.search_legal(question)
+    record = generation.format_transcript(transcript)
+    spoken_urls = exa_client.urls_from_text(record)
+    crawled = await exa_client.crawl_urls(spoken_urls) if spoken_urls else []
+    searched = (
+        await exa_client.search_citations(question)
         if scope == "legal"
         else await exa_client.search_web(question)
     )
+    seen: set[str] = set()
+    sources: list[dict] = []
+    for item in crawled + searched:
+        url = item.get("url")
+        if url and url in seen:
+            continue
+        if url:
+            seen.add(str(url))
+        sources.append(item)
 
     model = str(fields.get("model") or llm_client.DEFAULT_MODEL)
     answer = None
     if sources:
         context = _sources_block(sources)
-        record = generation.format_transcript(transcript)
         user_prompt = (
             f"Question: {question}\n\nRetrieved sources:\n{context}\n\n"
             f"Context from the conversation (background only, not a source):\n{record[:4000]}"

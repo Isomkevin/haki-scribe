@@ -14,6 +14,7 @@ import {
   Flag,
   Globe,
   Headphones,
+  Newspaper,
   LockKeyhole,
   MessageCircle,
   Mic,
@@ -42,6 +43,7 @@ import {
   type DetectedAction,
   type FlaggedMoment,
   type Matter,
+  type NewsHit,
   type ResearchSource,
   type Session,
   type SessionDetail,
@@ -291,6 +293,7 @@ export function HomePage() {
           <div className="grid gap-3">
             {sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}
           </div>
+          <NewsDesk />
           <LibraryMatters matters={matters.data ?? []} contacts={contacts.data ?? []} />
         </section>
       </main>
@@ -853,6 +856,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
               onResults();
             }}
           />
+          <NewsDesk topic={session.matters?.[0]?.matter_name || session.title} />
           {generate.error && <div className="mt-5"><ConnectionError message={generate.error.message} /></div>}
           <div className="sticky bottom-0 mt-8 border-t border-border bg-background/90 py-4 backdrop-blur-md">
             <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate(Array.from(selected))}>
@@ -1020,6 +1024,47 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
   );
 }
 
+function NewsDesk({ topic }: { topic?: string }) {
+  const news = useQuery({ queryKey: ["news"], queryFn: hakiApi.listNews, enabled: hasApiConfiguration, retry: false });
+  const watch = useMutation({
+    mutationFn: () => hakiApi.watchNews(topic?.trim() || "Kenya legal and commercial news"),
+    onSuccess: (data) => {
+      toast.success(data.created ? "News watch started" : "News watch refreshed");
+      void news.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const hits = news.data?.hits ?? [];
+  return (
+    <section className="chamber-card mt-10 rounded-xl border border-border p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Web search & news</p>
+          <h2 className="mt-1 font-serif text-xl font-semibold">Citation crawl and news monitoring</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Exa retrieves authorities and watches latest reporting. Hits stay labelled as background — never filed as fact.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => watch.mutate()} disabled={watch.isPending || !hasApiConfiguration}>
+          <Newspaper /> {watch.isPending ? "Searching…" : topic ? `Watch “${topic.slice(0, 40)}”` : "Watch Kenya legal news"}
+        </Button>
+      </div>
+      {!hits.length && <p className="mt-4 text-sm text-muted-foreground">No monitor hits yet. Start a watch to pull the latest stories.</p>}
+      <ol className="mt-4 space-y-3">
+        {hits.slice(0, 6).map((hit: NewsHit, index) => (
+          <li key={hit.id ?? hit.url ?? index} className="text-sm">
+            {hit.url ? (
+              <a href={hit.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{hit.title ?? hit.url}</a>
+            ) : (
+              <span className="font-medium">{hit.title ?? "Untitled"}</span>
+            )}
+            {hit.published && <span className="ml-2 text-xs text-muted-foreground">{hit.published.slice(0, 10)}</span>}
+            {hit.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{hit.extract}</p>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function SourceList({ sources }: { sources: ResearchSource[] }) {
   if (!sources.length) return null;
   return (
@@ -1032,6 +1077,8 @@ function SourceList({ sources }: { sources: ResearchSource[] }) {
           ) : (
             <span className="font-medium">{source.title ?? "Untitled source"}</span>
           )}
+          {source.citation && <span className="ml-2 text-xs text-muted-foreground">{source.citation}</span>}
+          {source.kind && <Badge variant="outline" className="ml-2 capitalize">{source.kind}</Badge>}
           {source.published && <span className="ml-2 text-xs text-muted-foreground">{source.published.slice(0, 10)}</span>}
           {source.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{source.extract}</p>}
         </li>

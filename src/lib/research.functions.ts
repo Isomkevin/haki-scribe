@@ -34,14 +34,6 @@ export interface ResearchReport {
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/responses";
 const MODEL = "openai/gpt-6-astra";
 
-const LEGAL_DOMAINS = [
-  "kenyalaw.org",
-  "new.kenyalaw.org",
-  "klrc.go.ke",
-  "judiciary.go.ke",
-  "parliament.go.ke",
-];
-
 const REPORT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -86,24 +78,26 @@ async function searchLegalSources(query: string): Promise<ResearchSourceLink[]> 
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key },
       body: JSON.stringify({
-        query: `${query} Kenya law`,
-        numResults: 6,
+        query: `${query} Kenyan law authorities`,
         type: "auto",
-        includeDomains: LEGAL_DOMAINS,
-        contents: { text: { maxCharacters: 1200 } },
+        contents: { highlights: true },
+        systemPrompt:
+          "Prefer Kenya Law, the Kenya Gazette, the Judiciary, and reported Kenyan cases. Drop pages that do not name a statute, section, case, or gazette notice. Never invent a citation.",
       }),
     });
     if (!response.ok) {
       console.error(`Exa search failed [${response.status}]: ${await response.text()}`);
       return [];
     }
-    const payload = (await response.json()) as { results?: { title?: string; url?: string; text?: string }[] };
+    const payload = (await response.json()) as {
+      results?: { title?: string; url?: string; highlights?: string[]; text?: string }[];
+    };
     return (payload.results ?? [])
-      .filter((item): item is { title?: string; url: string; text?: string } => Boolean(item.url))
+      .filter((item): item is { title?: string; url: string; highlights?: string[]; text?: string } => Boolean(item.url))
       .map((item) => ({
         title: item.title?.trim() || item.url,
         url: item.url,
-        extract: (item.text ?? "").slice(0, 900).trim(),
+        extract: (item.highlights?.[0] || item.text || "").slice(0, 900).trim(),
       }));
   } catch (error) {
     console.error("Exa search error", error);

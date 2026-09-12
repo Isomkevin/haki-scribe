@@ -185,6 +185,8 @@ class ResearchSource(BaseModel):
     url: Optional[str] = None
     published: Optional[str] = None
     extract: Optional[str] = None
+    citation: Optional[str] = None
+    kind: Optional[str] = None
 
 
 class ResearchResult(BaseModel):
