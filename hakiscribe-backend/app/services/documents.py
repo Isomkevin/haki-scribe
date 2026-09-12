@@ -450,6 +450,7 @@ def _affidavit(action, facts, today, replying: bool) -> str:
 
 
 def _plaint(action, facts, today) -> str:
+    court_name = facts["court"] or "THE CHIEF MAGISTRATE'S COURT"
     plaintiff = _party(facts, 1, "[PLAINTIFF]")
     defendant = _counterparty(facts, action)
     amount = facts["amounts"][0] if facts["amounts"] else "[SUM CLAIMED]"
@@ -473,7 +474,7 @@ def _plaint(action, facts, today) -> str:
     )
     return (
         "REPUBLIC OF KENYA\n"
-        f"IN {facts['court'] or 'THE CHIEF MAGISTRATE\\'S COURT'} AT NAIROBI\n"
+        f"IN {court_name} AT NAIROBI\n"
         "CIVIL SUIT NO. ……… OF 20………\n\n"
         f"{plaintiff.upper()} ………………………………………… PLAINTIFF\nVERSUS\n"
         f"{defendant.upper()} ………………………………… DEFENDANT\n\n"
