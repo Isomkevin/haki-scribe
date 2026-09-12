@@ -335,6 +335,19 @@ def organisations(facts: dict) -> list[str]:
     return found
 
 
+_VERSUS_RE = re.compile(
+    r"([A-Z][\w'’&.\- ]{2,60}?)\s+(?:versus|vs\.?|v\.)\s+([A-Z][\w'’&.\- ]{2,60}?)(?=[.,]|\s+Appearance|$)"
+)
+
+
+def case_parties(facts: dict) -> tuple[str, str] | None:
+    """Parties as actually named on the record: 'X versus Y'."""
+    match = _VERSUS_RE.search(facts["text"])
+    if not match:
+        return None
+    return match.group(1).strip(), match.group(2).strip()
+
+
 def _clean_speaker(name: str) -> str:
     return re.sub(r"\s*\([^)]*\)", "", name).strip()
 
@@ -369,10 +382,17 @@ def _counterparty(facts: dict, action: DetectedAction) -> str:
         if any(org.lower() in _clean_speaker(s).lower() for s in facts["speakers"]):
             continue
         return org
+    pair = case_parties(facts)
+    if pair:
+        for name in pair:
+            if not client or client.lower() not in name.lower():
+                return name
     parties = action.extracted_fields.get("parties")
     if isinstance(parties, list):
         for item in parties:
             name = _clean_speaker(str(item))
+            if name.lower().startswith(("adv.", "hon.", "justice", "lady justice", "counsel")):
+                continue
             if name and client and name.lower() not in client.lower():
                 return name
     return "[COUNTERPARTY]"
@@ -471,7 +491,12 @@ def _statutory_notice(action, facts, today) -> str:
 def _affidavit(action, facts, today, replying: bool) -> str:
     court = facts["court"] or "THE HIGH COURT OF KENYA"
     cause = facts["causes"][0] if facts["causes"] else "[CAUSE NO. ……… OF 20………]"
-    deponent = _clean_speaker(client_entity(facts, "[DEPONENT]"))
+    pair = case_parties(facts)
+    claimant_name = pair[0] if pair else client_entity(facts, "[CLAIMANT]")
+    respondent_name = pair[1] if pair else _counterparty(facts, action)
+    deponent_entity = respondent_name if replying else claimant_name
+    is_company = bool(re.search(r"\b(Limited|Ltd|Sacco|Holdings|Bank|Company|Properties|Contractors)\b", deponent_entity))
+    deponent = f"[DIRECTOR NAME], a director of {deponent_entity}," if is_company else _clean_speaker(deponent_entity)
     heading = "REPLYING AFFIDAVIT" if replying else "SUPPORTING AFFIDAVIT"
     statute = facts["statutes"][0] if facts["statutes"] else None
 
@@ -502,14 +527,14 @@ def _affidavit(action, facts, today, replying: bool) -> str:
         "REPUBLIC OF KENYA\n"
         f"IN {court} AT NAIROBI\n"
         f"{cause}\n\n"
-        f"{client_entity(facts, '[CLAIMANT]').upper()} …………………………………………… CLAIMANT\n"
+        f"{claimant_name.upper()} …………………………………………… CLAIMANT\n"
         "VERSUS\n"
-        f"{_counterparty(facts, action).upper()} ………………………………… RESPONDENT\n\n"
+        f"{respondent_name.upper()} ………………………………… RESPONDENT\n\n"
         f"{heading}\n\n"
-        f"I, {deponent}, of Post Office Box Number [P.O. BOX], [TOWN] in the Republic of Kenya, "
+        f"I, {deponent} of Post Office Box Number [P.O. BOX], [TOWN] in the Republic of Kenya, "
         "do hereby make oath and state as follows:\n\n"
         f"{_numbered(paragraphs)}\n\n"
-        f"SWORN by the said {deponent}          )\n"
+        f"SWORN by the said {_clean_speaker(deponent).rstrip(',')}   )\n"
         "at NAIROBI this ……… day of ………………  )   ………………………………\n"
         "20………                                 )        DEPONENT\n\n"
         "BEFORE ME:\n\n"
