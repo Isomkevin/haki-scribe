@@ -182,7 +182,7 @@ SESSIONS = [
             seg("Speaker 3", "My lady, the applicant is in arrears of two point four million shillings and the respondent acted within its contractual right of re-entry.", 31, 11),
             seg("Speaker 1", "Counsel, was any notice served in writing before the distress?", 42, 6),
             seg("Speaker 3", "Not in writing, my lady.", 48, 3),
-            seg("Speaker 1", "The court grants an interim order restraining the respondent from selling or disposing of the attached goods pending the hearter of the application inter partes.", 51, 14),
+            seg("Speaker 1", "The court grants an interim order restraining the respondent from selling or disposing of the attached goods pending the hearing of the application inter partes.", 51, 14),
             seg("Speaker 1", "The respondent shall file a replying affidavit within fourteen days. The applicant may file a supplementary affidavit within seven days thereafter.", 65, 13),
             seg("Speaker 1", "Mention on the twelfth of October at eleven o'clock for directions on the main suit.", 78, 9),
             seg("Speaker 2", "Much obliged, my lady.", 87, 3),
