@@ -6,7 +6,28 @@ export type ActionType =
   | "workspace_matter"
   | "crm_entry"
   | "private_note"
-  | "time_entry";
+  | "time_entry"
+  | "legal_research"
+  | "web_search"
+  | "llm_task";
+
+export interface ResearchSource {
+  title: string | null;
+  url: string | null;
+  published: string | null;
+  extract: string | null;
+}
+
+export interface ModelOption {
+  id: string;
+  label: string;
+}
+
+export interface ModelCatalogue {
+  configured: boolean;
+  default: string;
+  models: ModelOption[];
+}
 
 export interface Matter {
   id: string;
@@ -165,6 +186,9 @@ export const hakiApi = {
       method: "POST",
       body: JSON.stringify({ action_ids: actionIds, field_overrides: fieldOverrides ?? {} }),
     }),
+  ask: (id: string, body: { instruction: string; model?: string }) =>
+    request<ActionResult>(`/sessions/${id}/ask`, { method: "POST", body: JSON.stringify(body) }),
+  listModels: () => request<ModelCatalogue>("/models"),
   listMatters: () => request<Matter[]>("/matters"),
   createMatter: (body: { client_name: string; matter_name: string; session_id?: string }) =>
     request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),

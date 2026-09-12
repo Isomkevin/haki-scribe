@@ -33,7 +33,8 @@ professional would want generated from this conversation.
 
 For each candidate artifact, output an object with:
 - "type": one of "draft_document", "calendar_event", "workspace_matter", \
-"crm_entry", "private_note", "time_entry"
+"crm_entry", "private_note", "time_entry", "legal_research", "web_search", \
+"llm_task"
 - "title": short human-readable label, e.g. "Draft: Demand Letter"
 - "preview": one sentence grounding it in what was actually said
 - "confidence": 0.0-1.0
@@ -53,6 +54,14 @@ moment — keep it under 15 words)
   - private_note: {"note_text": "..."}
   - time_entry: {"duration_hours": 0.6, "activity_description": "...", \
 "matter_name": "..."}
+  - legal_research: {"question": "a precise legal question actually raised \
+in the conversation, e.g. 'What notice period does section 90 of the Land \
+Act require before realising a charge?'"} — only when a point of law, \
+statute, limitation period or procedure was genuinely in issue
+  - web_search: {"query": "a company, person or entity named on the record \
+to run a background check on"} — background only, never a source of law
+  - llm_task: {"instruction": "a useful free-form instruction over this \
+transcript, e.g. 'List every commitment the client made and its deadline'"}
 - "pre_checked": true if this is a high-confidence, clearly-wanted \
 artifact; false if it's speculative and the user should opt in
 
@@ -237,6 +246,57 @@ def _detect_heuristic(
                 "pre_checked": True,
             }
         )
+    # Research card — only when a point of law was genuinely in issue.
+    law_words = ("section", " act", "limitation", "rule ", "order ", "clause", "statute", "regulation", "precedent", "authority")
+    law_line = next((seg.text.strip() for seg in usable_segments if any(word in seg.text.lower() for word in law_words)), "")
+    if law_line:
+        raw.append(
+            {
+                "type": "legal_research",
+                "title": "Research the point of law raised",
+                "preview": law_line[:180],
+                "confidence": 0.72,
+                "confidence_reason": "Explicitly stated",
+                "source_quote": law_line[:80],
+                "extracted_fields": {
+                    "question": f"Under Kenyan law, what governs the point raised on this record: {law_line[:240]}",
+                },
+                "pre_checked": False,
+            }
+        )
+
+    # Background check on an organisation actually named on the record.
+    facts = documents.extract_facts(usable_segments)
+    orgs = [org for org in documents.organisations(facts) if org]
+    if orgs:
+        target = orgs[0]
+        raw.append(
+            {
+                "type": "web_search",
+                "title": f"Background check: {target}",
+                "preview": f"Open-web background on {target}. Reference only — never used as evidence or drafted fact.",
+                "confidence": 0.6,
+                "confidence_reason": "Inferred from context",
+                "source_quote": target,
+                "extracted_fields": {"query": target},
+                "pre_checked": False,
+            }
+        )
+
+    raw.append(
+        {
+            "type": "llm_task",
+            "title": "Commitments and deadlines from this conversation",
+            "preview": "Run an AI pass over the verified record and list every commitment made and its deadline.",
+            "confidence": 0.65,
+            "confidence_reason": "Inferred from context",
+            "source_quote": quote,
+            "extracted_fields": {
+                "instruction": "List every commitment made on this record, who made it, and the deadline stated. Mark anything with no stated deadline as [NO DEADLINE ON THE RECORD].",
+            },
+            "pre_checked": False,
+        }
+    )
     return _actions_from_raw(session_id, usable_segments, raw)
 
 

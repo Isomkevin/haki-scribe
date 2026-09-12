@@ -1,18 +1,21 @@
 import { task } from "@trigger.dev/sdk";
 
-// Thin relay — see detectActions.ts for the pattern. Real execution
-// logic (drafting, Ambiguous AI calls, matter linking) lives in the
-// Python backend's action_executor.py, called via /internal/generate.
+// Thin relay for the slower transcript work — legal research (Exa
+// retrieval + model synthesis), open-web background checks, and
+// free-form "ask any model" instructions. The logic lives in the Python
+// backend's action_executor.py, reached via /internal/generate; this
+// task exists so the retrieval + model round-trip runs durably with
+// retries instead of holding an HTTP request open.
 
-type GenerateActionsPayload = {
+type ResearchActionsPayload = {
   actions: Record<string, unknown>[];
+  transcript?: Record<string, unknown>[];
 };
 
-export const generateActions = task({
-  id: "generate-actions",
-  // Research and model passes can take minutes — don't cut them short.
+export const researchActions = task({
+  id: "research-actions",
   maxDuration: 600,
-  run: async (payload: GenerateActionsPayload) => {
+  run: async (payload: ResearchActionsPayload) => {
     const backendUrl = process.env.BACKEND_INTERNAL_URL;
     if (!backendUrl) {
       throw new Error("BACKEND_INTERNAL_URL is not set");
