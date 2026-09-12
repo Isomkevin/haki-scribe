@@ -167,11 +167,13 @@ def _sources_block(sources: list[dict]) -> str:
 
 def _fallback_answer(sources: list[dict], scope: str) -> str:
     if not sources:
-        return (
-            "No sources could be retrieved for this question. Configure web retrieval "
-            "(EXA_API_KEY) to answer it, or research it manually — HakiScribe will not "
-            "state law it cannot cite."
-        )
+        if scope == "legal":
+            return (
+                "No authorities could be retrieved, so this question is unanswered. "
+                "HakiScribe will not state law it cannot cite — connect web retrieval "
+                "or research it manually."
+            )
+        return "No background could be retrieved for this name. Connect web retrieval to enable background checks."
     label = "Retrieved authorities" if scope == "legal" else "Retrieved background"
     lines = [f"{label} (no drafting model configured, so these are shown unsummarised):", ""]
     for index, source in enumerate(sources, start=1):

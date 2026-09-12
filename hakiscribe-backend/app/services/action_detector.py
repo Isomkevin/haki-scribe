@@ -258,7 +258,9 @@ def _detect_heuristic(
                 "confidence": 0.72,
                 "confidence_reason": "Explicitly stated",
                 "source_quote": law_line[:80],
-                "extracted_fields": {"question": law_line[:300]},
+                "extracted_fields": {
+                    "question": f"Under Kenyan law, what governs the point raised on this record: {law_line[:240]}",
+                },
                 "pre_checked": False,
             }
         )
