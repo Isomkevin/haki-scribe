@@ -69,12 +69,13 @@ def health():
             "omi": True,
             "omi_secret": bool(os.environ.get("OMI_SHARED_SECRET")),
         },
-        "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous", "web:exa"],
+        "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous", "desk:legal-intel"],
         "webhook": "/webhooks/omi?session_id=<session-uuid>",
         "exa": {
             "search": "/news/search",
             "watch": "/news/watch",
             "monitor_webhook": "/webhooks/exa",
+            "mode": "legal-intelligence",
         },
     }
 

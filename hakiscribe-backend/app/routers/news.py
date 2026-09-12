@@ -1,94 +1,60 @@
-"""Exa news monitoring: one-shot search plus scheduled monitors."""
+"""Exa legal search and intelligence, grounded in matters and transcripts."""
 
 from __future__ import annotations
 
-import os
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel
 
-from app.integrations import exa_client
-from app.services import news_store
+from app.services import legal_intel, news_store
 
 router = APIRouter()
 webhook_router = APIRouter()
 
 
 class NewsSearchRequest(BaseModel):
-    query: str
+    query: Optional[str] = None
     session_id: Optional[str] = None
+    matter_id: Optional[str] = None
 
 
 class NewsWatchRequest(BaseModel):
-    topic: str
+    topic: Optional[str] = None
     session_id: Optional[str] = None
+    matter_id: Optional[str] = None
     period: str = "1d"
-
-
-def _webhook_url() -> Optional[str]:
-    configured = os.environ.get("EXA_MONITOR_WEBHOOK_URL", "").strip()
-    if configured:
-        return configured
-    base = (os.environ.get("BACKEND_INTERNAL_URL") or "").rstrip("/")
-    return f"{base}/webhooks/exa" if base.startswith("http") else None
 
 
 @router.post("/search")
 async def search_news(payload: NewsSearchRequest):
-    if not payload.query.strip():
-        raise HTTPException(status_code=400, detail="A news query is required.")
-    hits = await exa_client.search_news(payload.query.strip())
-    stored = news_store.add_hits(hits, monitor_id=None, topic=payload.query.strip())
-    return {"query": payload.query.strip(), "hits": stored or hits, "configured": exa_client.is_configured()}
+    return await legal_intel.retrieve(
+        session_id=payload.session_id,
+        matter_id=payload.matter_id,
+        extra_query=payload.query,
+    )
 
 
 @router.get("/hits")
-def list_hits():
-    return {"hits": news_store.list_hits(), "monitors": news_store.list_monitors()}
+def list_hits(session_id: Optional[str] = Query(default=None), matter_id: Optional[str] = Query(default=None)):
+    return {
+        "hits": news_store.list_hits(session_id=session_id, matter_id=matter_id),
+        "monitors": news_store.list_monitors(),
+    }
 
 
 @router.post("/watch")
 async def watch_news(payload: NewsWatchRequest):
-    topic = payload.topic.strip()
-    if not topic:
-        raise HTTPException(status_code=400, detail="A topic is required.")
-
-    existing = news_store.find_monitor_by_topic(topic)
-    hits = await exa_client.search_news(topic)
-    stored_hits = news_store.add_hits(hits, monitor_id=(existing or {}).get("id"), topic=topic)
-
-    if existing:
-        if existing.get("id"):
-            await exa_client.trigger_monitor(existing["id"])
-        return {"monitor": existing, "hits": stored_hits or hits, "created": False}
-
-    webhook = _webhook_url()
-    remote = None
-    if webhook and exa_client.is_configured():
-        remote = await exa_client.create_monitor(
-            name=f"HakiScribe · {topic[:60]}",
-            query=topic,
-            webhook_url=webhook,
-            period=payload.period,
-        )
-
-    record = {
-        "id": (remote or {}).get("id"),
-        "topic": topic,
-        "session_id": payload.session_id,
-        "period": payload.period,
-        "webhook_url": webhook,
-        "webhook_secret": (remote or {}).get("webhookSecret") or (remote or {}).get("webhook_secret"),
-        "status": "active" if remote else "local-only",
-    }
-    news_store.add_monitor(record)
-    return {"monitor": {**record, "webhook_secret": None}, "hits": stored_hits or hits, "created": True}
+    return await legal_intel.watch(
+        session_id=payload.session_id,
+        matter_id=payload.matter_id,
+        period=payload.period,
+    )
 
 
 @webhook_router.post("/exa")
 async def receive_exa_monitor(payload: dict, x_exa_signature: str = Header(default="")):
-    """Exa Monitors delivery. Hits are stored even if signature headers vary."""
+    """Exa Monitors delivery. Hits are stored only when they still connect to the matter."""
     del x_exa_signature
     results = payload.get("results") or payload.get("data") or []
     if isinstance(results, dict):
@@ -97,21 +63,34 @@ async def receive_exa_monitor(payload: dict, x_exa_signature: str = Header(defau
         payload.get("name")
         or (payload.get("search") or {}).get("query")
         or payload.get("query")
-        or "news"
+        or "legal-intelligence"
     )
     monitor_id = payload.get("id") or payload.get("monitorId") or payload.get("monitor_id")
+    monitor = news_store.get_monitor(str(monitor_id)) if monitor_id else news_store.find_monitor_by_topic(str(topic))
+    scope = legal_intel.resolve_scope(
+        session_id=(monitor or {}).get("session_id"),
+        matter_id=(monitor or {}).get("matter_id"),
+    )
     normalised = []
     for item in results:
         if not isinstance(item, dict):
             continue
         highlights = item.get("highlights") or []
-        normalised.append(
-            {
-                "title": item.get("title"),
-                "url": item.get("url"),
-                "published": item.get("publishedDate") or item.get("published"),
-                "extract": (highlights[0] if highlights else item.get("text") or item.get("extract")),
-            }
-        )
-    stored = news_store.add_hits(normalised, monitor_id=str(monitor_id) if monitor_id else None, topic=str(topic))
+        raw = {
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "published": item.get("publishedDate") or item.get("published"),
+            "extract": (highlights[0] if highlights else item.get("text") or item.get("extract")),
+        }
+        scored = legal_intel.score_hit(raw, scope) if scope else None
+        if scored:
+            normalised.append(scored)
+    stored = news_store.add_hits(
+        normalised,
+        monitor_id=str(monitor_id) if monitor_id else None,
+        topic=str(topic),
+        session_id=(monitor or {}).get("session_id"),
+        matter_id=(monitor or {}).get("matter_id"),
+        matter_name=(scope or {}).get("matter_name"),
+    )
     return {"received": len(stored)}

@@ -28,6 +28,35 @@ export interface NewsHit {
   extract: string | null;
   topic?: string;
   received_at?: string;
+  citation?: string | null;
+  kind?: string | null;
+  connection?: string[];
+  relevance?: number;
+  session_id?: string | null;
+  matter_id?: string | null;
+  matter_name?: string | null;
+}
+
+export interface LegalIntelScope {
+  session_id?: string | null;
+  matter_id?: string | null;
+  matter_name?: string | null;
+  client_name?: string | null;
+  session_title?: string | null;
+  has_transcript?: boolean;
+  terms?: string[];
+}
+
+export interface LegalIntelResult {
+  grounded: boolean;
+  query?: string | null;
+  scope?: LegalIntelScope | null;
+  hits: NewsHit[];
+  dropped?: number;
+  configured: boolean;
+  reason?: string | null;
+  monitor?: { id?: string; topic?: string; status?: string } | null;
+  created?: boolean;
 }
 
 export interface ModelOption {
@@ -226,17 +255,19 @@ export const hakiApi = {
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
-  searchNews: (query: string, sessionId?: string) =>
-    request<{ query: string; hits: NewsHit[]; configured: boolean }>("/news/search", {
-      method: "POST",
-      body: JSON.stringify({ query, session_id: sessionId }),
-    }),
-  watchNews: (topic: string, sessionId?: string) =>
-    request<{ monitor: { id?: string; topic: string; status?: string }; hits: NewsHit[]; created: boolean }>(
-      "/news/watch",
-      { method: "POST", body: JSON.stringify({ topic, session_id: sessionId }) },
-    ),
-  listNews: () => request<{ hits: NewsHit[]; monitors: { topic: string; status?: string }[] }>("/news/hits"),
+  searchLegalIntel: (body: { session_id?: string | undefined; matter_id?: string | undefined; query?: string }) =>
+    request<LegalIntelResult>("/news/search", { method: "POST", body: JSON.stringify(body) }),
+  watchLegalIntel: (body: { session_id?: string | undefined; matter_id?: string | undefined }) =>
+    request<LegalIntelResult>("/news/watch", { method: "POST", body: JSON.stringify(body) }),
+  listLegalIntel: (params?: { session_id?: string | undefined; matter_id?: string | undefined }) => {
+    const query = new URLSearchParams();
+    if (params?.session_id) query.set("session_id", params.session_id);
+    if (params?.matter_id) query.set("matter_id", params.matter_id);
+    const suffix = query.toString();
+    return request<{ hits: NewsHit[]; monitors: { topic: string; status?: string }[] }>(
+      `/news/hits${suffix ? `?${suffix}` : ""}`,
+    );
+  },
 };
 
 export function omiWebhookUrl(sessionId: string) {

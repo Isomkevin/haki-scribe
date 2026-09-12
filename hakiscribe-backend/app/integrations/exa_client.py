@@ -1,4 +1,4 @@
-"""Exa retrieval — citation crawl, web search, and news monitoring.
+"""Exa retrieval — legal search, citation crawl, and matter-grounded intelligence.
 
 Request shapes follow the official build-with-exa skill:
 https://exa.ai/docs/reference/search
@@ -6,7 +6,7 @@ https://exa.ai/docs/reference/search
 - /search is the default. Recommended body is query + type auto +
   contents.highlights only.
 - /contents crawls URLs we already have (citations spoken or found).
-- /monitors schedules recurring news search and posts to our webhook.
+- /monitors schedules recurring legal-development search and posts to our webhook.
 - Company lookup keeps category=company because that surface retrieves
   raw company documents, not a people/company list-build.
 
@@ -59,6 +59,13 @@ NEWS_SYSTEM_PROMPT = (
     "Prefer recent reporting from identifiable publications. "
     "Drop undated press-release copies that add no facts. "
     "Never invent a publication date."
+)
+
+DEVELOPMENT_SYSTEM_PROMPT = (
+    "Prefer Kenya Law, the Kenya Gazette, Judiciary notices, and reporting that "
+    "names a statute, section, case, or gazette notice. "
+    "Drop general commercial news that is not a legal development. "
+    "Never invent a citation or publication date."
 )
 
 
@@ -159,14 +166,19 @@ async def search_citations(query: str) -> list[dict[str, Any]]:
 
 
 async def search_news(query: str) -> list[dict[str, Any]]:
-    """Latest news. Recency is in the query; no publication-date hard filter."""
+    """Kept for older call sites. Prefer search_legal_developments."""
+    return await search_legal_developments(query)
+
+
+async def search_legal_developments(query: str) -> list[dict[str, Any]]:
+    """Legal developments related to a grounded matter query — not general news."""
     data = await _post(
         SEARCH_URL,
         {
-            "query": f"latest news {query}",
+            "query": f"latest Kenyan legal developments {query}",
             "type": "auto",
             "contents": {"highlights": True},
-            "systemPrompt": NEWS_SYSTEM_PROMPT,
+            "systemPrompt": DEVELOPMENT_SYSTEM_PROMPT,
         },
     )
     return _normalise((data or {}).get("results", []))
@@ -224,14 +236,21 @@ def urls_from_text(text: str) -> list[str]:
     return [match.rstrip(".,;\"'") for match in URL_RE.findall(text or "")]
 
 
-async def create_monitor(name: str, query: str, webhook_url: str, period: str = "1d") -> Optional[dict[str, Any]]:
+async def create_monitor(
+    name: str,
+    query: str,
+    webhook_url: str,
+    period: str = "1d",
+    legal: bool = True,
+) -> Optional[dict[str, Any]]:
     """Standalone Monitors API. Store webhookSecret immediately — it cannot be fetched later."""
+    search_query = f"latest Kenyan legal developments {query}" if legal else f"latest news {query}"
     return await _post(
         MONITORS_URL,
         {
             "name": name,
             "search": {
-                "query": f"latest news {query}",
+                "query": search_query,
                 "contents": {"highlights": True},
             },
             "trigger": {"type": "interval", "period": period},

@@ -14,7 +14,7 @@ import {
   Flag,
   Globe,
   Headphones,
-  Newspaper,
+  BookOpen,
   LockKeyhole,
   MessageCircle,
   Mic,
@@ -93,7 +93,7 @@ const practiceSteps = [
 const environments = [
   { place: "In the room", title: "Mic or Omi wearable", copy: "The agent listens where the conversation happens. Flag a date or admission without breaking eye contact." },
   { place: "In the pocket", title: "WhatsApp handoff", copy: "Kenyan practice already lives in WhatsApp. Share an editable draft for review — never auto-sent as legal advice." },
-  { place: "At the desk", title: "Docs, calendar, CRM", copy: "Chosen work lands in Ambiguous and the HakiChain library: a letter, a hearing, a matter, a billable hour." },
+  { place: "At the desk", title: "Docs, calendar, legal intelligence", copy: "Chosen work lands in Ambiguous. Exa retrieves authorities only when they connect to the matter or the verified transcript." },
 ];
 
 function ConnectionError({ message, retry }: { message: string; retry?: () => void }) {
@@ -293,7 +293,7 @@ export function HomePage() {
           <div className="grid gap-3">
             {sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}
           </div>
-          <NewsDesk />
+          <LegalIntelligence matters={matters.data ?? []} />
           <LibraryMatters matters={matters.data ?? []} contacts={contacts.data ?? []} />
         </section>
       </main>
@@ -856,7 +856,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
               onResults();
             }}
           />
-          <NewsDesk topic={session.matters?.[0]?.matter_name || session.title} />
+          <LegalIntelligence sessionId={session.id} matterId={session.matters?.[0]?.id} />
           {generate.error && <div className="mt-5"><ConnectionError message={generate.error.message} /></div>}
           <div className="sticky bottom-0 mt-8 border-t border-border bg-background/90 py-4 backdrop-blur-md">
             <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate(Array.from(selected))}>
@@ -1024,39 +1024,87 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
   );
 }
 
-function NewsDesk({ topic }: { topic?: string }) {
-  const news = useQuery({ queryKey: ["news"], queryFn: hakiApi.listNews, enabled: hasApiConfiguration, retry: false });
-  const watch = useMutation({
-    mutationFn: () => hakiApi.watchNews(topic?.trim() || "Kenya legal and commercial news"),
+function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: string | undefined; matterId?: string | undefined; matters?: Matter[] }) {
+  const activeMatterId = matterId || matters?.[0]?.id;
+  const canGround = Boolean(sessionId || activeMatterId || (matters && matters.length));
+  const intel = useQuery({
+    queryKey: ["legal-intel", sessionId, activeMatterId],
+    queryFn: () => hakiApi.listLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+  const retrieve = useMutation({
+    mutationFn: () => hakiApi.searchLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
     onSuccess: (data) => {
-      toast.success(data.created ? "News watch started" : "News watch refreshed");
-      void news.refetch();
+      if (data.grounded) {
+        toast.success(data.hits.length ? `Retrieved ${data.hits.length} authorities connected to this record` : "No connected authorities matched this matter or transcript");
+      } else {
+        toast.message(data.reason || "Legal search needs a matter or transcript");
+      }
+      void intel.refetch();
     },
     onError: (error) => toast.error(error.message),
   });
-  const hits = news.data?.hits ?? [];
+  const watch = useMutation({
+    mutationFn: () => hakiApi.watchLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
+    onSuccess: (data) => {
+      if (data.grounded) toast.success(data.created ? "Watching legal developments for this matter" : "Legal watch refreshed");
+      else toast.message(data.reason || "Legal intelligence needs a matter or transcript");
+      void intel.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const retrievedHits = retrieve.data?.hits ?? watch.data?.hits;
+  const hits = retrievedHits ?? intel.data?.hits ?? [];
+  const scope = retrieve.data?.scope ?? watch.data?.scope;
+  const reason = retrieve.data?.reason ?? watch.data?.reason;
+  const label = scope?.matter_name || matters?.[0]?.matter_name || (sessionId ? "this record" : "open matters");
   return (
     <section className="chamber-card mt-10 rounded-xl border border-border p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Web search & news</p>
-          <h2 className="mt-1 font-serif text-xl font-semibold">Citation crawl and news monitoring</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Exa retrieves authorities and watches latest reporting. Hits stay labelled as background — never filed as fact.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Legal search & intelligence</p>
+          <h2 className="mt-1 font-serif text-xl font-semibold">Authorities connected to the matter</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Exa only retrieves statutes, cases and legal developments that match a matter or the verified transcript. Unrelated web news is dropped.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => watch.mutate()} disabled={watch.isPending || !hasApiConfiguration}>
-          <Newspaper /> {watch.isPending ? "Searching…" : topic ? `Watch “${topic.slice(0, 40)}”` : "Watch Kenya legal news"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => retrieve.mutate()} disabled={retrieve.isPending || !hasApiConfiguration || !canGround}>
+            <BookOpen /> {retrieve.isPending ? "Retrieving…" : `Retrieve for ${label.slice(0, 36)}`}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => watch.mutate()} disabled={watch.isPending || !hasApiConfiguration || !canGround}>
+            {watch.isPending ? "Watching…" : "Watch this matter"}
+          </Button>
+        </div>
       </div>
-      {!hits.length && <p className="mt-4 text-sm text-muted-foreground">No monitor hits yet. Start a watch to pull the latest stories.</p>}
+      {scope?.terms?.length ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Grounded in {scope.has_transcript ? "transcript + " : ""}
+          {scope.matter_name ? `matter “${scope.matter_name}”` : "this session"}
+          {": "}
+          {scope.terms.slice(0, 8).join(" · ")}
+        </p>
+      ) : null}
+      {!canGround && (
+        <p className="mt-4 text-sm text-muted-foreground">Open a session or generate a matter first. Legal intelligence will not search the open web on its own.</p>
+      )}
+      {canGround && !hits.length && (
+        <p className="mt-4 text-sm text-muted-foreground">{reason || "No connected authorities yet. Retrieve to search from this matter or transcript."}</p>
+      )}
       <ol className="mt-4 space-y-3">
-        {hits.slice(0, 6).map((hit: NewsHit, index) => (
+        {hits.slice(0, 8).map((hit: NewsHit, index) => (
           <li key={hit.id ?? hit.url ?? index} className="text-sm">
             {hit.url ? (
               <a href={hit.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{hit.title ?? hit.url}</a>
             ) : (
               <span className="font-medium">{hit.title ?? "Untitled"}</span>
             )}
-            {hit.published && <span className="ml-2 text-xs text-muted-foreground">{hit.published.slice(0, 10)}</span>}
+            {hit.kind && <Badge variant="outline" className="ml-2 capitalize">{hit.kind}</Badge>}
+            {hit.published && <span className="ml-2 text-xs text-muted-foreground">{String(hit.published).slice(0, 10)}</span>}
+            {hit.connection?.length ? (
+              <p className="mt-1 text-xs leading-5 text-primary/80">{hit.connection.join(" · ")}</p>
+            ) : null}
             {hit.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{hit.extract}</p>}
           </li>
         ))}

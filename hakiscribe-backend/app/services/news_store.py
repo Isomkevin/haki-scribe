@@ -1,5 +1,5 @@
-"""Persisted Exa news monitors and hits. Separate from the session store
-so a monitor webhook can write without reloading the whole library."""
+"""Persisted legal-intelligence monitors and hits. Separate from the
+session store so a monitor webhook can write without reloading the library."""
 
 from __future__ import annotations
 
@@ -59,7 +59,15 @@ def find_monitor_by_topic(topic: str) -> Optional[dict[str, Any]]:
     return next((item for item in _monitors if (item.get("topic") or "").strip().lower() == needle), None)
 
 
-def add_hits(hits: list[dict[str, Any]], *, monitor_id: str | None, topic: str) -> list[dict[str, Any]]:
+def add_hits(
+    hits: list[dict[str, Any]],
+    *,
+    monitor_id: str | None,
+    topic: str,
+    session_id: str | None = None,
+    matter_id: str | None = None,
+    matter_name: str | None = None,
+) -> list[dict[str, Any]]:
     stored = []
     existing = {(item.get("url"), item.get("title")) for item in _hits}
     for hit in hits:
@@ -74,6 +82,13 @@ def add_hits(hits: list[dict[str, Any]], *, monitor_id: str | None, topic: str) 
             "url": hit.get("url"),
             "published": hit.get("published"),
             "extract": hit.get("extract"),
+            "citation": hit.get("citation"),
+            "kind": hit.get("kind"),
+            "connection": hit.get("connection") or [],
+            "relevance": hit.get("relevance"),
+            "session_id": hit.get("session_id") or session_id,
+            "matter_id": hit.get("matter_id") or matter_id,
+            "matter_name": hit.get("matter_name") or matter_name,
             "received_at": datetime.utcnow().isoformat() + "Z",
         }
         _hits.append(record)
@@ -84,8 +99,34 @@ def add_hits(hits: list[dict[str, Any]], *, monitor_id: str | None, topic: str) 
     return stored
 
 
-def list_hits(limit: int = 40) -> list[dict[str, Any]]:
-    return list(reversed(_hits[-limit:]))
+def _connected(item: dict[str, Any]) -> bool:
+    if not (item.get("session_id") or item.get("matter_id") or item.get("connection")):
+        return False
+    reasons = " ".join(item.get("connection") or []).lower()
+    legal_marks = (
+        "matter:",
+        "party:",
+        "authority:",
+        "arbitration",
+        "contract",
+        "defective",
+        "statute",
+        "clause",
+        "section",
+        "works",
+        "contractor",
+        "demand",
+    )
+    return any(mark in reasons for mark in legal_marks)
+
+
+def list_hits(limit: int = 40, session_id: str | None = None, matter_id: str | None = None) -> list[dict[str, Any]]:
+    items = [item for item in _hits if _connected(item)]
+    if session_id:
+        items = [item for item in items if item.get("session_id") == session_id]
+    if matter_id:
+        items = [item for item in items if item.get("matter_id") == matter_id]
+    return list(reversed(items[-limit:]))
 
 
 _load()
