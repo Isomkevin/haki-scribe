@@ -47,6 +47,23 @@ async def search_company(name: str) -> Optional[dict[str, Any]]:
         }
 
 
+async def _search(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Never raise into an action card — an unreachable or rejected search
+    degrades to 'no sources retrieved', which the executor reports honestly."""
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            resp = await client.post(
+                SEARCH_URL,
+                headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            return _normalise(resp.json().get("results", []))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Exa search failed (%s); continuing without sources", exc)
+        return []
+
+
 def _normalise(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in results:
@@ -70,27 +87,27 @@ async def search_legal(query: str, num_results: int = 6) -> list[dict[str, Any]]
     Exa isn't configured, which the executor reports honestly."""
     if not _api_key() or not query.strip():
         return []
-    async with httpx.AsyncClient(timeout=45) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": f"{query} (Kenya law)",
-                "type": "auto",
-                "numResults": num_results,
-                "includeDomains": [
-                    "kenyalaw.org",
-                    "new.kenyalaw.org",
-                    "judiciary.go.ke",
-                    "kenyalawreports.or.ke",
-                    "parliament.go.ke",
-                    "gazettes.africa",
-                ],
-                "contents": {"highlights": True, "text": {"maxCharacters": 1200}},
-            },
-        )
-        resp.raise_for_status()
-        return _normalise(resp.json().get("results", []))
+    payload = {
+        "query": f"{query} (Kenya law)",
+        "type": "auto",
+        "numResults": num_results,
+        "includeDomains": [
+            "kenyalaw.org",
+            "new.kenyalaw.org",
+            "judiciary.go.ke",
+            "kenyalawreports.or.ke",
+            "parliament.go.ke",
+            "gazettes.africa",
+        ],
+        "contents": {"highlights": True, "text": {"maxCharacters": 1200}},
+    }
+    results = await _search(payload)
+    if results:
+        return results
+    # Kenyan primary sources can come back empty for a narrow question;
+    # retry once unrestricted rather than reporting "no authorities".
+    payload.pop("includeDomains", None)
+    return await _search(payload)
 
 
 async def search_web(query: str, num_results: int = 5) -> list[dict[str, Any]]:
