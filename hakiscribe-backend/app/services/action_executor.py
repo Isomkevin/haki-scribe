@@ -14,9 +14,32 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.integrations import ambiguous_client
-from app.models.schemas import ActionResult, ActionType, DetectedAction, TranscriptSegment
+from app.integrations import ambiguous_client, exa_client, llm_client
+from app.models.schemas import (
+    ActionResult,
+    ActionType,
+    DetectedAction,
+    LlmTaskResult,
+    ResearchResult,
+    ResearchSource,
+    TranscriptSegment,
+)
 from app.services import generation, storage, workspace
+
+RESEARCH_SYSTEM_PROMPT = (
+    "You are a Kenyan advocate's research assistant. Answer the question using ONLY "
+    "the retrieved sources supplied below. Cite the source number inline like [1]. "
+    "State the governing statute or authority where the sources give one. If the "
+    "sources do not answer the question, say so plainly instead of guessing. Never "
+    "invent a case, section, citation or date. Keep it under 300 words."
+)
+
+ASK_SYSTEM_PROMPT = (
+    "You are assisting a Kenyan legal professional. Answer the instruction using ONLY "
+    "the verified, non-redacted transcript supplied. Never invent parties, figures, "
+    "dates or authorities; mark anything not on the record as [NOT ON THE RECORD]. "
+    "Be concise and practical."
+)
 
 
 async def _generate_draft_document(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
