@@ -10,6 +10,7 @@ import {
   ContactRound,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   Flag,
   Globe,
@@ -22,6 +23,8 @@ import {
   Radio,
   RefreshCw,
   Scale,
+  Search,
+  ShieldCheck,
   Sparkles,
   Square,
   UnlockKeyhole,
@@ -1025,6 +1028,8 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
 }
 
 function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: string | undefined; matterId?: string | undefined; matters?: Matter[] }) {
+  const [filter, setFilter] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const activeMatterId = matterId || matters?.[0]?.id;
   const canGround = Boolean(sessionId || activeMatterId || (matters && matters.length));
   const intel = useQuery({
@@ -1059,56 +1064,164 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
   const scope = retrieve.data?.scope ?? watch.data?.scope;
   const reason = retrieve.data?.reason ?? watch.data?.reason;
   const label = scope?.matter_name || matters?.[0]?.matter_name || (sessionId ? "this record" : "open matters");
+  const visibleHits = hits
+    .filter((hit) => `${hit.title ?? ""} ${hit.extract ?? ""} ${hit.connection?.join(" ") ?? ""} ${hit.matter_name ?? ""}`.toLowerCase().includes(filter.trim().toLowerCase()))
+    .slice(0, 8);
+  const monitorCount = intel.data?.monitors.length ?? 0;
+
+  const sourceName = (hit: NewsHit) => {
+    if (!hit.url) return "Source unavailable";
+    try {
+      return new URL(hit.url).hostname.replace(/^www\./, "");
+    } catch {
+      return "External source";
+    }
+  };
+
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
-    <section className="chamber-card mt-10 rounded-xl border border-border p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Legal search & intelligence</p>
-          <h2 className="mt-1 font-serif text-xl font-semibold">Authorities connected to the matter</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Exa only retrieves statutes, cases and legal developments that match a matter or the verified transcript. Unrelated web news is dropped.
-          </p>
+    <section className="mt-10 overflow-hidden rounded-lg border border-intelligence-border bg-intelligence text-intelligence-foreground shadow-desk font-interface">
+      <div className="border-b border-intelligence-border px-5 py-5 sm:px-6 sm:py-6">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:flex sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-intelligence-accent">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-intelligence-accent animate-live-dot" />
+              Legal search & intelligence
+            </div>
+            <h2 className="truncate font-editorial text-2xl font-semibold sm:text-3xl">Authorities connected to the matter</h2>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-intelligence-muted sm:text-sm">
+              Exa only retrieves statutes, cases and legal developments that match a matter or the verified transcript. Unrelated web news is dropped.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-intelligence-border bg-intelligence-panel text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
+              onClick={() => retrieve.mutate()}
+              disabled={retrieve.isPending || !hasApiConfiguration || !canGround}
+            >
+              <BookOpen /> <span className="hidden sm:inline">{retrieve.isPending ? "Retrieving…" : `Retrieve for ${label.slice(0, 28)}`}</span>
+              <span className="sm:hidden">{retrieve.isPending ? "Retrieving…" : "Retrieve"}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
+              onClick={() => watch.mutate()}
+              disabled={watch.isPending || !hasApiConfiguration || !canGround}
+            >
+              {watch.isPending ? "Watching…" : "Watch"}
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => retrieve.mutate()} disabled={retrieve.isPending || !hasApiConfiguration || !canGround}>
-            <BookOpen /> {retrieve.isPending ? "Retrieving…" : `Retrieve for ${label.slice(0, 36)}`}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => watch.mutate()} disabled={watch.isPending || !hasApiConfiguration || !canGround}>
-            {watch.isPending ? "Watching…" : "Watch this matter"}
-          </Button>
+
+        {scope?.terms?.length ? (
+          <p className="mt-4 text-xs text-intelligence-muted">
+            Grounded in {scope.has_transcript ? "transcript + " : ""}
+            {scope.matter_name ? `matter “${scope.matter_name}”` : "this session"}
+            {": "}
+            {scope.terms.slice(0, 8).join(" · ")}
+          </p>
+        ) : null}
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <label className="relative block min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-intelligence-muted" />
+            <input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter authorities and connection reasons"
+              className="h-10 w-full rounded-md border border-intelligence-border bg-intelligence-panel pl-10 pr-3 text-sm text-intelligence-foreground outline-none placeholder:text-intelligence-muted focus:ring-1 focus:ring-intelligence-accent"
+            />
+          </label>
+          <div className="flex items-center gap-4 text-[10px] font-medium uppercase tracking-[0.1em] text-intelligence-muted">
+            <span>{hits.length} authorities</span>
+            <span>{monitorCount} {monitorCount === 1 ? "watch" : "watches"}</span>
+          </div>
         </div>
       </div>
-      {scope?.terms?.length ? (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Grounded in {scope.has_transcript ? "transcript + " : ""}
-          {scope.matter_name ? `matter “${scope.matter_name}”` : "this session"}
-          {": "}
-          {scope.terms.slice(0, 8).join(" · ")}
-        </p>
-      ) : null}
+
       {!canGround && (
-        <p className="mt-4 text-sm text-muted-foreground">Open a session or generate a matter first. Legal intelligence will not search the open web on its own.</p>
+        <div className="px-5 py-12 text-center sm:px-6">
+          <BookOpen className="mx-auto size-5 text-intelligence-muted" />
+          <p className="mt-3 text-sm text-intelligence-muted">Open a session or generate a matter first. Legal intelligence will not search the open web on its own.</p>
+        </div>
       )}
+
       {canGround && !hits.length && (
-        <p className="mt-4 text-sm text-muted-foreground">{reason || "No connected authorities yet. Retrieve to search from this matter or transcript."}</p>
+        <div className="px-5 py-12 text-center sm:px-6">
+          <BookOpen className="mx-auto size-5 text-intelligence-muted" />
+          <p className="mt-3 text-sm text-intelligence-muted">{reason || "No connected authorities yet. Retrieve to search from this matter or transcript."}</p>
+        </div>
       )}
-      <ol className="mt-4 space-y-3">
-        {hits.slice(0, 8).map((hit: NewsHit, index) => (
-          <li key={hit.id ?? hit.url ?? index} className="text-sm">
-            {hit.url ? (
-              <a href={hit.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{hit.title ?? hit.url}</a>
-            ) : (
-              <span className="font-medium">{hit.title ?? "Untitled"}</span>
-            )}
-            {hit.kind && <Badge variant="outline" className="ml-2 capitalize">{hit.kind}</Badge>}
-            {hit.published && <span className="ml-2 text-xs text-muted-foreground">{String(hit.published).slice(0, 10)}</span>}
-            {hit.connection?.length ? (
-              <p className="mt-1 text-xs leading-5 text-primary/80">{hit.connection.join(" · ")}</p>
-            ) : null}
-            {hit.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{hit.extract}</p>}
-          </li>
-        ))}
+
+      {!!hits.length && !visibleHits.length && (
+        <p className="px-5 py-12 text-center text-sm text-intelligence-muted sm:px-6">No authorities match this filter.</p>
+      )}
+
+      <ol className="grid sm:grid-cols-2 xl:grid-cols-3">
+        {visibleHits.map((hit: NewsHit, index) => {
+          const key = hit.id ?? hit.url ?? String(index);
+          const isExpanded = expanded.has(key);
+          return (
+            <li key={key} className="group flex min-w-0 flex-col border-b border-intelligence-border p-5 sm:border-r sm:p-6 xl:[&:nth-child(3n)]:border-r-0">
+              <div className="flex items-center justify-between gap-3 text-[10px] font-medium uppercase tracking-[0.1em] text-intelligence-muted">
+                <span className="rounded border border-intelligence-accent/30 bg-intelligence-accent/10 px-2 py-1 text-intelligence-accent">{hit.kind || "Authority"}</span>
+                <time dateTime={hit.published ?? undefined}>{hit.published?.slice(0, 10) ?? "Date unavailable"}</time>
+              </div>
+
+              <h3 className="mt-4 font-editorial text-lg font-semibold leading-6 sm:text-xl">
+                {hit.url ? (
+                  <a href={hit.url} target="_blank" rel="noreferrer" className="transition-colors hover:text-intelligence-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-intelligence-accent">
+                    {hit.title ?? hit.url}
+                  </a>
+                ) : hit.title ?? "Untitled authority"}
+              </h3>
+
+              {hit.connection?.length ? (
+                <p className="mt-2 text-xs leading-5 text-intelligence-accent">{hit.connection.join(" · ")}</p>
+              ) : null}
+
+              {hit.extract && (
+                <div className="mt-3 flex-1">
+                  <p className={cn("text-xs leading-5 text-intelligence-muted sm:text-sm sm:leading-6", !isExpanded && "line-clamp-3")}>
+                    {hit.extract}
+                  </p>
+                  <Button variant="ghost" size="sm" className="mt-2 h-7 px-0 text-xs text-intelligence-accent hover:bg-transparent hover:text-intelligence-foreground" onClick={() => toggleExpanded(key)}>
+                    {isExpanded ? "Show less" : "Read summary"} <ChevronDown className={cn("transition-transform", isExpanded && "rotate-180")} />
+                  </Button>
+                </div>
+              )}
+
+              <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-intelligence-border pt-4">
+                <div className="min-w-0">
+                  <span className="block text-[9px] font-medium uppercase tracking-[0.12em] text-intelligence-muted">Source</span>
+                  <span className="mt-1 block truncate text-xs font-medium">{sourceName(hit)}</span>
+                </div>
+                {hit.url && (
+                  <a href={hit.url} target="_blank" rel="noreferrer" aria-label={`Open ${hit.title ?? "source"}`} className="grid size-8 shrink-0 place-items-center rounded-md border border-intelligence-border text-intelligence-muted transition-colors hover:bg-intelligence-hover hover:text-intelligence-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-intelligence-accent">
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ol>
+
+      <div className="grid gap-2 border-t border-intelligence-border px-5 py-4 text-[10px] uppercase tracking-[0.1em] text-intelligence-muted sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+        <span className="flex min-w-0 items-center gap-2"><ShieldCheck className="size-3.5 shrink-0 text-intelligence-accent" /> Background reference only — verify before relying on it.</span>
+        <span>Connected authorities only</span>
+      </div>
     </section>
   );
 }
