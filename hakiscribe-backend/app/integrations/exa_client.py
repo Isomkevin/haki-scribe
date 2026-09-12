@@ -45,3 +45,69 @@ async def search_company(name: str) -> Optional[dict[str, Any]]:
             "url": top.get("url"),
             "highlight": (top.get("highlights") or [None])[0],
         }
+
+
+def _normalise(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in results:
+        highlights = item.get("highlights") or []
+        text = (item.get("text") or "").strip()
+        out.append(
+            {
+                "title": item.get("title") or item.get("url"),
+                "url": item.get("url"),
+                "published": item.get("publishedDate"),
+                "extract": (highlights[0] if highlights else text[:600]) or None,
+            }
+        )
+    return out
+
+
+async def search_legal(query: str, num_results: int = 6) -> list[dict[str, Any]]:
+    """Retrieval for a legal research card — biased toward Kenyan primary
+    sources (Kenya Law, the National Council for Law Reporting, the
+    Judiciary, the Kenya Gazette) plus reputable commentary. Returns [] if
+    Exa isn't configured, which the executor reports honestly."""
+    if not _api_key() or not query.strip():
+        return []
+    async with httpx.AsyncClient(timeout=45) as client:
+        resp = await client.post(
+            SEARCH_URL,
+            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
+            json={
+                "query": f"{query} (Kenya law)",
+                "type": "auto",
+                "numResults": num_results,
+                "includeDomains": [
+                    "kenyalaw.org",
+                    "new.kenyalaw.org",
+                    "judiciary.go.ke",
+                    "kenyalawreports.or.ke",
+                    "parliament.go.ke",
+                    "gazettes.africa",
+                ],
+                "contents": {"highlights": True, "text": {"maxCharacters": 1200}},
+            },
+        )
+        resp.raise_for_status()
+        return _normalise(resp.json().get("results", []))
+
+
+async def search_web(query: str, num_results: int = 5) -> list[dict[str, Any]]:
+    """Open web lookup for a background/due-diligence card. Clearly labelled
+    as background only — never folded into drafted legal text."""
+    if not _api_key() or not query.strip():
+        return []
+    async with httpx.AsyncClient(timeout=45) as client:
+        resp = await client.post(
+            SEARCH_URL,
+            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
+            json={
+                "query": query,
+                "type": "auto",
+                "numResults": num_results,
+                "contents": {"highlights": True, "text": {"maxCharacters": 800}},
+            },
+        )
+        resp.raise_for_status()
+        return _normalise(resp.json().get("results", []))
