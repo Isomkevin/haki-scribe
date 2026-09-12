@@ -186,6 +186,7 @@ function SessionRow({ session }: { session: Session }) {
 type FlowStep = "recording" | "speakers" | "redact" | "analyzing" | "tray" | "results";
 
 export function SessionPage({ sessionId, fresh }: { sessionId: string; fresh: boolean }) {
+  const queryClient = useQueryClient();
   const detail = useQuery({ queryKey: ["session", sessionId], queryFn: () => hakiApi.getSession(sessionId), retry: false });
   const [step, setStep] = useState<FlowStep | null>(null);
   useEffect(() => {
@@ -200,12 +201,11 @@ export function SessionPage({ sessionId, fresh }: { sessionId: string; fresh: bo
   if (detail.error || !detail.data) return <PageShell back><main className="mx-auto max-w-3xl px-4 py-16"><ConnectionError message={detail.error?.message ?? "Session not found"} retry={() => void detail.refetch()} /></main></PageShell>;
 
   const session = detail.data;
-  const replaceDetail = (next: SessionDetail) => detail.refetch().then(() => next);
-  if (step === "recording") return <RecordingScreen session={session} onStopped={(next) => { void replaceDetail(next); setStep("speakers"); }} />;
+  if (step === "recording") return <RecordingScreen session={session} onStopped={(next) => { queryClient.setQueryData(["session", sessionId], next); setStep("speakers"); }} />;
   if (step === "speakers") return <SpeakerScreen session={session} onNext={() => { void detail.refetch(); setStep("redact"); }} />;
   if (step === "redact") return <RedactScreen session={session} onNext={() => setStep("analyzing")} />;
   if (step === "analyzing") return <AnalyzingScreen sessionId={session.id} onComplete={() => { void detail.refetch(); setStep("tray"); }} />;
-  return <PageShell back><ActionWorkspace session={session} initialResults={session.action_results ?? []} showResults={step === "results"} onResults={() => setStep("results")} /></PageShell>;
+  return <PageShell back><ActionWorkspace session={session} initialResults={session.action_results ?? []} showResults={step === "results"} onResults={() => setStep("results")} onTray={() => setStep("tray")} /></PageShell>;
 }
 
 function RecordingScreen({ session, onStopped }: { session: SessionDetail; onStopped: (detail: SessionDetail) => void }) {
@@ -263,14 +263,14 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
 
   return (
     <div className="flex min-h-screen flex-col bg-primary text-primary-foreground">
-      <header className="flex items-center justify-between border-b border-primary-foreground/15 px-4 py-4 sm:px-8"><Brand compact /><span className="inline-flex items-center gap-2 text-xs"><span className="size-2 animate-pulse rounded-full bg-action" /> Recording</span></header>
+      <header className="flex items-center justify-between border-b border-primary-foreground/15 px-4 py-4 sm:px-8"><span className="font-serif text-xl font-semibold">HakiScribe</span><span className="inline-flex items-center gap-2 text-xs"><span className="size-2 animate-pulse rounded-full bg-action" /> Recording</span></header>
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-8 sm:px-8">
         <div className="text-center"><p className="text-sm text-primary-foreground/65">{session.title}</p><p className="mt-3 font-mono text-5xl tabular-nums sm:text-6xl">{formatDuration(elapsed)}</p></div>
         <div className="mt-7 flex min-h-8 gap-2 overflow-x-auto pb-2">
           {flags.map((item) => <span key={item.id} className="shrink-0 rounded-md border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1.5 text-xs">{formatDuration(item.at_ms)} · {item.label ?? "Flagged moment"}</span>)}
         </div>
         <div className="my-8 flex h-24 items-center justify-center gap-1" aria-label="Live audio waveform">
-          {Array.from({ length: 28 }, (_, index) => <span key={index} className="h-16 w-1 rounded-full bg-primary-foreground/70 animate-waveform" style={{ animationDelay: `${(index % 8) * 90}ms` }} />)}
+          {Array.from({ length: 28 }, (_, index) => <span key={index} className={cn("h-16 w-1 rounded-full bg-primary-foreground/70 animate-waveform", index % 3 === 1 && "[animation-delay:180ms]", index % 3 === 2 && "[animation-delay:360ms]")} />)}
         </div>
         <Button variant="warm" className="mx-auto h-24 w-full max-w-md text-xl" onClick={() => void flag()}><Flag className="size-7" /> Flag this moment</Button>
         <div className="mt-8 min-h-24 border-t border-primary-foreground/15 pt-5">
@@ -328,7 +328,7 @@ function AnalyzingScreen({ sessionId, onComplete }: { sessionId: string; onCompl
   return <PageShell back><main className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center px-5 text-center"><div className="w-40 space-y-2" aria-hidden>{[0,1,2,3].map((item) => <div key={item} className="h-1 origin-left animate-reading-line bg-primary" style={{ animationDelay: `${item * 220}ms` }} />)}</div><h1 className="mt-10 font-serif text-3xl font-semibold">Reviewing what happened…</h1><p className="mt-3 leading-7 text-muted-foreground">Checking the verified record for documents, dates, matters, contacts, notes, and billable work.</p><p className="mt-5 text-xs text-muted-foreground">OpenAI/OpenRouter analysis · Trigger.dev durable processing</p>{error && <div className="mt-8 w-full"><ConnectionError message={error} retry={() => window.location.reload()} /></div>}</main></PageShell>;
 }
 
-function ActionWorkspace({ session, initialResults, showResults, onResults }: { session: SessionDetail; initialResults: ActionResult[]; showResults: boolean; onResults: () => void }) {
+function ActionWorkspace({ session, initialResults, showResults, onResults, onTray }: { session: SessionDetail; initialResults: ActionResult[]; showResults: boolean; onResults: () => void; onTray: () => void }) {
   const [selected, setSelected] = useState(() => new Set(session.detected_actions.filter((action) => action.pre_checked).map((action) => action.id)));
   const [actions, setActions] = useState(session.detected_actions);
   const [results, setResults] = useState(initialResults);
@@ -336,7 +336,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults }: { 
   const select = (id: string, checked: boolean) => setSelected((current) => { const next = new Set(current); checked ? next.add(id) : next.delete(id); return next; });
   return <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
     <div className="flex flex-col justify-between gap-5 border-b border-border pb-7 sm:flex-row sm:items-end"><div><p className="text-xs font-semibold uppercase text-primary">{showResults ? "Generated work" : "Action tray"}</p><h1 className="mt-2 font-serif text-3xl font-semibold sm:text-4xl">{session.title}</h1><p className="mt-2 text-sm text-muted-foreground">{showResults ? "Review and edit before anything leaves your workspace." : `${actions.length} possible legal actions, each grounded in the transcript.`}</p></div><TrustLine /></div>
-    <div className="mt-6 flex gap-2 border-b border-border"><Button variant={!showResults ? "ghost" : "link"} onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>Detected actions</Button>{results.length > 0 && <Button variant={showResults ? "ghost" : "link"} onClick={onResults}>Results ({results.length})</Button>}</div>
+    <div className="mt-6 flex gap-2 border-b border-border"><Button variant={!showResults ? "ghost" : "link"} onClick={onTray}>Detected actions</Button>{results.length > 0 && <Button variant={showResults ? "ghost" : "link"} onClick={onResults}>Results ({results.length})</Button>}</div>
     {showResults && results.length ? <ResultsList results={results} /> : <>
       <div className="my-6 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Review, edit, then choose what HakiScribe should produce.</p><Button variant="outline" size="sm" onClick={() => setSelected(new Set(actions.filter((action) => action.pre_checked).map((action) => action.id)))}><Check /> Select high-confidence</Button></div>
       <div className="space-y-3">{actions.map((action) => <ActionCard key={action.id} action={action} transcript={session.transcript} checked={selected.has(action.id)} onChecked={(checked) => select(action.id, checked)} onFields={(fields) => setActions((current) => current.map((item) => item.id === action.id ? { ...item, extracted_fields: fields } : item))} />)}</div>
@@ -355,7 +355,7 @@ function ActionCard({ action, transcript, checked, onChecked, onFields }: { acti
   const speculative = !action.pre_checked || action.confidence < 0.7;
   return <article className={cn("border bg-card transition-colors", checked ? "border-primary" : "border-border", speculative && !checked && "opacity-65")}>
     <div className="grid grid-cols-[auto_1fr_auto] gap-3 p-4 sm:p-5"><span className="grid size-10 place-items-center rounded-md bg-secondary text-secondary-foreground"><Icon className="size-5" /></span><button type="button" className="min-w-0 text-left" onClick={() => setOpen(!open)}><h2 className="font-semibold text-foreground">{action.title}</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">{action.preview}</p></button><Checkbox checked={checked} onCheckedChange={(value) => onChecked(value === true)} aria-label={`Select ${action.title}`} className="mt-2 size-5" /></div>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs sm:px-5"><div className="flex items-center gap-2"><Badge variant={speculative ? "outline" : "secondary"}>{action.confidence_reason ?? `${Math.round(action.confidence * 100)}% confidence`}</Badge>{action.extracted_fields.background_info !== undefined && <Badge variant="outline">Exa context</Badge>}</div><div className="flex items-center gap-3">{source && <button type="button" className="font-semibold text-primary hover:underline" onClick={() => setSourceOpen(!sourceOpen)}>View source</button>}<button type="button" aria-label={open ? "Collapse action" : "Edit action"} onClick={() => setOpen(!open)}><ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} /></button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs sm:px-5"><div className="flex items-center gap-2"><Badge variant={speculative ? "outline" : "secondary"}>{action.confidence_reason ?? `${Math.round(action.confidence * 100)}% confidence`}</Badge>{action.extracted_fields["background_info"] !== undefined && <Badge variant="outline">Exa context</Badge>}</div><div className="flex items-center gap-3">{source && <button type="button" className="font-semibold text-primary hover:underline" onClick={() => setSourceOpen(!sourceOpen)}>View source</button>}<button type="button" aria-label={open ? "Collapse action" : "Edit action"} onClick={() => setOpen(!open)}><ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} /></button></div></div>
     {sourceOpen && source && <div className="border-t border-border bg-secondary/35 px-4 py-4 sm:px-5"><p className="mb-1 text-xs font-semibold text-primary">{source.speaker ?? "Speaker"} · {formatDuration(source.start_ms)}</p><blockquote className="font-serif leading-7">“{source.text}”</blockquote></div>}
     {open && <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 sm:p-5">{Object.entries(action.extracted_fields).map(([key, value]) => <label key={key} className={cn("text-xs font-semibold capitalize text-muted-foreground", typeof value === "object" && "sm:col-span-2")}>{key.replaceAll("_", " ")} {typeof value === "object" ? <Textarea className="mt-2 min-h-24 bg-background font-mono text-xs" value={displayValue(value)} onChange={(event) => onFields({ ...action.extracted_fields, [key]: event.target.value })} /> : <Input className="mt-2 bg-background text-foreground" value={displayValue(value)} onChange={(event) => onFields({ ...action.extracted_fields, [key]: event.target.value })} />}</label>)}</div>}
   </article>;
@@ -367,9 +367,9 @@ function ResultsList({ results }: { results: ActionResult[] }) {
 
 function ResultCard({ result }: { result: ActionResult }) {
   const Icon = actionIcons[result.type];
-  const [documentText, setDocumentText] = useState(displayValue(result.result.document_text ?? ""));
+  const [documentText, setDocumentText] = useState(displayValue(result.result["document_text"] ?? ""));
   if (result.status === "error") return <article className="border border-destructive/30 bg-card p-5"><div className="flex items-center gap-3"><AlertCircle className="size-5 text-destructive" /><div><h2 className="font-semibold">This item was not generated</h2><p className="mt-1 text-sm text-muted-foreground">{result.error ?? "The service returned an error for this item."}</p></div></div></article>;
-  const calendarHref = typeof result.result.ics === "string" ? `data:text/calendar;charset=utf-8,${encodeURIComponent(result.result.ics)}` : null;
+  const calendarHref = typeof result.result["ics"] === "string" ? `data:text/calendar;charset=utf-8,${encodeURIComponent(result.result["ics"])}` : null;
   return <article className="border border-border bg-card"><header className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-6"><span className="grid size-9 place-items-center rounded-md bg-success text-success-foreground"><Icon className="size-4" /></span><div><p className="text-xs font-semibold uppercase text-success-foreground">Generated</p><h2 className="font-semibold capitalize">{result.type.replaceAll("_", " ")}</h2></div></header>
     {result.type === "draft_document" ? <div className="p-4 sm:p-8"><div className="mb-3 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(documentText)}><Copy /> Copy</Button></div><Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[28rem] resize-y border-0 bg-background p-6 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:p-10" /></div> : <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 sm:p-6">{Object.entries(result.result).filter(([key]) => key !== "ics").map(([key, value]) => <div key={key}><p className="text-xs font-semibold uppercase text-muted-foreground">{key.replaceAll("_", " ")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6">{displayValue(value)}</p></div>)}{calendarHref && <div className="sm:col-span-2"><Button asChild variant="outline"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button></div>}</div>}
     <footer className="border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-6">{Object.keys(result.result).some((key) => ["document_id", "calendar_id", "contact_id", "matter_id"].includes(key)) ? "Delivered through connected HakiChain tools" : "Saved as a local HakiScribe result"}</footer>
