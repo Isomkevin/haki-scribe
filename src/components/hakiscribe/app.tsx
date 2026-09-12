@@ -12,12 +12,15 @@ import {
   Download,
   FileText,
   Flag,
+  Globe,
   Headphones,
   LockKeyhole,
   Mic,
   NotebookPen,
   Radio,
   RefreshCw,
+  Scale,
+  Sparkles,
   Square,
   UnlockKeyhole,
 } from "lucide-react";
@@ -65,6 +68,9 @@ const actionIcons: Record<ActionType, ComponentType<{ className?: string }>> = {
   crm_entry: ContactRound,
   private_note: NotebookPen,
   time_entry: Clock3,
+  legal_research: Scale,
+  web_search: Globe,
+  llm_task: Sparkles,
 };
 
 const practiceSteps = [
