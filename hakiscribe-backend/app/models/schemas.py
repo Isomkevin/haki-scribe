@@ -114,6 +114,9 @@ class ActionType(str, Enum):
     crm_entry = "crm_entry"
     private_note = "private_note"
     time_entry = "time_entry"
+    legal_research = "legal_research"
+    web_search = "web_search"
+    llm_task = "llm_task"
 
 
 class ActionStatus(str, Enum):
@@ -174,6 +177,37 @@ class TimeEntryResult(BaseModel):
     narrative: str
     matter_name: Optional[str] = None
     billable: bool = True
+
+
+class ResearchSource(BaseModel):
+    title: Optional[str] = None
+    url: Optional[str] = None
+    published: Optional[str] = None
+    extract: Optional[str] = None
+
+
+class ResearchResult(BaseModel):
+    """Legal research or open-web background. Never merged into drafted
+    legal text — always presented with its sources so the user can check."""
+
+    question: str
+    answer: str
+    sources: list[ResearchSource] = []
+    model: Optional[str] = None
+    scope: str = "legal"  # "legal" | "web"
+
+
+class LlmTaskResult(BaseModel):
+    model: str
+    instruction: str
+    output: str
+
+
+class AskRequest(BaseModel):
+    """Ad-hoc instruction the user types under the action tray."""
+
+    instruction: str
+    model: Optional[str] = None
 
 
 class SessionLibraryItem(Session):
