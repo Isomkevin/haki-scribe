@@ -833,10 +833,39 @@ function ResultCard({ result }: { result: ActionResult }) {
       </header>
       {result.type === "draft_document" ? (
         <div className="p-4 sm:p-8">
-          <div className="mb-3 flex justify-end gap-2">
+          <div className="mb-3 flex flex-wrap justify-end gap-2">
+            {typeof result.result["ambiguous_document_url"] === "string" && (
+              <Button asChild variant="outline" size="sm">
+                <a href={result.result["ambiguous_document_url"] as string} target="_blank" rel="noreferrer"><FileText /> Open in Ambiguous</a>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(documentText)}><Copy /> Copy</Button>
           </div>
           <Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[28rem] resize-y border-0 bg-background p-6 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:p-10" />
+        </div>
+      ) : result.type === "legal_research" || result.type === "web_search" ? (
+        <div className="p-5 sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            {result.type === "legal_research" ? "Question researched" : "Background check"}
+          </p>
+          <p className="mt-1 font-serif text-lg leading-7">{displayValue(result.result["question"])}</p>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{displayValue(result.result["answer"])}</p>
+          <SourceList sources={(result.result["sources"] as ResearchSource[] | undefined) ?? []} />
+          <p className="mt-4 text-xs text-muted-foreground">
+            {result.type === "legal_research"
+              ? "Check every authority before relying on it. Research is never merged into a draft."
+              : "Background reference only. Never used as evidence or as a drafted fact."}
+          </p>
+        </div>
+      ) : result.type === "llm_task" ? (
+        <div className="p-5 sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Instruction</p>
+          <p className="mt-1 text-sm leading-6">{displayValue(result.result["instruction"])}</p>
+          <p className="mt-5 whitespace-pre-wrap font-serif text-base leading-7">{displayValue(result.result["output"])}</p>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <Badge variant="outline">{displayValue(result.result["model"])}</Badge>
+            <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(displayValue(result.result["output"]))}><Copy /> Copy</Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 sm:p-6">
