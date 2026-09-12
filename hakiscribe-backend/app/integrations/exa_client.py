@@ -26,28 +26,13 @@ def _api_key() -> Optional[str]:
 async def search_company(name: str) -> Optional[dict[str, Any]]:
     if not _api_key() or not name:
         return None
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": name,
-                "category": "company",
-                "numResults": 1,
-                "contents": {"highlights": True},
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-        if not results:
-            return None
-        top = results[0]
-        return {
-            "title": top.get("title"),
-            "url": top.get("url"),
-            "highlight": (top.get("highlights") or [None])[0],
-        }
+    results = await _search(
+        {"query": name, "category": "company", "numResults": 1, "contents": {"highlights": True}}
+    )
+    if not results:
+        return None
+    top = results[0]
+    return {"title": top.get("title"), "url": top.get("url"), "highlight": top.get("extract")}
 
 
 async def _search(payload: dict[str, Any]) -> list[dict[str, Any]]:
