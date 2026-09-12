@@ -8,10 +8,13 @@ reference the user sees alongside the card.
 No-ops (returns None) if EXA_API_KEY isn't set.
 """
 
+import logging
 import os
 from typing import Any, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://api.exa.ai/search"
 
@@ -23,28 +26,30 @@ def _api_key() -> Optional[str]:
 async def search_company(name: str) -> Optional[dict[str, Any]]:
     if not _api_key() or not name:
         return None
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": name,
-                "category": "company",
-                "numResults": 1,
-                "contents": {"highlights": True},
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-        if not results:
-            return None
-        top = results[0]
-        return {
-            "title": top.get("title"),
-            "url": top.get("url"),
-            "highlight": (top.get("highlights") or [None])[0],
-        }
+    results = await _search(
+        {"query": name, "category": "company", "numResults": 1, "contents": {"highlights": True}}
+    )
+    if not results:
+        return None
+    top = results[0]
+    return {"title": top.get("title"), "url": top.get("url"), "highlight": top.get("extract")}
+
+
+async def _search(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Never raise into an action card — an unreachable or rejected search
+    degrades to 'no sources retrieved', which the executor reports honestly."""
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            resp = await client.post(
+                SEARCH_URL,
+                headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            return _normalise(resp.json().get("results", []))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Exa search failed (%s); continuing without sources", exc)
+        return []
 
 
 def _normalise(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -70,27 +75,27 @@ async def search_legal(query: str, num_results: int = 6) -> list[dict[str, Any]]
     Exa isn't configured, which the executor reports honestly."""
     if not _api_key() or not query.strip():
         return []
-    async with httpx.AsyncClient(timeout=45) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": f"{query} (Kenya law)",
-                "type": "auto",
-                "numResults": num_results,
-                "includeDomains": [
-                    "kenyalaw.org",
-                    "new.kenyalaw.org",
-                    "judiciary.go.ke",
-                    "kenyalawreports.or.ke",
-                    "parliament.go.ke",
-                    "gazettes.africa",
-                ],
-                "contents": {"highlights": True, "text": {"maxCharacters": 1200}},
-            },
-        )
-        resp.raise_for_status()
-        return _normalise(resp.json().get("results", []))
+    payload = {
+        "query": f"{query} (Kenya law)",
+        "type": "auto",
+        "numResults": num_results,
+        "includeDomains": [
+            "kenyalaw.org",
+            "new.kenyalaw.org",
+            "judiciary.go.ke",
+            "kenyalawreports.or.ke",
+            "parliament.go.ke",
+            "gazettes.africa",
+        ],
+        "contents": {"highlights": True, "text": {"maxCharacters": 1200}},
+    }
+    results = await _search(payload)
+    if results:
+        return results
+    # Kenyan primary sources can come back empty for a narrow question;
+    # retry once unrestricted rather than reporting "no authorities".
+    payload.pop("includeDomains", None)
+    return await _search(payload)
 
 
 async def search_web(query: str, num_results: int = 5) -> list[dict[str, Any]]:
@@ -98,16 +103,11 @@ async def search_web(query: str, num_results: int = 5) -> list[dict[str, Any]]:
     as background only — never folded into drafted legal text."""
     if not _api_key() or not query.strip():
         return []
-    async with httpx.AsyncClient(timeout=45) as client:
-        resp = await client.post(
-            SEARCH_URL,
-            headers={"x-api-key": _api_key(), "Content-Type": "application/json"},
-            json={
-                "query": query,
-                "type": "auto",
-                "numResults": num_results,
-                "contents": {"highlights": True, "text": {"maxCharacters": 800}},
-            },
-        )
-        resp.raise_for_status()
-        return _normalise(resp.json().get("results", []))
+    return await _search(
+        {
+            "query": query,
+            "type": "auto",
+            "numResults": num_results,
+            "contents": {"highlights": True, "text": {"maxCharacters": 800}},
+        }
+    )
