@@ -254,6 +254,12 @@ async def execute_action(
             result = await _generate_workspace_matter(action, record)
         elif action.type == ActionType.crm_entry:
             result = await _generate_crm_entry(action, record)
+        elif action.type == ActionType.legal_research:
+            result = await _run_research(action, record, scope="legal")
+        elif action.type == ActionType.web_search:
+            result = await _run_research(action, record, scope="web")
+        elif action.type == ActionType.llm_task:
+            result = await _run_llm_task(action, record)
         else:
             raise ValueError(f"Unknown action type: {action.type}")
         return ActionResult(action_id=action.id, type=action.type, status="success", result=result)
