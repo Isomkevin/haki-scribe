@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.integrations import llm_client
 from app.routers import actions, internal, matters, sessions, omi_webhook, stream
 
 app = FastAPI(title="HakiScribe", version="0.1.0")
@@ -30,3 +31,9 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/models")
+def models():
+    """Model picker for the 'Ask anything about this session' composer."""
+    return llm_client.available_models()

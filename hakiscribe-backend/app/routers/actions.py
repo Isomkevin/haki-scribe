@@ -103,3 +103,47 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
         storage.upsert_action_results(session_id, results)
 
     return results
+
+
+@router.post("/{session_id}/ask", response_model=ActionResult)
+async def ask_session(session_id: uuid.UUID, payload: AskRequest):
+    """Ad-hoc instruction run against the verified transcript on whichever
+    model the user picked. Stored as a normal llm_task card so it lives in
+    the tray and the results list alongside everything else."""
+    detail = storage.get_session(session_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    instruction = payload.instruction.strip()
+    if not instruction:
+        raise HTTPException(status_code=400, detail="An instruction is required")
+
+    action = DetectedAction(
+        session_id=session_id,
+        type=ActionType.llm_task,
+        title=instruction[:70],
+        preview=instruction,
+        confidence=1.0,
+        confidence_reason="Requested by you",
+        extracted_fields={"instruction": instruction, **({"model": payload.model} if payload.model else {})},
+        pre_checked=True,
+    )
+    storage.set_detected_actions(session_id, [*storage.get_detected_actions(session_id), action])
+
+    trigger_output = await trigger_client.trigger_and_wait(
+        "generate-actions",
+        {
+            "actions": [action.model_dump(mode="json")],
+            "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
+        },
+        timeout_s=180.0,
+    )
+    if trigger_output:
+        result = ActionResult(**trigger_output[0])
+    else:
+        result = await action_executor.execute_action(action, transcript=detail.transcript)
+
+    storage.update_action_status(
+        session_id, result.action_id, ActionStatus.generated if result.status == "success" else ActionStatus.error
+    )
+    storage.upsert_action_results(session_id, [result])
+    return result
