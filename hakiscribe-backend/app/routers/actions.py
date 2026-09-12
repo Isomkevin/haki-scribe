@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import (
     ActionResult,
@@ -9,6 +9,7 @@ from app.models.schemas import (
     AskRequest,
     DetectedAction,
     GenerateActionsRequest,
+    SessionStatus,
 )
 from app.services import action_detector, action_executor, enrichment, storage, trigger_client
 
@@ -16,28 +17,26 @@ router = APIRouter()
 
 
 @router.post("/{session_id}/detect", response_model=list[DetectedAction])
-async def detect_actions(session_id: uuid.UUID):
+async def detect_actions(session_id: uuid.UUID, force: bool = Query(default=False)):
     detail = storage.get_session(session_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="Session not found")
     if not detail.transcript:
         raise HTTPException(status_code=400, detail="Session has no transcript yet")
+    if detail.detected_actions and not force:
+        return detail.detected_actions
 
+    storage.update_session_status(session_id, SessionStatus.processing)
     known_matters = storage.list_matters()
+    payload = {
+        "session_id": str(session_id),
+        "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
+        "flags": [f.model_dump(mode="json") for f in detail.flagged_moments],
+        "known_matters": [m.model_dump(mode="json") for m in known_matters],
+        "session_title": detail.title,
+    }
 
-    # Prefer running detection as a Trigger.dev background task (durable,
-    # retried, observable). If Trigger.dev isn't configured, fall back to
-    # calling the same logic directly in-process — identical result either way.
-    trigger_output = await trigger_client.trigger_and_wait(
-        "detect-actions",
-        {
-            "session_id": str(session_id),
-            "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
-            "flags": [f.model_dump(mode="json") for f in detail.flagged_moments],
-            "known_matters": [m.model_dump(mode="json") for m in known_matters],
-            "session_title": detail.title,
-        },
-    )
+    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload)
     if trigger_output is not None:
         actions = [DetectedAction(**a) for a in trigger_output]
     else:
@@ -51,6 +50,7 @@ async def detect_actions(session_id: uuid.UUID):
 
     actions = await enrichment.enrich_with_exa(actions)
     storage.set_detected_actions(session_id, actions)
+    storage.update_session_status(session_id, SessionStatus.ready)
     return actions
 
 
@@ -59,6 +59,16 @@ def list_actions(session_id: uuid.UUID):
     if storage.get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return storage.get_detected_actions(session_id)
+
+
+@router.post("/{session_id}/actions/{action_id}/dismiss", response_model=DetectedAction)
+def dismiss_action(session_id: uuid.UUID, action_id: uuid.UUID):
+    if storage.get_session(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    action = storage.update_action_status(session_id, action_id, ActionStatus.dismissed)
+    if action is None:
+        raise HTTPException(status_code=404, detail="Action not found")
+    return action
 
 
 @router.post("/{session_id}/generate", response_model=list[ActionResult])
@@ -82,7 +92,6 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
         to_run.append(action)
 
     if to_run:
-        # Same durable-task-with-fallback pattern as detection.
         trigger_output = await trigger_client.trigger_and_wait(
             "generate-actions",
             {
@@ -96,7 +105,7 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
         if trigger_output is not None:
             run_results = [ActionResult(**r) for r in trigger_output]
         else:
-            run_results = [await action_executor.execute_action(a, transcript=detail.transcript) for a in to_run]
+            run_results = await action_executor.execute_actions(to_run, transcript=detail.transcript)
 
         for result in run_results:
             storage.update_action_status(
@@ -104,6 +113,8 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
             )
         results.extend(run_results)
         storage.upsert_action_results(session_id, results)
+        if any(item.status == "success" for item in run_results):
+            storage.update_session_status(session_id, SessionStatus.exported)
 
     return results
 

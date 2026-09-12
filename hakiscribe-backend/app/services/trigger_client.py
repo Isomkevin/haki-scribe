@@ -20,10 +20,13 @@ REST reference:
 """
 
 import asyncio
+import logging
 import os
 from typing import Any, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.trigger.dev/api/v1"
 
@@ -47,24 +50,28 @@ async def trigger_and_wait(
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        trigger_resp = await client.post(
-            f"{API_BASE}/tasks/{task_id}/trigger", headers=headers, json={"payload": payload}
-        )
-        trigger_resp.raise_for_status()
-        run_id = trigger_resp.json()["id"]
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            trigger_resp = await client.post(
+                f"{API_BASE}/tasks/{task_id}/trigger", headers=headers, json={"payload": payload}
+            )
+            trigger_resp.raise_for_status()
+            run_id = trigger_resp.json()["id"]
 
-        elapsed = 0.0
-        while elapsed < timeout_s:
-            result_resp = await client.get(f"{API_BASE}/runs/{run_id}/result", headers=headers)
-            if result_resp.status_code == 404:
-                await asyncio.sleep(poll_interval_s)
-                elapsed += poll_interval_s
-                continue
-            result_resp.raise_for_status()
-            result = result_resp.json()
-            if not result.get("ok", False):
-                raise RuntimeError(f"Trigger.dev task {task_id} (run {run_id}) failed: {result.get('error')}")
-            return result.get("output")
+            elapsed = 0.0
+            while elapsed < timeout_s:
+                result_resp = await client.get(f"{API_BASE}/runs/{run_id}/result", headers=headers)
+                if result_resp.status_code == 404:
+                    await asyncio.sleep(poll_interval_s)
+                    elapsed += poll_interval_s
+                    continue
+                result_resp.raise_for_status()
+                result = result_resp.json()
+                if not result.get("ok", False):
+                    raise RuntimeError(f"Trigger.dev task {task_id} (run {run_id}) failed: {result.get('error')}")
+                return result.get("output")
 
-        raise TimeoutError(f"Trigger.dev task {task_id} (run {run_id}) did not finish within {timeout_s}s")
+            raise TimeoutError(f"Trigger.dev task {task_id} (run {run_id}) did not finish within {timeout_s}s")
+    except Exception as exc:  # noqa: BLE001 — callers fall back to in-process logic
+        logger.warning("Trigger.dev %s failed (%s); falling back in-process", task_id, exc)
+        return None

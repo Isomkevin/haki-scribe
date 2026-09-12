@@ -88,6 +88,7 @@ temp/
 uploads/
 *.sqlite
 *.sqlite3
+hakiscribe-backend/data/
 
 # Editor directories and files
 .vscode/*

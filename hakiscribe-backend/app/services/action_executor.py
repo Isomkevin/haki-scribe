@@ -12,7 +12,10 @@ used when configured; otherwise results stay local.
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
+
+from urllib.parse import quote
 
 from app.integrations import ambiguous_client, exa_client, llm_client
 from app.models.schemas import (
@@ -42,6 +45,17 @@ ASK_SYSTEM_PROMPT = (
 )
 
 
+def _whatsapp_url(text: str) -> str:
+    clipped = text.strip()[:1800]
+    return f"https://wa.me/?text={quote(clipped)}"
+
+
+def _attach_handoff(result: dict, *, title: str, body: str) -> dict:
+    result["whatsapp_share_url"] = _whatsapp_url(f"{title}\n\n{body}")
+    result["whatsapp_share_text"] = body[:1800]
+    return result
+
+
 async def _generate_draft_document(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
     drafted = await generation.draft_document_model.generate(action, transcript)
     result = drafted.model_dump()
@@ -52,10 +66,11 @@ async def _generate_draft_document(action: DetectedAction, transcript: list[Tran
         doc_url = doc.get("url") or (f"https://app.ambiguous.ai/documents/{doc['id']}" if doc.get("id") else None)
         if doc_url:
             result["ambiguous_document_url"] = doc_url
+        result["workspace_url"] = ambiguous_client.document_url(doc.get("id"))
         await ambiguous_client.post_chat_message(
             f"Draft ready for review: **{action.title}** — {action.preview}"
         )
-    return result
+    return _attach_handoff(result, title=action.title, body=drafted.document_text)
 
 
 async def _generate_calendar_event(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
@@ -65,7 +80,9 @@ async def _generate_calendar_event(action: DetectedAction, transcript: list[Tran
     remote = await ambiguous_client.create_calendar_event(event.title, event.start, event.end)
     if remote:
         result["ambiguous_event_id"] = remote.get("id")
-    return result
+        result["workspace_url"] = ambiguous_client.event_url(remote.get("id"))
+    body = f"{event.title}\n{event.start} – {event.end}\n{event.description}"
+    return _attach_handoff(result, title=event.title, body=body)
 
 
 def _generate_private_note(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
@@ -73,12 +90,13 @@ def _generate_private_note(action: DetectedAction, transcript: list[TranscriptSe
     record = generation.format_transcript(transcript)
     if record and note and note not in record:
         note = f"{note}\n\nSource:\n{record}"
-    return {"note_text": note}
+    return _attach_handoff({"note_text": note}, title=action.title, body=str(note))
 
 
 async def _generate_time_entry(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
     entry = await generation.time_entry_model.generate(action, transcript)
-    return entry.model_dump()
+    result = entry.model_dump()
+    return _attach_handoff(result, title=action.title, body=entry.narrative or entry.activity_description)
 
 
 async def _generate_workspace_matter(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
@@ -115,18 +133,23 @@ async def _generate_workspace_matter(action: DetectedAction, transcript: list[Tr
         matter_id=matter.id,
     )
 
-    return {
-        "matter_id": str(matter.id),
-        "matter_name": matter.matter_name,
-        "client_name": matter.client_name,
-        "contact_id": str(contact.id),
-        "contact_name": contact.name,
-        "ambiguous_deal_id": matter.ambiguous_deal_id,
-        "note": (
-            f"{'linked to existing' if outcome == 'linked' else 'new'} matter persisted via /matters"
-            + (" and mirrored to Ambiguous CRM" if deal else "")
-        ),
-    }
+    return _attach_handoff(
+        {
+            "matter_id": str(matter.id),
+            "matter_name": matter.matter_name,
+            "client_name": matter.client_name,
+            "contact_id": str(contact.id),
+            "contact_name": contact.name,
+            "ambiguous_deal_id": matter.ambiguous_deal_id,
+            "workspace_url": ambiguous_client.deal_url(matter.ambiguous_deal_id),
+            "note": (
+                f"{'linked to existing' if outcome == 'linked' else 'new'} matter persisted via /matters"
+                + (" and mirrored to Ambiguous CRM" if deal else "")
+            ),
+        },
+        title=matter.matter_name,
+        body=f"Matter: {matter.matter_name}\nClient: {matter.client_name}",
+    )
 
 
 async def _generate_crm_entry(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
@@ -147,13 +170,18 @@ async def _generate_crm_entry(action: DetectedAction, transcript: list[Transcrip
         matter_id=matter_id,
         ambiguous_contact_id=(remote or {}).get("id") if remote else None,
     )
-    return {
-        "contact_id": str(contact.id),
-        "contact_name": contact.name,
-        "matter_id": str(matter_id) if matter_id else None,
-        "note": "created in Ambiguous CRM" if remote else "persisted in Session Library",
-        "updates": contact.updates,
-    }
+    return _attach_handoff(
+        {
+            "contact_id": str(contact.id),
+            "contact_name": contact.name,
+            "matter_id": str(matter_id) if matter_id else None,
+            "workspace_url": ambiguous_client.contact_url((remote or {}).get("id") if remote else None),
+            "note": "created in Ambiguous CRM" if remote else "persisted in Session Library",
+            "updates": contact.updates,
+        },
+        title=contact.name,
+        body=f"Contact update: {contact.name}\n{updates}",
+    )
 
 
 def _sources_block(sources: list[dict]) -> str:
@@ -270,3 +298,10 @@ async def execute_action(
         return ActionResult(action_id=action.id, type=action.type, status="success", result=result)
     except Exception as exc:  # noqa: BLE001 — surface any failure per-action, not as a 500
         return ActionResult(action_id=action.id, type=action.type, status="error", result={}, error=str(exc))
+
+
+async def execute_actions(
+    actions: list[DetectedAction],
+    transcript: list[TranscriptSegment] | None = None,
+) -> list[ActionResult]:
+    return list(await asyncio.gather(*[execute_action(action, transcript=transcript) for action in actions]))

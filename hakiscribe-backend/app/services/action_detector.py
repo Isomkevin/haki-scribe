@@ -15,10 +15,13 @@ Three inputs shape detection beyond the raw transcript:
 """
 
 import json
+import logging
 import os
 import uuid
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from app.services import documents
 from app.models.schemas import ActionType, DetectedAction, FlaggedMoment, Matter, TranscriptSegment
@@ -92,6 +95,28 @@ def _build_context_block(flags: list[FlaggedMoment], matters: list[Matter]) -> s
         matter_lines = "\n".join(f"- id={m.id}, client={m.client_name}, matter={m.matter_name}" for m in matters)
         parts.append(f"Known existing clients/matters:\n{matter_lines}")
     return "\n\n".join(parts)
+
+
+def _parse_action_payload(content: str) -> list[dict]:
+    cleaned = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find("["), cleaned.rfind("]")
+        if start < 0 or end <= start:
+            raise
+        parsed = json.loads(cleaned[start : end + 1])
+    if isinstance(parsed, dict):
+        parsed = parsed.get("actions") or parsed.get("artifacts") or [parsed]
+    if not isinstance(parsed, list):
+        raise ValueError("detection payload was not a JSON array")
+    return [item for item in parsed if isinstance(item, dict)]
+
+
+def _stamp_mode(actions: list[DetectedAction], mode: str) -> list[DetectedAction]:
+    for action in actions:
+        action.extracted_fields = {**action.extracted_fields, "detection_mode": mode}
+    return actions
 
 
 def _actions_from_raw(session_id: uuid.UUID, usable_segments: list[TranscriptSegment], raw_actions: list[dict]) -> list[DetectedAction]:
@@ -335,15 +360,16 @@ async def detect_actions(
                 response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
 
-            content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            raw_actions = json.loads(content)
-            actions = _actions_from_raw(session_id, usable_segments, raw_actions)
+            actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(content))
             if actions:
-                return actions
-        except Exception:  # noqa: BLE001 — tray still populates from the transcript
-            pass
+                return _stamp_mode(actions, "model")
+        except Exception as exc:  # noqa: BLE001 — tray still populates from the transcript
+            logger.warning("Detection model failed (%s); using transcript heuristics", exc)
 
-    return _detect_heuristic(session_id, usable_segments, flags, known_matters, session_title)
+    return _stamp_mode(
+        _detect_heuristic(session_id, usable_segments, flags, known_matters, session_title),
+        "heuristic",
+    )
 
 
 def _find_source_segment(segments: list[TranscriptSegment], quote: str | None) -> uuid.UUID | None:

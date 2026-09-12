@@ -68,11 +68,13 @@ def relabel_speakers(session_id: uuid.UUID, payload: SpeakerRelabelRequest):
 
 @router.patch("/{session_id}/segments/{segment_id}", response_model=TranscriptSegment)
 def redact_segment(session_id: uuid.UUID, segment_id: uuid.UUID, payload: SegmentRedactRequest):
-    """Mark a segment privileged/off-record so it's excluded from /detect.
-    Toggle-able — call again with redacted: false to un-redact."""
+    """Mark a segment privileged/off-record so it's excluded from /detect,
+    or correct the transcript text before analysis."""
     if storage.get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    segment = storage.set_segment_redacted(session_id, segment_id, payload.redacted)
+    if payload.redacted is None and payload.text is None:
+        raise HTTPException(status_code=400, detail="Provide redacted and/or text")
+    segment = storage.update_segment(session_id, segment_id, redacted=payload.redacted, text=payload.text)
     if segment is None:
         raise HTTPException(status_code=404, detail="Segment not found")
     return segment

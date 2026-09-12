@@ -1,12 +1,20 @@
 """
-Demo-grade in-memory store so the whole pipeline works with zero external
-setup. Swap this for real Supabase reads/writes before relying on it past
-the hackathon — the function signatures are written so that swap doesn't
-touch any router code.
+Demo-grade store so the whole pipeline works with zero external setup.
+State lives in memory and is snapshotted to a JSON file so a process
+restart (local reload, same Render instance) does not wipe the library.
+Swap the function bodies for Supabase before relying on this past the
+hackathon — signatures stay the same.
 """
 
+import json
+import logging
+import os
 import uuid
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+_STORE_PATH = Path(os.environ.get("HAKISCRIBE_STORE", "data/store.json"))
 
 from app.models.schemas import (
     ActionResult,
@@ -48,6 +56,7 @@ def create_session(session: Session) -> Session:
     _results[session.id] = []
     _session_matter_ids[session.id] = []
     _session_contact_ids[session.id] = []
+    _persist()
     return session
 
 
@@ -70,12 +79,21 @@ def list_sessions() -> list[Session]:
     return list(_sessions.values())
 
 
+def _generated_types(session_id: uuid.UUID) -> list[str]:
+    types: list[str] = []
+    for result in _results.get(session_id, []):
+        if result.status == "success" and result.type.value not in types:
+            types.append(result.type.value)
+    return types
+
+
 def list_library_sessions() -> list[SessionLibraryItem]:
     items = [
         SessionLibraryItem(
             **session.model_dump(),
             matters=_session_matters(session.id),
             contacts=_session_contacts(session.id),
+            generated_types=_generated_types(session.id),
         )
         for session in _sessions.values()
     ]
@@ -87,11 +105,13 @@ def update_session_status(session_id: uuid.UUID, status) -> Optional[Session]:
     if session is None:
         return None
     session.status = status
+    _persist()
     return session
 
 
 def append_segment(session_id: uuid.UUID, segment: TranscriptSegment) -> None:
     _transcripts.setdefault(session_id, []).append(segment)
+    _persist()
 
 
 def get_transcript(session_id: uuid.UUID) -> list[TranscriptSegment]:
@@ -100,6 +120,7 @@ def get_transcript(session_id: uuid.UUID) -> list[TranscriptSegment]:
 
 def set_detected_actions(session_id: uuid.UUID, actions: list[DetectedAction]) -> None:
     _actions[session_id] = actions
+    _persist()
 
 
 def get_detected_actions(session_id: uuid.UUID) -> list[DetectedAction]:
@@ -121,11 +142,13 @@ def update_action_fields(session_id: uuid.UUID, action_id: uuid.UUID, fields: di
     return action
 
 
-def update_action_status(session_id: uuid.UUID, action_id: uuid.UUID, status: ActionStatus) -> None:
+def update_action_status(session_id: uuid.UUID, action_id: uuid.UUID, status: ActionStatus) -> Optional[DetectedAction]:
     for action in _actions.get(session_id, []):
         if action.id == action_id:
             action.status = status
-            return
+            _persist()
+            return action
+    return None
 
 
 def upsert_action_results(session_id: uuid.UUID, results: list[ActionResult]) -> list[ActionResult]:
@@ -134,6 +157,7 @@ def upsert_action_results(session_id: uuid.UUID, results: list[ActionResult]) ->
         existing[result.action_id] = result
     merged = list(existing.values())
     _results[session_id] = merged
+    _persist()
     return merged
 
 
@@ -143,6 +167,7 @@ def get_action_results(session_id: uuid.UUID) -> list[ActionResult]:
 
 def add_flag(session_id: uuid.UUID, flag: FlaggedMoment) -> None:
     _flags.setdefault(session_id, []).append(flag)
+    _persist()
 
 
 def get_flags(session_id: uuid.UUID) -> list[FlaggedMoment]:
@@ -155,6 +180,7 @@ def relabel_speakers(session_id: uuid.UUID, mapping: dict[str, str]) -> list[Tra
     for segment in segments:
         if segment.speaker in cleaned:
             segment.speaker = cleaned[segment.speaker]
+    _persist()
     return segments
 
 
@@ -162,6 +188,19 @@ def set_segment_redacted(session_id: uuid.UUID, segment_id: uuid.UUID, redacted:
     for segment in _transcripts.get(session_id, []):
         if segment.id == segment_id:
             segment.redacted = redacted
+            _persist()
+            return segment
+    return None
+
+
+def update_segment(session_id: uuid.UUID, segment_id: uuid.UUID, *, redacted: Optional[bool] = None, text: Optional[str] = None) -> Optional[TranscriptSegment]:
+    for segment in _transcripts.get(session_id, []):
+        if segment.id == segment_id:
+            if redacted is not None:
+                segment.redacted = redacted
+            if text is not None:
+                segment.text = text
+            _persist()
             return segment
     return None
 
@@ -170,6 +209,7 @@ def create_matter(matter: Matter) -> Matter:
     _matters[matter.id] = matter
     for session_id in matter.session_ids:
         link_matter_to_session(session_id, matter.id)
+    _persist()
     return matter
 
 
@@ -208,6 +248,7 @@ def create_contact(contact: Contact) -> Contact:
         matter = _matters.get(contact.matter_id)
         if matter is not None and contact.id not in matter.contact_ids:
             matter.contact_ids.append(contact.id)
+    _persist()
     return contact
 
 
@@ -234,3 +275,54 @@ def link_contact_to_session(session_id: uuid.UUID, contact_id: uuid.UUID) -> Non
     contact = _contacts.get(contact_id)
     if contact is not None and contact.session_id is None:
         contact.session_id = session_id
+
+
+def _uuid_map(raw: dict) -> dict[uuid.UUID, list[uuid.UUID]]:
+    return {uuid.UUID(key): [uuid.UUID(item) for item in value] for key, value in raw.items()}
+
+
+def _persist() -> None:
+    try:
+        _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "sessions": [session.model_dump(mode="json") for session in _sessions.values()],
+            "transcripts": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _transcripts.items()},
+            "actions": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _actions.items()},
+            "flags": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _flags.items()},
+            "results": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _results.items()},
+            "matters": [item.model_dump(mode="json") for item in _matters.values()],
+            "contacts": [item.model_dump(mode="json") for item in _contacts.values()],
+            "session_matter_ids": {str(key): [str(item) for item in value] for key, value in _session_matter_ids.items()},
+            "session_contact_ids": {str(key): [str(item) for item in value] for key, value in _session_contact_ids.items()},
+        }
+        tmp = _STORE_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, default=str), encoding="utf-8")
+        tmp.replace(_STORE_PATH)
+    except Exception as exc:  # noqa: BLE001 — persistence must never break the API
+        logger.warning("Could not persist HakiScribe store: %s", exc)
+
+
+def _load() -> None:
+    if not _STORE_PATH.exists():
+        return
+    try:
+        payload = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load HakiScribe store: %s", exc)
+        return
+    _sessions.update({item.id: item for item in (Session(**raw) for raw in payload.get("sessions", []))})
+    for key, value in payload.get("transcripts", {}).items():
+        _transcripts[uuid.UUID(key)] = [TranscriptSegment(**item) for item in value]
+    for key, value in payload.get("actions", {}).items():
+        _actions[uuid.UUID(key)] = [DetectedAction(**item) for item in value]
+    for key, value in payload.get("flags", {}).items():
+        _flags[uuid.UUID(key)] = [FlaggedMoment(**item) for item in value]
+    for key, value in payload.get("results", {}).items():
+        _results[uuid.UUID(key)] = [ActionResult(**item) for item in value]
+    _matters.update({item.id: item for item in (Matter(**raw) for raw in payload.get("matters", []))})
+    _contacts.update({item.id: item for item in (Contact(**raw) for raw in payload.get("contacts", []))})
+    _session_matter_ids.update(_uuid_map(payload.get("session_matter_ids", {})))
+    _session_contact_ids.update(_uuid_map(payload.get("session_contact_ids", {})))
+
+
+_load()

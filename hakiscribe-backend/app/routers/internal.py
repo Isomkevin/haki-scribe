@@ -53,8 +53,5 @@ async def internal_generate(body: dict, x_internal_secret: str = Header(default=
     actions = [DetectedAction(**a) for a in body.get("actions", [])]
     transcript = [TranscriptSegment(**seg) for seg in body.get("transcript", [])]
 
-    results = []
-    for action in actions:
-        result = await action_executor.execute_action(action, transcript=transcript or None)
-        results.append(result.model_dump(mode="json"))
-    return results
+    results = await action_executor.execute_actions(actions, transcript=transcript or None)
+    return [result.model_dump(mode="json") for result in results]

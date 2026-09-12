@@ -38,8 +38,18 @@ def audio_format(audio_bytes: bytes) -> str:
     return "m4a" if ext == "mp4" else ext
 
 
+CODE_SWITCH_PROMPT = (
+    "This conversation mixes Kenyan English and Kiswahili, including code-switching. "
+    "Transcribe both languages faithfully. Do not translate."
+)
+
+
 def whisper_language(language_hint: Optional[str]) -> Optional[str]:
     return language_hint if language_hint in ("en", "sw") else None
+
+
+def whisper_prompt(language_hint: Optional[str]) -> Optional[str]:
+    return CODE_SWITCH_PROMPT if language_hint == "code-switch" else None
 
 
 class TranscriptionProvider(ABC):
@@ -72,6 +82,9 @@ class OpenRouterWhisperProvider(TranscriptionProvider):
         language = whisper_language(language_hint)
         if language:
             payload["language"] = language
+        prompt = whisper_prompt(language_hint)
+        if prompt:
+            payload["prompt"] = prompt
 
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -101,11 +114,11 @@ class GroqWhisperProvider(TranscriptionProvider):
         import io
 
         file_ = (chunk_filename(audio_bytes), io.BytesIO(audio_bytes))
-        resp = await self.client.audio.transcriptions.create(
-            file=file_,
-            model="whisper-large-v3",
-            language=whisper_language(language_hint),
-        )
+        kwargs: dict = {"file": file_, "model": "whisper-large-v3", "language": whisper_language(language_hint)}
+        prompt = whisper_prompt(language_hint)
+        if prompt:
+            kwargs["prompt"] = prompt
+        resp = await self.client.audio.transcriptions.create(**kwargs)
         return TranscriptionResult(text=resp.text, raw=resp.model_dump() if hasattr(resp, "model_dump") else {})
 
 
@@ -121,11 +134,11 @@ class OpenAIWhisperProvider(TranscriptionProvider):
         import io
 
         file_ = (chunk_filename(audio_bytes), io.BytesIO(audio_bytes))
-        resp = await self.client.audio.transcriptions.create(
-            file=file_,
-            model="whisper-1",
-            language=whisper_language(language_hint),
-        )
+        kwargs: dict = {"file": file_, "model": "whisper-1", "language": whisper_language(language_hint)}
+        prompt = whisper_prompt(language_hint)
+        if prompt:
+            kwargs["prompt"] = prompt
+        resp = await self.client.audio.transcriptions.create(**kwargs)
         return TranscriptionResult(text=resp.text)
 
 

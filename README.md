@@ -6,7 +6,7 @@ A legal work agent for the rooms where justice is spoken — client meetings, ch
 
 Built for [AI Tinkerers Nairobi — Agents, Everywhere](https://nairobi.aitinkerers.org/). Built for lawyers, judges, and clerks. Built as the listening instrument of [HakiChain](https://hakichain.com).
 
-[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md)
+[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Judge submission](./SUBMISSION.md)
 
 ---
 
@@ -155,6 +155,14 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 **Kevin Isom** — Lead. Architecture, FastAPI pipeline (mic + Omi, speakers, redaction, flags), OpenRouter / OpenAI / Trigger.dev / Exa / Ambiguous integrations, Render deploy. Designed HakiScribe as HakiChain’s listening instrument.
 
 **Mercy Wairimu** — Product and legal workflow. In-room experience: no-look Flag, speaker naming, privilege before the model, source-traced Action Tray, human review before anything leaves the desk. Mobile-first frontend and Kenyan practice (English / Kiswahili / code-switch, Kenya DPA trust line).
+
+---
+
+## For judges (Agents, Everywhere)
+
+The written description, demo path, and rubric mapping live in [`SUBMISSION.md`](./SUBMISSION.md).
+
+On the live app, click **Open a completed judge demo** for a finished Wanjiru Holdings client meeting (code-switched English/Kiswahili, privilege locked, Action Tray + generated letter). Pair an Omi wearable with `/webhooks/omi?session_id=<session UUID>`. Share drafts over WhatsApp; chosen work can land in Ambiguous Docs, Calendar, and CRM.
 
 ---
 

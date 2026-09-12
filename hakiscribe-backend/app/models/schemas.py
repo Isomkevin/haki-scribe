@@ -66,7 +66,8 @@ class SpeakerRelabelRequest(BaseModel):
 
 
 class SegmentRedactRequest(BaseModel):
-    redacted: bool
+    redacted: Optional[bool] = None
+    text: Optional[str] = None
 
 
 class Matter(BaseModel):
@@ -215,6 +216,7 @@ class SessionLibraryItem(Session):
 
     matters: list[Matter] = []
     contacts: list[Contact] = []
+    generated_types: list[str] = []
 
 
 class SessionDetail(Session):

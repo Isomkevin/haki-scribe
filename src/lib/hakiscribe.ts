@@ -57,6 +57,7 @@ export interface Session {
   updated_at: string;
   matters?: Matter[];
   contacts?: Contact[];
+  generated_types?: ActionType[];
 }
 
 export interface TranscriptSegment {
@@ -123,6 +124,14 @@ const configuredBaseUrl = (
 ).replace(/\/$/, "");
 
 export const hasApiConfiguration = Boolean(configuredBaseUrl);
+export const apiBaseUrl = configuredBaseUrl;
+
+export interface HealthStatus {
+  status: string;
+  integrations?: Record<string, boolean>;
+  environments?: string[];
+  webhook?: string;
+}
 
 function apiUrl(path: string) {
   if (!configuredBaseUrl) {
@@ -178,8 +187,16 @@ export const hakiApi = {
       method: "PATCH",
       body: JSON.stringify({ redacted }),
     }),
+  updateSegmentText: (sessionId: string, segmentId: string, text: string) =>
+    request<TranscriptSegment>(`/sessions/${sessionId}/segments/${segmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }),
   finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
-  detect: (id: string) => request<DetectedAction[]>(`/sessions/${id}/detect`, { method: "POST" }),
+  detect: (id: string, force = false) =>
+    request<DetectedAction[]>(`/sessions/${id}/detect${force ? "?force=true" : ""}`, { method: "POST" }),
+  dismissAction: (sessionId: string, actionId: string) =>
+    request<DetectedAction>(`/sessions/${sessionId}/actions/${actionId}/dismiss`, { method: "POST" }),
   listActions: (id: string) => request<DetectedAction[]>(`/sessions/${id}/actions`),
   generate: (id: string, actionIds: string[], fieldOverrides?: Record<string, Record<string, unknown>>) =>
     request<ActionResult[]>(`/sessions/${id}/generate`, {
@@ -195,8 +212,27 @@ export const hakiApi = {
   listContacts: () => request<Contact[]>("/contacts"),
   createContact: (body: { name: string; updates?: Record<string, unknown>; matter_id?: string; session_id?: string }) =>
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
-  health: () => request<{ status: string }>("/health"),
+  health: () => request<HealthStatus>("/health"),
+  ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
 };
+
+export function omiWebhookUrl(sessionId: string) {
+  return `${configuredBaseUrl}/webhooks/omi?session_id=${sessionId}`;
+}
+
+export function whatsappShareUrl(text: string) {
+  return `https://wa.me/?text=${encodeURIComponent(text.slice(0, 1800))}`;
+}
+
+export function downloadTextFile(filename: string, contents: string) {
+  const blob = new Blob([contents], { type: "text/plain;charset=utf-8" });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(href);
+}
 
 export function websocketUrl(sessionId: string) {
   const url = new URL(apiUrl(`/sessions/${sessionId}/stream`));
