@@ -32,6 +32,7 @@ MATTERS = [
     {"client_name": "Wanjiru Holdings Ltd", "matter_name": "Wanjiru Holdings v. Sarova Contractors — construction defect"},
     {"client_name": "Achieng' Otieno", "matter_name": "Otieno — employment termination claim"},
     {"client_name": "Mombasa Coastal Sacco", "matter_name": "Coastal Sacco — loan recovery portfolio"},
+    {"client_name": "Barclays", "matter_name": "Barclays vs. Apex Logistics"},
 ]
 
 SESSIONS = [
