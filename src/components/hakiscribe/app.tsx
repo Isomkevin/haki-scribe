@@ -235,7 +235,8 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
           const nextRecorder = new MediaRecorder(mediaStream);
           recorder.current = nextRecorder;
           nextRecorder.ondataavailable = (event) => { if (event.data.size && ws.readyState === WebSocket.OPEN) ws.send(event.data); };
-          nextRecorder.start(2500);
+          // Backend timestamps each chunk as 3s — keep the client in step.
+          nextRecorder.start(3000);
         };
       }).catch(() => setError("Microphone access is required for a Mic session. Allow access, then reopen this session."));
     }
