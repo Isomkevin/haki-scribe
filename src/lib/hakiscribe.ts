@@ -81,7 +81,7 @@ export class ApiError extends Error {
   }
 }
 
-const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
+const configuredBaseUrl = (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.replace(
   /\/$/,
   "",
 );
