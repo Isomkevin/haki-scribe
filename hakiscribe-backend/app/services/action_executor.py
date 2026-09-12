@@ -153,6 +153,89 @@ async def _generate_crm_entry(action: DetectedAction, transcript: list[Transcrip
     }
 
 
+def _sources_block(sources: list[dict]) -> str:
+    lines = []
+    for index, source in enumerate(sources, start=1):
+        lines.append(
+            f"[{index}] {source.get('title') or 'Untitled'} — {source.get('url') or 'no url'}\n{source.get('extract') or ''}"
+        )
+    return "\n\n".join(lines)
+
+
+def _fallback_answer(sources: list[dict], scope: str) -> str:
+    if not sources:
+        return (
+            "No sources could be retrieved for this question. Configure web retrieval "
+            "(EXA_API_KEY) to answer it, or research it manually — HakiScribe will not "
+            "state law it cannot cite."
+        )
+    label = "Retrieved authorities" if scope == "legal" else "Retrieved background"
+    lines = [f"{label} (no drafting model configured, so these are shown unsummarised):", ""]
+    for index, source in enumerate(sources, start=1):
+        lines.append(f"[{index}] {source.get('title') or source.get('url')}")
+        if source.get("extract"):
+            lines.append(f"    {source['extract']}")
+    return "\n".join(lines)
+
+
+async def _run_research(action: DetectedAction, transcript: list[TranscriptSegment], scope: str) -> dict:
+    fields = action.extracted_fields
+    question = str(fields.get("question") or fields.get("query") or action.preview or action.title).strip()
+
+    sources = (
+        await exa_client.search_legal(question)
+        if scope == "legal"
+        else await exa_client.search_web(question)
+    )
+
+    model = str(fields.get("model") or llm_client.DEFAULT_MODEL)
+    answer = None
+    if sources:
+        context = _sources_block(sources)
+        record = generation.format_transcript(transcript)
+        user_prompt = (
+            f"Question: {question}\n\nRetrieved sources:\n{context}\n\n"
+            f"Context from the conversation (background only, not a source):\n{record[:4000]}"
+        )
+        try:
+            answer = await llm_client.complete(RESEARCH_SYSTEM_PROMPT, user_prompt, model=model)
+        except Exception:  # noqa: BLE001 — fall back to showing the raw sources
+            answer = None
+
+    result = ResearchResult(
+        question=question,
+        answer=answer or _fallback_answer(sources, scope),
+        sources=[ResearchSource(**source) for source in sources],
+        model=model if answer else None,
+        scope=scope,
+    )
+    return result.model_dump()
+
+
+async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
+    fields = action.extracted_fields
+    instruction = str(fields.get("instruction") or action.preview or action.title).strip()
+    model = str(fields.get("model") or llm_client.DEFAULT_MODEL)
+    record = generation.format_transcript(transcript)
+
+    output = None
+    try:
+        output = await llm_client.complete(
+            ASK_SYSTEM_PROMPT,
+            f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
+            model=model,
+        )
+    except Exception as exc:  # noqa: BLE001 — surfaced on the card
+        output = f"The model could not be reached: {exc}"
+
+    if not output:
+        output = (
+            "No language model is configured for this workspace, so this instruction "
+            "was not run. Add an OpenRouter key to enable it."
+        )
+    return LlmTaskResult(model=model, instruction=instruction, output=output).model_dump()
+
+
 async def execute_action(
     action: DetectedAction,
     transcript: list[TranscriptSegment] | None = None,
