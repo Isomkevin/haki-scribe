@@ -1,0 +1,47 @@
+# HakiScribe backend (scaffold)
+
+## Run it
+```
+pip install -r requirements.txt
+cp .env.example .env   # fill in at least one ASR provider key + OPENROUTER_API_KEY
+uvicorn app.main:app --reload --port 8000
+```
+
+Everything works with zero sponsor keys configured — Ambiguous AI,
+Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
+local-only behavior. Add keys incrementally to light up real integrations.
+
+## Quick demo path (fastest to a working end-to-end demo)
+1. `POST /sessions` with `{"title": "Demo", "source": "omi", "language_hint": "code-switch"}` -> note the `id`.
+2. `POST /webhooks/omi` with that `id` as `session_external_id` and a fake `segments` list (use raw labels like "Speaker 1") to prove ingestion works before touching real Omi payloads.
+3. `GET /sessions/{id}` to see the transcript assembled.
+4. `POST /sessions/{id}/speakers` with `{"mapping": {"Speaker 1": "John Kamau", "Speaker 2": "Mercy Wairimu"}}` to relabel.
+5. `PATCH /sessions/{id}/segments/{segment_id}` with `{"redacted": true}` on any segment that should never reach the detection prompt.
+6. `POST /sessions/{id}/flags` with `{"at_ms": 4000, "label": "Follow-up date"}` to simulate the no-look Flag button.
+7. `POST /sessions/{id}/finalize` to mark it ready.
+8. `POST /sessions/{id}/detect` (needs `OPENROUTER_API_KEY`) — runs the action-tray detection pass, weighted by flags and aware of any existing `Matter` records. Runs via Trigger.dev if `TRIGGER_SECRET_KEY` is set, otherwise directly in-process. If `EXA_API_KEY` is set, named counterparties get enriched with a company lookup.
+9. `POST /sessions/{id}/generate` with `{"action_ids": [...]}` — generates the selected ones. `draft_document`, `private_note`, `time_entry` are always real; `calendar_event` always returns a real `.ics`; if `AMBIGUOUS_API_KEY` is set, `draft_document` also creates a real Ambiguous Doc (+ a Chat notification), `calendar_event` also creates a real Ambiguous Calendar event, `workspace_matter` creates/links a real Ambiguous CRM deal, and `crm_entry` attempts a real Ambiguous CRM contact — all fall back to local-only results if that key isn't set.
+10. For mic capture: connect a WebSocket client to `/sessions/{id}/stream` and send raw audio chunk bytes; you'll get `TranscriptSegment` JSON back per chunk.
+11. `GET /matters` to see matters created across sessions — run step 8 twice for the same client and watch the second one link instead of duplicating.
+
+## Sponsor integrations at a glance
+
+| Sponsor | Where | Behavior without a key |
+|---|---|---|
+| OpenAI | Default ASR provider (`transcription.py`) | N/A — pick a different `ASR_PROVIDER` |
+| OpenRouter | Detection + drafting LLM calls, pointed at an OpenAI model by default | N/A — required for `/detect` and `draft_document` either way |
+| Ambiguous AI | Docs/Calendar/CRM/Chat (`app/integrations/ambiguous_client.py`) | Every generated action still works, just stays local-only |
+| Trigger.dev | Background execution of `/detect` and `/generate` (`app/services/trigger_client.py` + `trigger/`) | Same logic runs directly in-process instead |
+| Exa | Company/counterparty enrichment (`app/integrations/exa_client.py`) | Detected actions just skip the `background_info` field |
+
+See `trigger/README.md` for deploying the Trigger.dev tasks — they need
+a **publicly reachable** `BACKEND_INTERNAL_URL`, not `localhost`.
+
+## What's stubbed and needs real wiring before it's more than a demo
+- `app/services/storage.py` — in-memory, swap for Supabase.
+- `app/integrations/ambiguous_client.create_contact` — best-effort route (`/api/crm/contacts`); confirm the exact path against Ambiguous's live API reference.
+- `app/routers/omi_webhook.py` — field names guessed; check Omi's actual webhook payload docs.
+- `app/services/storage.py::find_matter_by_client` — simple substring match; fine for a demo, not production matching.
+- `app/services/transcription.py::IntronVoiceProvider` — not implemented; needed only for the CodeSwitch Africa Challenge submission.
+
+See `SPEC.md` for the full architecture and rationale — hand that file to whichever AI coding agent you're driving this with, it's written to be agent-agnostic.
