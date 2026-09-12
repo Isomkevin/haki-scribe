@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from app.services import documents
 from app.models.schemas import (
     CalendarEventResult,
     DetectedAction,
