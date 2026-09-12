@@ -20,6 +20,7 @@ import uuid
 
 import httpx
 
+from app.services import documents
 from app.models.schemas import ActionType, DetectedAction, FlaggedMoment, Matter, TranscriptSegment
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -131,6 +132,18 @@ def _detect_heuristic(
         span_ms = max(segment.end_ms for segment in usable_segments) - min(segment.start_ms for segment in usable_segments)
         hours = max(round(span_ms / 3_600_000, 2), 0.1)
 
+    primary_kind = documents.infer_document_kind(text)
+    document_line = next(
+        (
+            segment.text.strip()
+            for segment in usable_segments
+            if any(k in segment.text.lower() for k in ("demand", "notice", "affidavit", "file", "draft", "prepare", "revoke", "arbitration"))
+        ),
+        first_line,
+    )
+    document_preview = document_line or "Prepare a working draft from the verified record."
+    document_quote = (document_line or quote)[:80]
+
     legal_hits = any(word in text for word in ("demand", "letter", "agreement", "contract", "affidavit", "notice", "brief", "undertaking", "memo"))
     calendar_hits = any(
         word in text
@@ -157,15 +170,15 @@ def _detect_heuristic(
         },
         {
             "type": "draft_document",
-            "title": "Draft: Demand Letter" if "demand" in text else "Draft: Legal Memo",
-            "preview": first_line or "Prepare a working draft from the verified record.",
-            "confidence": 0.78 if legal_hits else 0.64,
+            "title": f"Draft: {documents.KIND_TITLES[primary_kind].title()}",
+            "preview": document_preview,
+            "confidence": 0.82 if legal_hits else 0.66,
             "confidence_reason": "Explicitly stated" if legal_hits else "Inferred from context",
-            "source_quote": quote,
+            "source_quote": document_quote,
             "extracted_fields": {
-                "document_kind": "demand_letter" if "demand" in text else "legal_memo",
+                "document_kind": primary_kind,
                 "parties": speakers or [client],
-                "key_facts": first_line or matter_name,
+                "key_facts": document_preview,
             },
             "pre_checked": True,
         },

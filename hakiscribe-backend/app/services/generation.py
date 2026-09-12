@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from app.services import documents
 from app.models.schemas import (
     CalendarEventResult,
     DetectedAction,
@@ -89,37 +90,55 @@ async def complete_text(system_prompt: str, user_prompt: str) -> str | None:
 
 
 class DraftDocumentModel:
-    """Drafts a full legal document from extracted fields + transcript."""
+    """Drafts a real, filing-shaped legal document from the verified record.
+
+    The document is composed from facts extracted out of the transcript
+    (parties, sums, dates, statutes, title numbers, deadlines) into the
+    correct Kenyan instrument for the detected kind. When a drafting model
+    is configured it drafts on top of those same extracted facts; when it
+    isn't, the composed instrument IS the draft — never a placeholder.
+    """
 
     SYSTEM_PROMPT = (
-        "You are a legal drafting assistant. Given the document kind, parties, "
-        "facts, and the verified transcript, draft the document in professional "
-        "legal register. Use only facts supported by the transcript. Use "
-        "placeholders like [DATE] or [ADDRESS] for anything not supplied. "
-        "Output only the document text, no commentary."
+        "You are a Kenyan advocate drafting a real legal instrument for filing or "
+        "service. Draft the full document in correct Kenyan form and legal register: "
+        "proper heading (REPUBLIC OF KENYA / court / cause number for pleadings, "
+        "letterhead and RE: line for correspondence), numbered paragraphs, prayers or "
+        "a demand with a stated compliance period, and a signature/jurat block. Cite "
+        "only statutes actually mentioned in the record. Use ONLY facts supported by "
+        "the transcript and the extracted-facts list — never invent a party, figure, "
+        "date or authority. Anything not on the record must appear as a bracketed "
+        "placeholder such as [ADDRESS] or [DATE]. Output only the document text."
     )
 
     async def generate(self, action: DetectedAction, transcript: list[TranscriptSegment] | None) -> DraftDocumentResult:
         fields = action.extracted_fields
-        kind = str(fields.get("document_kind") or "legal memo").replace("_", " ")
+        record = format_transcript(transcript)
+        kind = documents.normalise_kind(
+            fields.get("document_kind"),
+            f"{action.title} {action.preview} {record}",
+        )
         parties = fields.get("parties") or speakers_from_transcript(transcript)
         if isinstance(parties, list):
             parties_text = ", ".join(str(item) for item in parties if item)
         else:
             parties_text = str(parties)
         key_facts = str(fields.get("key_facts") or action.preview)
-        record = format_transcript(transcript)
+        facts = documents.extract_facts(transcript)
 
         prompt = (
-            f"Document kind: {kind}\n"
-            f"Title: {action.title}\n"
+            f"Document to draft: {documents.KIND_TITLES.get(kind, kind)}\n"
+            f"Matter/title: {action.title}\n"
             f"Parties: {parties_text or 'not specified'}\n"
             f"Key facts: {key_facts}\n\n"
-            f"Verified transcript:\n{record or '(no non-redacted lines)'}"
+            f"Checkable facts extracted from the record:\n{documents.facts_brief(facts) or '(none)'}\n\n"
+            f"Verified (non-redacted) transcript:\n{record or '(no non-redacted lines)'}\n\n"
+            "Draft the complete document now."
         )
         document_text = await complete_text(self.SYSTEM_PROMPT, prompt)
-        if not document_text:
-            document_text = self._from_transcript(kind, parties_text, key_facts, record, action)
+        if not document_text or len(document_text) < 400:
+            document_text = documents.compose_document(kind, action, transcript)
+        document_text += documents.compliance_footer(kind)
 
         return DraftDocumentResult(
             document_text=document_text,
@@ -127,28 +146,6 @@ class DraftDocumentModel:
             source="transcript",
         )
 
-    def _from_transcript(self, kind: str, parties: str, key_facts: str, record: str, action: DetectedAction) -> str:
-        today = datetime.utcnow().strftime("%d %B %Y")
-        body = record or key_facts or action.preview
-        return (
-            f"{kind.upper()}\n\n"
-            f"Date: {today}\n"
-            f"Re: {action.title}\n"
-            f"Parties: {parties or '[PARTY]'}\n\n"
-            "I. INTRODUCTION\n\n"
-            f"This {kind} is prepared from the verified conversation record. "
-            f"{key_facts}\n\n"
-            "II. RECORD\n\n"
-            f"{body}\n\n"
-            "III. REQUEST / NEXT STEPS\n\n"
-            "Please review the above against the source transcript and advise "
-            "on the preferred next step. Items not stated in the record are "
-            "left as placeholders.\n\n"
-            "Respectfully submitted,\n"
-            "[COUNSEL NAME]\n"
-            "[FIRM]\n"
-            "[ADDRESS]"
-        )
 
 
 class CalendarEventModel:
