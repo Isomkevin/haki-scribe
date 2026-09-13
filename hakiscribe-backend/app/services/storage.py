@@ -151,9 +151,24 @@ def update_action_status(session_id: uuid.UUID, action_id: uuid.UUID, status: Ac
     return None
 
 
+def _archive_document(session_id: uuid.UUID, result: ActionResult) -> None:
+    """Keep the firm's own durable copy of a drafted document in S3 when configured."""
+    text = result.result.get("document_text") if isinstance(result.result, dict) else None
+    if not isinstance(text, str) or not text.strip() or result.result.get("s3_url"):
+        return
+    kind = str(result.result.get("document_kind") or "document").replace(" ", "-")
+    key = f"sessions/{session_id}/{kind}-{result.action_id}.txt"
+    url = object_store.archive_document(key, text)
+    if url:
+        result.result["s3_key"] = key
+        result.result["s3_url"] = url
+
+
 def upsert_action_results(session_id: uuid.UUID, results: list[ActionResult]) -> list[ActionResult]:
     existing = {item.action_id: item for item in _results.get(session_id, [])}
     for result in results:
+        if result.status == "success":
+            _archive_document(session_id, result)
         existing[result.action_id] = result
     merged = list(existing.values())
     _results[session_id] = merged
