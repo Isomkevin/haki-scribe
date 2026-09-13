@@ -152,6 +152,9 @@ class ActionResult(BaseModel):
     status: str  # "success" | "error"
     result: dict[str, Any] = {}
     error: Optional[str] = None
+    # When the artifact was produced — kept on the record so the case tracker can
+    # show a date for every generated document after a restart.
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class DraftDocumentResult(BaseModel):

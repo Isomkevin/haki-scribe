@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { CalendarClock, ExternalLink, FileText, Flag, RefreshCw, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hakiApi, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
@@ -14,6 +15,8 @@ interface TrackedDocument {
   sessionTitle: string;
   kind: string;
   url: string | null;
+  createdAt: string | null;
+  archived: boolean;
 }
 
 interface TrackedEvent {
@@ -37,6 +40,8 @@ function documentOf(result: ActionResult, detail: SessionDetail): TrackedDocumen
     sessionTitle: detail.title,
     kind: kind.replace(/[-_]/g, " "),
     url: str(result.result["ambiguous_document_url"]) ?? str(result.result["s3_url"]),
+    createdAt: str(result.created_at ?? null) ?? detail.created_at,
+    archived: Boolean(str(result.result["s3_url"])),
   };
 }
 
@@ -151,7 +156,68 @@ export function TrackerPage() {
           <StatCard icon={<CalendarClock className="size-4" />} label="Upcoming dates" value={upcoming.length} />
         </section>
 
-        <section className="mb-10">
+        <Tabs defaultValue="sessions">
+          <TabsList className="mb-5 w-full justify-start overflow-x-auto">
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
+            <TabsTrigger value="diary">Diary ({upcoming.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="documents">
+            <SectionHeading eyebrow="Artifacts" title="Generated documents" />
+            {documents.length === 0 ? (
+              <p className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                No documents have been generated yet. Draft one from a session's action tray.
+              </p>
+            ) : (
+              <ul className="grid gap-3">
+                {documents.map((document, index) => (
+                  <li
+                    key={`${document.sessionId}-${index}`}
+                    className="grid gap-2 rounded-lg border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-serif text-base font-semibold capitalize">{document.kind}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDate(document.createdAt)} · From {document.sessionTitle}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant={document.url ? "outline" : "secondary"} className="text-[11px]">
+                          {document.url ? "In Ambiguous" : "Saved on the record"}
+                        </Badge>
+                        {document.archived ? (
+                          <Badge variant="secondary" className="text-[11px]">
+                            Archived copy
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {document.url ? (
+                        <Button asChild size="sm" variant="outline">
+                          <a href={document.url} target="_blank" rel="noreferrer">
+                            Open in Ambiguous <ExternalLink className="ml-1 size-3" />
+                          </a>
+                        </Button>
+                      ) : null}
+                      <Button asChild size="sm" variant="ghost">
+                        <Link
+                          to="/sessions/$sessionId"
+                          params={{ sessionId: document.sessionId }}
+                          search={{ fresh: false }}
+                        >
+                          Open session
+                        </Link>
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </TabsContent>
+
+          <TabsContent value="diary">
+          <section className="mb-10">
           <SectionHeading eyebrow="Diary" title="Upcoming calendar events" />
           {upcoming.length === 0 ? (
             <p className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
@@ -179,9 +245,11 @@ export function TrackerPage() {
               ))}
             </ul>
           )}
-        </section>
+          </section>
+          </TabsContent>
 
-        <section>
+          <TabsContent value="sessions">
+          <section>
           <SectionHeading eyebrow="Record" title="All sessions" />
           {loaded.length === 0 && !sessions.isLoading ? (
             <p className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
@@ -285,7 +353,9 @@ export function TrackerPage() {
               );
             })}
           </ul>
-        </section>
+          </section>
+          </TabsContent>
+        </Tabs>
       </main>
       <WorkspaceFooter />
     </PageShell>
