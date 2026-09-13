@@ -15,7 +15,7 @@ A new "Connectors" page where a lawyer links HakiScribe to the other tools they 
 - Persist connections as a new `haki_records` kind `"integrations"` in the existing database layer (`db.py`) so they survive restarts once `DATABASE_URL` is set; falls back to the snapshot file meanwhile. Credentials stored server-side only — never returned in full by the API (masked, e.g. `sk-…9f2`).
 - Routes: `GET /integrations` (list with status), `POST /integrations/{provider}` (connect + verify), `DELETE /integrations/{provider}` (disconnect).
 - Export actions: `POST /sessions/{id}/documents/{action_id}/export` targeting a connected storage provider — pushes the drafted document text as a `.docx`-style file to Drive/Dropbox and records the destination link on the result.
-- Claude as an LLM option: when a Claude connector exists, `llm_client` can route the "Ask an AI model" task through the user's Claude key in addition to the built-in default.
+- Bring-your-own LLM keys: any connected model provider — Anthropic (Claude), OpenAI, Google Gemini, Mistral, OpenRouter, or a custom OpenAI-compatible endpoint — is added to the "Ask an AI model" picker alongside the built-in default, with `llm_client` routing the task through that provider's key.
 
 ## Frontend work
 
