@@ -28,7 +28,7 @@ def _load_env_files() -> None:
 _load_env_files()
 
 from app.integrations import llm_client
-from app.routers import actions, demo, internal, matters, news, sessions, omi_webhook, stream
+from app.routers import actions, demo, integrations, internal, matters, news, sessions, omi_webhook, stream
 
 app = FastAPI(title="HakiScribe", version="0.1.0")
 
@@ -50,6 +50,7 @@ app.include_router(internal.router, prefix="/internal", tags=["internal"])
 app.include_router(demo.router, prefix="/demo", tags=["demo"])
 app.include_router(news.router, prefix="/news", tags=["news"])
 app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
+app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 
 
 @app.get("/")
@@ -91,5 +92,11 @@ async def health():
 
 @app.get("/models")
 def models():
-    """Model picker for the 'Ask anything about this session' composer."""
-    return llm_client.available_models()
+    """Model picker for the 'Ask anything about this session' composer.
+    Includes built-in OpenRouter models plus any user-connected LLM keys."""
+    base = llm_client.available_models()
+    from app.services import integrations
+    connected = integrations.connected_llm_models()
+    if connected:
+        base["models"] = [*base["models"], *connected]
+    return base

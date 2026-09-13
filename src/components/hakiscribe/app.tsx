@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  Cloud,
   ContactRound,
   Copy,
   Download,
@@ -280,10 +281,13 @@ export function HomePage() {
             eyebrow="Session library"
             title="Past sessions"
             action={
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
                 <Button asChild variant="outline" size="sm">
                   <Link to="/tracker">Case tracker</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/connectors">Connectors</Link>
                 </Button>
               </div>
             }
@@ -802,7 +806,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
         <TranscriptPanel transcript={session.transcript} actions={visibleActions} />
       ) : tab === "results" && results.length ? (
         <>
-          <ResultsList results={results} />
+          <ResultsList results={results} sessionId={session.id} />
           {failedIds.length > 0 && (
             <div className="mt-6">
               <Button variant="outline" disabled={generate.isPending} onClick={() => generate.mutate(failedIds)}>
@@ -1263,13 +1267,30 @@ function SourceList({ sources }: { sources: ResearchSource[] }) {
   );
 }
 
-function ResultsList({ results }: { results: ActionResult[] }) {
-  return <div className="mt-8 space-y-4">{results.map((item) => <ResultCard key={item.action_id} result={item} />)}</div>;
+function ResultsList({ results, sessionId }: { results: ActionResult[]; sessionId: string }) {
+  return <div className="mt-8 space-y-4">{results.map((item) => <ResultCard key={item.action_id} result={item} sessionId={sessionId} />)}</div>;
 }
 
-function ResultCard({ result }: { result: ActionResult }) {
+function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: string }) {
   const Icon = actionIcons[result.type];
   const [documentText, setDocumentText] = useState(displayValue(result.result["document_text"] ?? ""));
+  const queryClient = useQueryClient();
+  const storageProviders = useQuery({
+    queryKey: ["integrations"],
+    queryFn: hakiApi.listIntegrations,
+    select: (items) => items.filter((item) => item.group === "storage" && item.connected),
+    retry: false,
+  });
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportDoc = useMutation({
+    mutationFn: ({ provider }: { provider: string }) => hakiApi.exportDocument(sessionId, result.action_id, provider),
+    onSuccess: (data) => {
+      toast.success(data.url ? `Exported to ${data.provider}` : `Export queued for ${data.provider}`);
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      setExportOpen(false);
+    },
+    onError: (error: Error) => toast.error(error instanceof Error ? error.message : "Export failed"),
+  });
   if (result.status === "error") {
     return (
       <article className="chamber-card rounded-xl border border-destructive/30 p-5">
@@ -1318,6 +1339,29 @@ function ResultCard({ result }: { result: ActionResult }) {
               <Button asChild variant="outline" size="sm" className="min-w-0">
                 <a href={(workspaceUrl || result.result["ambiguous_document_url"]) as string} target="_blank" rel="noreferrer"><FileText /> Open in Ambiguous</a>
               </Button>
+            )}
+            {storageProviders.data && storageProviders.data.length > 0 && (
+              <div className="relative">
+                <Button variant="outline" size="sm" className="min-w-0" onClick={() => setExportOpen((prev) => !prev)}>
+                  <ExternalLink /> Export
+                </Button>
+                {exportOpen && (
+                  <div className="absolute right-0 z-10 mt-1 min-w-44 rounded-md border border-border bg-popover p-1 shadow-md">
+                    {storageProviders.data.map((provider) => (
+                      <button
+                        key={provider.provider_id}
+                        type="button"
+                        disabled={exportDoc.isPending}
+                        onClick={() => exportDoc.mutate({ provider: provider.provider_id })}
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+                      >
+                        <Cloud className="size-3.5" />
+                        {provider.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[22rem] resize-y border-0 bg-background p-4 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:min-h-[28rem] sm:p-10" />
