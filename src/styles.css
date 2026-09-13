@@ -190,9 +190,18 @@
     font-family: var(--font-sans);
     min-width: 320px;
     letter-spacing: 0;
+    overflow-wrap: break-word;
   }
 
   button, input, textarea, select { letter-spacing: 0; }
+
+  button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+}
+
+@supports (padding: max(0px)) {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 }
 
 /* Hide the published-host "Edit with Lovable" badge. Unlayered + !important
