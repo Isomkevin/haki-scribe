@@ -13,7 +13,7 @@ export const generateActions = task({
   // Research and model passes can take minutes — don't cut them short.
   maxDuration: 600,
   run: async (payload: GenerateActionsPayload) => {
-    const backendUrl = process.env.BACKEND_INTERNAL_URL;
+    const backendUrl = process.env['BACKEND_INTERNAL_URL'];
     if (!backendUrl) {
       throw new Error("BACKEND_INTERNAL_URL is not set");
     }
@@ -22,7 +22,7 @@ export const generateActions = task({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Secret": process.env.BACKEND_INTERNAL_SECRET ?? "",
+        "X-Internal-Secret": process.env['BACKEND_INTERNAL_SECRET'] ?? "",
       },
       body: JSON.stringify(payload),
     });

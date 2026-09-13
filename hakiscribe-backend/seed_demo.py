@@ -194,7 +194,7 @@ SESSIONS = [
 
 
 def main():
-    client = httpx.Client(timeout=180)
+    client = httpx.Client(timeout=600)
     print(f"Seeding {BASE}")
 
     for m in MATTERS:
