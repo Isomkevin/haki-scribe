@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.integrations import exa_client
 from app.services import legal_intel, news_store
 
 router = APIRouter()
@@ -52,45 +53,67 @@ async def watch_news(payload: NewsWatchRequest):
     )
 
 
+def _run_id(data: dict, payload: dict) -> Optional[str]:
+    for candidate in (data.get("id"), data.get("runId"), payload.get("runId")):
+        value = str(candidate or "")
+        if value.startswith("run_"):
+            return value
+    event_like = str(data.get("id") or "")
+    if event_like and not event_like.startswith("event_"):
+        return event_like
+    return None
+
+
 @webhook_router.post("/exa")
-async def receive_exa_monitor(payload: dict, x_exa_signature: str = Header(default="")):
-    """Exa Monitors delivery. Hits are stored only when they still connect to the matter."""
-    del x_exa_signature
-    results = payload.get("results") or payload.get("data") or []
-    if isinstance(results, dict):
-        results = results.get("results") or []
+async def receive_exa_monitor(request: Request):
+    """Exa Monitors delivery. The webhook is a run envelope — fetch output.results."""
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return {"received": 0}
+
+    event_type = str(payload.get("type") or "")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    if event_type and event_type not in ("monitor.run.completed",):
+        return {"received": 0, "ignored": event_type}
+
+    status = data.get("status")
+    if status and status != "completed":
+        return {"received": 0, "status": status}
+
+    monitor_id = (
+        data.get("monitorId")
+        or data.get("monitor_id")
+        or payload.get("monitorId")
+        or payload.get("monitor_id")
+    )
+    run_id = _run_id(data, payload)
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    monitor = news_store.get_monitor(str(monitor_id)) if monitor_id else None
     topic = (
-        payload.get("name")
-        or (payload.get("search") or {}).get("query")
-        or payload.get("query")
+        (monitor or {}).get("topic")
+        or metadata.get("matter_name")
+        or payload.get("name")
         or "legal-intelligence"
     )
-    monitor_id = payload.get("id") or payload.get("monitorId") or payload.get("monitor_id")
-    monitor = news_store.get_monitor(str(monitor_id)) if monitor_id else news_store.find_monitor_by_topic(str(topic))
-    scope = legal_intel.resolve_scope(
-        session_id=(monitor or {}).get("session_id"),
-        matter_id=(monitor or {}).get("matter_id"),
-    )
-    normalised = []
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        highlights = item.get("highlights") or []
-        raw = {
-            "title": item.get("title"),
-            "url": item.get("url"),
-            "published": item.get("publishedDate") or item.get("published"),
-            "extract": (highlights[0] if highlights else item.get("text") or item.get("extract")),
-        }
-        scored = legal_intel.score_hit(raw, scope) if scope else None
-        if scored:
-            normalised.append(scored)
-    stored = news_store.add_hits(
-        normalised,
+
+    results: list[dict] = []
+    output = data.get("output") if isinstance(data.get("output"), dict) else {}
+    for candidate in (payload.get("results"), data.get("results"), output.get("results")):
+        if isinstance(candidate, list) and candidate:
+            results = [item for item in candidate if isinstance(item, dict)]
+            break
+
+    if not results and monitor_id and run_id:
+        run = await exa_client.get_run(str(monitor_id), str(run_id))
+        if run is None:
+            raise HTTPException(status_code=503, detail="Could not load monitor run from Exa")
+        results = legal_intel.results_from_run(run)
+
+    stored = legal_intel.ingest_monitor_results(
+        results,
+        monitor=monitor,
         monitor_id=str(monitor_id) if monitor_id else None,
         topic=str(topic),
-        session_id=(monitor or {}).get("session_id"),
-        matter_id=(monitor or {}).get("matter_id"),
-        matter_name=(scope or {}).get("matter_name"),
+        metadata=metadata,
     )
-    return {"received": len(stored)}
+    return {"received": len(stored), "monitor_id": monitor_id, "run_id": run_id}

@@ -1037,6 +1037,7 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
     queryFn: () => hakiApi.listLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
     enabled: hasApiConfiguration,
     retry: false,
+    refetchInterval: 15_000,
   });
   const retrieve = useMutation({
     mutationFn: () => hakiApi.searchLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
@@ -1053,8 +1054,15 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
   const watch = useMutation({
     mutationFn: () => hakiApi.watchLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
     onSuccess: (data) => {
-      if (data.grounded) toast.success(data.created ? "Watching legal developments for this matter" : "Legal watch refreshed");
-      else toast.message(data.reason || "Legal intelligence needs a matter or transcript");
+      if (!data.grounded) {
+        toast.message(data.reason || "Legal intelligence needs a matter or transcript");
+      } else if (data.monitor?.status === "local-only") {
+        toast.message("Watch saved locally — Exa did not register a monitor. Check EXA_API_KEY and the public webhook URL.");
+      } else if (data.created) {
+        toast.success("Watching legal developments for this matter");
+      } else {
+        toast.success("Legal watch refreshed");
+      }
       void intel.refetch();
     },
     onError: (error) => toast.error(error.message),

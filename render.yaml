@@ -14,6 +14,19 @@ services:
         - hakiscribe-backend/**
         - render.yaml
     envVars:
+      # Required once, on first Blueprint create. Captions, detect, draft,
+      # and Ask all share this key. Model slugs like openai/gpt-4o are
+      # OpenRouter IDs, not a second vendor account.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # Protects /internal/* so Trigger.dev can call back. Generated here
+      # so the same value is available without committing a secret.
+      - key: BACKEND_INTERNAL_SECRET
+        generateValue: true
+      # Public URL Trigger.dev and Exa monitors use to reach this service.
+      # Code falls back to EXA_MONITOR_WEBHOOK_URL or {this}/webhooks/exa.
+      - key: BACKEND_INTERNAL_URL
+        value: https://hakiscribe-backend.onrender.com
       - key: ASR_PROVIDER
         value: openrouter
       - key: ASR_MODEL
@@ -22,16 +35,11 @@ services:
         value: openai/gpt-4o
       - key: DRAFTING_MODEL
         value: openai/gpt-4o
-      - key: AMBIGUOUS_NOTIFY_CHANNEL
-        value: ""
-      - key: BACKEND_INTERNAL_URL
-        value: https://hakiscribe-backend.onrender.com
-      # GPT detection/drafting goes through OpenRouter. The openai/ prefix
-      # on the model names is an OpenRouter slug, not a second vendor key.
-      - key: OPENROUTER_API_KEY
-        sync: false
-      # Optional: add OPENAI_API_KEY in the Dashboard later if you want
-      # live Whisper captions. Without it, ASR no-ops and the rest of
-      # the pipeline still works.
-      - key: BACKEND_INTERNAL_SECRET
-        generateValue: true
+      - key: ASK_MODEL
+        value: openai/gpt-4o
+      # Dashboard-only (do not add as sync: false — that makes them
+      # mandatory on first deploy). Each no-ops or has a code default:
+      #   EXA_API_KEY, EXA_MONITOR_WEBHOOK_URL
+      #   AMBIGUOUS_API_KEY, AMBIGUOUS_CALENDAR_ID, AMBIGUOUS_NOTIFY_CHANNEL
+      #   TRIGGER_SECRET_KEY, OMI_SHARED_SECRET
+      #   OPENAI_API_KEY, GROQ_API_KEY  (only if you change ASR_PROVIDER)

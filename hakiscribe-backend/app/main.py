@@ -78,6 +78,10 @@ async def health():
             "search": "/news/search",
             "watch": "/news/watch",
             "monitor_webhook": "/webhooks/exa",
+            "monitor_webhook_url": (
+                os.environ.get("EXA_MONITOR_WEBHOOK_URL")
+                or f"{(os.environ.get('BACKEND_INTERNAL_URL') or '').rstrip('/')}/webhooks/exa"
+            ),
             "mode": "legal-intelligence",
         },
     }

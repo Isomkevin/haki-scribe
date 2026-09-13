@@ -41,6 +41,20 @@ def _load() -> None:
 
 
 def add_monitor(record: dict[str, Any]) -> dict[str, Any]:
+    return upsert_monitor(record)
+
+
+def upsert_monitor(record: dict[str, Any]) -> dict[str, Any]:
+    monitor_id = record.get("id")
+    topic = (record.get("topic") or "").strip().lower()
+    for index, item in enumerate(_monitors):
+        same_id = bool(monitor_id) and item.get("id") == monitor_id
+        same_topic = bool(topic) and (item.get("topic") or "").strip().lower() == topic
+        if same_id or same_topic:
+            merged = {**item, **{key: value for key, value in record.items() if value is not None}}
+            _monitors[index] = merged
+            _persist()
+            return merged
     _monitors.append(record)
     _persist()
     return record
@@ -107,6 +121,8 @@ def _connected(item: dict[str, Any]) -> bool:
         "matter:",
         "party:",
         "authority:",
+        "on the record:",
+        "connected terms:",
         "arbitration",
         "contract",
         "defective",

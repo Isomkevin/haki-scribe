@@ -15,6 +15,7 @@ No-ops to empty results when EXA_API_KEY is unset.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -77,8 +78,20 @@ def is_configured() -> bool:
     return bool(_api_key())
 
 
+_last_error: str | None = None
+
+
+def last_error() -> str | None:
+    return _last_error
+
+
 def _headers() -> dict[str, str]:
-    return {"x-api-key": _api_key() or "", "Content-Type": "application/json"}
+    key = _api_key() or ""
+    return {
+        "x-api-key": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
 
 
 def _highlight(item: dict[str, Any]) -> Optional[str]:
@@ -108,18 +121,43 @@ def _normalise(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-async def _post(url: str, payload: dict[str, Any], timeout: float = 45) -> Optional[dict[str, Any]]:
+async def _request(
+    method: str,
+    url: str,
+    payload: dict[str, Any] | None = None,
+    timeout: float = 45,
+) -> Optional[dict[str, Any]]:
+    global _last_error
     if not _api_key():
+        _last_error = "EXA_API_KEY is not set"
         return None
+    _last_error = None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, headers=_headers(), json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+            resp = await client.request(
+                method,
+                url,
+                headers=_headers(),
+                json=payload if payload is not None else None,
+            )
+            if resp.status_code >= 400:
+                _last_error = f"{method} {url} -> {resp.status_code}: {resp.text[:400]}"
+                logger.warning("Exa %s", _last_error)
+                return None
+            data = resp.json() if resp.content else {}
             return data if isinstance(data, dict) else None
     except Exception as exc:  # noqa: BLE001 — retrieval is best-effort
-        logger.warning("Exa %s failed (%s)", url, exc)
+        _last_error = f"{method} {url} failed ({exc})"
+        logger.warning("Exa %s", _last_error)
         return None
+
+
+async def _post(url: str, payload: dict[str, Any], timeout: float = 45) -> Optional[dict[str, Any]]:
+    return await _request("POST", url, payload, timeout=timeout)
+
+
+async def _get(url: str, timeout: float = 30) -> Optional[dict[str, Any]]:
+    return await _request("GET", url, timeout=timeout)
 
 
 async def search_web(query: str) -> list[dict[str, Any]]:
@@ -242,23 +280,52 @@ async def create_monitor(
     webhook_url: str,
     period: str = "1d",
     legal: bool = True,
+    metadata: dict[str, str] | None = None,
 ) -> Optional[dict[str, Any]]:
     """Standalone Monitors API. Store webhookSecret immediately — it cannot be fetched later."""
     search_query = f"latest Kenyan legal developments {query}" if legal else f"latest news {query}"
-    return await _post(
-        MONITORS_URL,
-        {
-            "name": name,
-            "search": {
-                "query": search_query,
-                "contents": {"highlights": True},
-            },
-            "trigger": {"type": "interval", "period": period},
-            "webhook": {"url": webhook_url},
+    body: dict[str, Any] = {
+        "name": name,
+        "search": {
+            "query": search_query,
+            "contents": {"highlights": True},
         },
-        timeout=30,
-    )
+        "trigger": {"type": "interval", "period": period},
+        "webhook": {
+            "url": webhook_url,
+            "events": ["monitor.run.completed"],
+        },
+    }
+    if metadata:
+        body["metadata"] = {key: value for key, value in metadata.items() if value}
+    return await _post(MONITORS_URL, body, timeout=30)
 
 
 async def trigger_monitor(monitor_id: str) -> Optional[dict[str, Any]]:
     return await _post(f"{MONITORS_URL}/{monitor_id}/trigger", {}, timeout=30)
+
+
+async def get_run(monitor_id: str, run_id: str) -> Optional[dict[str, Any]]:
+    return await _get(f"{MONITORS_URL}/{monitor_id}/runs/{run_id}")
+
+
+async def wait_for_latest_run(
+    monitor_id: str,
+    attempts: int = 4,
+    delay: float = 2.0,
+) -> Optional[dict[str, Any]]:
+    """Poll until the newest run completes or fails. Webhook is still the durable path."""
+    latest: dict[str, Any] | None = None
+    for _ in range(max(1, attempts)):
+        listing = await _get(f"{MONITORS_URL}/{monitor_id}/runs")
+        runs = (listing or {}).get("data") or []
+        if runs and isinstance(runs[0], dict):
+            latest = runs[0]
+            status = latest.get("status")
+            run_id = latest.get("id")
+            if status == "completed" and run_id:
+                return await get_run(monitor_id, str(run_id)) or latest
+            if status == "failed":
+                return latest
+        await asyncio.sleep(delay)
+    return latest

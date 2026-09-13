@@ -321,6 +321,117 @@ async def retrieve(session_id: str | None = None, matter_id: str | None = None, 
     }
 
 
+def monitor_webhook_url() -> Optional[str]:
+    configured = os.environ.get("EXA_MONITOR_WEBHOOK_URL", "").strip()
+    if configured:
+        return configured
+    base = (os.environ.get("BACKEND_INTERNAL_URL") or "").rstrip("/")
+    return f"{base}/webhooks/exa" if base.startswith("http") else None
+
+
+def results_from_run(run: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not run:
+        return []
+    output = run.get("output") if isinstance(run.get("output"), dict) else {}
+    for candidate in (output.get("results"), run.get("results")):
+        if isinstance(candidate, list):
+            return [item for item in candidate if isinstance(item, dict)]
+    return []
+
+
+def scope_from_monitor(
+    monitor: dict[str, Any] | None,
+    metadata: dict[str, Any] | None = None,
+) -> Optional[dict[str, Any]]:
+    meta = metadata if isinstance(metadata, dict) else {}
+    stored_meta = (monitor or {}).get("metadata")
+    if isinstance(stored_meta, dict):
+        meta = {**stored_meta, **meta}
+    session_id = (monitor or {}).get("session_id") or meta.get("session_id")
+    matter_id = (monitor or {}).get("matter_id") or meta.get("matter_id")
+    scope = resolve_scope(session_id, matter_id)
+    if scope:
+        return scope
+
+    terms_raw = meta.get("terms") or (monitor or {}).get("terms") or []
+    if isinstance(terms_raw, str):
+        terms = [token.strip() for token in terms_raw.split(",") if token.strip()]
+    else:
+        terms = [str(token) for token in terms_raw if token]
+    if not terms and not matter_id and not session_id:
+        return None
+    matter_name = meta.get("matter_name") or (monitor or {}).get("topic")
+    return {
+        "session_id": session_id,
+        "matter_id": matter_id,
+        "matter_name": matter_name,
+        "client_name": meta.get("client_name"),
+        "session_title": None,
+        "has_transcript": False,
+        "terms": terms[:24],
+        "matter_terms": terms[:12],
+        "spoken_terms": [],
+        "party_terms": [],
+        "query": str(matter_name or " ".join(terms[:8])),
+    }
+
+
+def ingest_monitor_results(
+    results: list[dict[str, Any]],
+    *,
+    monitor: dict[str, Any] | None,
+    monitor_id: str | None,
+    topic: str,
+    metadata: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    scope = scope_from_monitor(monitor, metadata)
+    normalised: list[dict[str, Any]] = []
+    for item in results:
+        highlights = item.get("highlights") or []
+        raw = {
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "published": item.get("publishedDate") or item.get("published"),
+            "extract": highlights[0] if highlights else item.get("text") or item.get("extract"),
+            "citation": item.get("citation"),
+            "kind": item.get("kind"),
+        }
+        scored = score_hit(raw, scope) if scope else None
+        if scored:
+            normalised.append(scored)
+    return news_store.add_hits(
+        normalised,
+        monitor_id=monitor_id,
+        topic=topic,
+        session_id=(scope or {}).get("session_id") or (monitor or {}).get("session_id"),
+        matter_id=(scope or {}).get("matter_id") or (monitor or {}).get("matter_id"),
+        matter_name=(scope or {}).get("matter_name"),
+    )
+
+
+def _merge_hits(primary: list[dict[str, Any]], extra: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen = {item.get("url") for item in extra if item.get("url")}
+    return extra + [item for item in primary if item.get("url") not in seen]
+
+
+async def _refresh_monitor_run(record: dict[str, Any], retrieved: dict[str, Any]) -> dict[str, Any]:
+    monitor_id = record.get("id")
+    if not monitor_id:
+        return retrieved
+    await exa_client.trigger_monitor(str(monitor_id))
+    run = await exa_client.wait_for_latest_run(str(monitor_id))
+    extra = ingest_monitor_results(
+        results_from_run(run),
+        monitor=record,
+        monitor_id=str(monitor_id),
+        topic=str(record.get("topic") or retrieved.get("query") or "legal-intelligence"),
+        metadata=record.get("metadata") if isinstance(record.get("metadata"), dict) else None,
+    )
+    if extra:
+        retrieved = {**retrieved, "hits": _merge_hits(retrieved.get("hits") or [], extra)}
+    return retrieved
+
+
 async def watch(session_id: str | None = None, matter_id: str | None = None, period: str = "1d") -> dict[str, Any]:
     retrieved = await retrieve(session_id=session_id, matter_id=matter_id)
     scope = retrieved.get("scope") or {}
@@ -330,16 +441,21 @@ async def watch(session_id: str | None = None, matter_id: str | None = None, per
 
     existing = news_store.find_monitor_by_topic(str(topic))
     if existing:
-        if existing.get("id"):
-            await exa_client.trigger_monitor(existing["id"])
-        return {**retrieved, "monitor": existing, "created": False}
+        retrieved = await _refresh_monitor_run(existing, retrieved)
+        return {**retrieved, "monitor": {**existing, "webhook_secret": None}, "created": False}
 
-    configured = os.environ.get("EXA_MONITOR_WEBHOOK_URL", "").strip()
-    if configured:
-        webhook = configured
-    else:
-        base = (os.environ.get("BACKEND_INTERNAL_URL") or "").rstrip("/")
-        webhook = f"{base}/webhooks/exa" if base.startswith("http") else None
+    webhook = monitor_webhook_url()
+    metadata = {
+        key: value
+        for key, value in {
+            "session_id": str(scope.get("session_id") or ""),
+            "matter_id": str(scope.get("matter_id") or ""),
+            "matter_name": str(scope.get("matter_name") or topic),
+            "client_name": str(scope.get("client_name") or ""),
+            "terms": ",".join(scope.get("terms") or []),
+        }.items()
+        if value
+    }
 
     remote = None
     if webhook and exa_client.is_configured():
@@ -349,6 +465,7 @@ async def watch(session_id: str | None = None, matter_id: str | None = None, per
             webhook_url=webhook,
             period=period,
             legal=True,
+            metadata=metadata,
         )
 
     record = {
@@ -359,8 +476,12 @@ async def watch(session_id: str | None = None, matter_id: str | None = None, per
         "period": period,
         "webhook_url": webhook,
         "webhook_secret": (remote or {}).get("webhookSecret") or (remote or {}).get("webhook_secret"),
-        "status": "active" if remote else "local-only",
+        "status": "active" if remote and (remote or {}).get("id") else "local-only",
         "terms": scope.get("terms") or [],
+        "metadata": metadata,
+        "error": None if remote and (remote or {}).get("id") else exa_client.last_error(),
     }
-    news_store.add_monitor(record)
+    news_store.upsert_monitor(record)
+    if record.get("id"):
+        retrieved = await _refresh_monitor_run(record, retrieved)
     return {**retrieved, "monitor": {**record, "webhook_secret": None}, "created": True}
