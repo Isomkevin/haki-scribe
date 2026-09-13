@@ -309,7 +309,15 @@ def _snapshot() -> dict:
             "contacts": [item.model_dump(mode="json") for item in _contacts.values()],
             "session_matter_ids": {str(key): [str(item) for item in value] for key, value in _session_matter_ids.items()},
             "session_contact_ids": {str(key): [str(item) for item in value] for key, value in _session_contact_ids.items()},
-        }
+    }
+
+
+def _persist() -> None:
+    payload = _snapshot()
+    # Durable store first — the JSON file is only a local convenience mirror.
+    db.save_snapshot(payload)
+    try:
+        _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = _STORE_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, default=str), encoding="utf-8")
         tmp.replace(_STORE_PATH)
@@ -318,13 +326,23 @@ def _snapshot() -> dict:
 
 
 def _load() -> None:
-    if not _STORE_PATH.exists():
+    payload = db.load_snapshot()
+    if payload is None:
+        if not _STORE_PATH.exists():
+            return
+        try:
+            payload = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not load HakiScribe store: %s", exc)
+            return
+        # First run against a fresh database: carry the local snapshot over.
+        _restore(payload)
+        db.save_snapshot(_snapshot())
         return
-    try:
-        payload = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not load HakiScribe store: %s", exc)
-        return
+    _restore(payload)
+
+
+def _restore(payload: dict) -> None:
     _sessions.update({item.id: item for item in (Session(**raw) for raw in payload.get("sessions", []))})
     for key, value in payload.get("transcripts", {}).items():
         _transcripts[uuid.UUID(key)] = [TranscriptSegment(**item) for item in value]
