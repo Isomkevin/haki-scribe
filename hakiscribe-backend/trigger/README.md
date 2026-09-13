@@ -11,23 +11,25 @@ so there's exactly one place to change them.
 ```
 cd trigger
 npm install
+npx trigger.dev@latest login
 npx trigger.dev@latest init     # links this to your Trigger.dev project
 ```
 
-Set these in the Trigger.dev dashboard's environment variables (not a
-local `.env` — the tasks run on Trigger.dev's infrastructure, not yours):
+Replace `proj_hakiscribe_replace_me` in `trigger.config.ts` with the
+project ref from the dashboard (`proj_...`).
 
-- `BACKEND_INTERNAL_URL` — a **publicly reachable** URL for the FastAPI
-  backend. `localhost` will not work here since Trigger.dev's cloud is
-  calling it. Use an ngrok tunnel for local dev.
-- `BACKEND_INTERNAL_SECRET` — must match `BACKEND_INTERNAL_SECRET` in
-  the FastAPI backend's `.env`.
+Set these in the Trigger.dev dashboard Environment Variables (the tasks
+run on Trigger.dev's cloud, not Render):
 
-Then on the FastAPI backend side, set `TRIGGER_SECRET_KEY` (from the
-Trigger.dev dashboard's API keys page) — that's what turns on the
-Trigger.dev path in `/sessions/{id}/detect` and `/generate`. Without it,
-both endpoints fall back to running the exact same logic in-process,
-so nothing breaks if this isn't wired up yet.
+- `BACKEND_INTERNAL_URL` = `https://hakiscribe-backend.onrender.com`
+- `BACKEND_INTERNAL_SECRET` = the same value as Render's
+  `BACKEND_INTERNAL_SECRET`
+
+Then on the Render service, set `TRIGGER_SECRET_KEY` to the **prod**
+secret from Trigger.dev → Project → API Keys (`tr_prod_...`). That is
+what turns on the Trigger.dev path in `/sessions/{id}/detect` and
+`/generate`. Without it, both endpoints fall back to the same logic
+in-process.
 
 ## Deploy
 

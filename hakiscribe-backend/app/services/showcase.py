@@ -2,13 +2,25 @@
 
 Judges can open a finished Action Tray without a microphone. If a
 Wanjiru showcase already exists (after seed_demo or a prior click),
-reuse it so Render spin-down is the only reason we rebuild.
+reuse it so Render spin-down is the only reason we rebuild — unless
+Ambiguous is configured and the cached results never landed there.
 """
 
 from __future__ import annotations
 
-from app.models.schemas import FlaggedMoment, Session, SessionSource, SessionStatus, TranscriptSegment
-from app.services import action_detector, action_executor, enrichment, storage
+import os
+
+from app.models.schemas import (
+    ActionResult,
+    ActionType,
+    DetectedAction,
+    FlaggedMoment,
+    Session,
+    SessionSource,
+    SessionStatus,
+    TranscriptSegment,
+)
+from app.services import action_detector, action_executor, enrichment, storage, trigger_client
 
 SHOWCASE_TITLE = "Client meeting — Wanjiru Holdings, defective works at Kilimani site"
 
@@ -48,8 +60,59 @@ def find_existing_showcase():
     return None
 
 
-async def ensure_showcase():
-    existing = find_existing_showcase()
+def _missing_workspace_mirror(detail) -> bool:
+    if not os.environ.get("AMBIGUOUS_API_KEY"):
+        return False
+    for item in detail.action_results or []:
+        payload = item.result or {}
+        if payload.get("ambiguous_document_id") or payload.get("ambiguous_event_id") or payload.get("ambiguous_deal_id"):
+            return False
+    return any(
+        item.type in {ActionType.draft_document, ActionType.calendar_event, ActionType.workspace_matter}
+        for item in (*(detail.action_results or []), *(detail.detected_actions or []))
+    )
+
+
+async def _detect(detail):
+    payload = {
+        "session_id": str(detail.id),
+        "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
+        "flags": [flag.model_dump(mode="json") for flag in detail.flagged_moments],
+        "known_matters": [matter.model_dump(mode="json") for matter in storage.list_matters()],
+        "session_title": detail.title,
+    }
+    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload)
+    if trigger_output is not None:
+        return [DetectedAction(**item) for item in trigger_output]
+    return await action_detector.detect_actions(
+        detail.id,
+        detail.transcript,
+        flags=detail.flagged_moments,
+        known_matters=storage.list_matters(),
+        session_title=detail.title,
+    )
+
+
+async def _generate(detail, actions):
+    payload = {
+        "actions": [action.model_dump(mode="json") for action in actions],
+        "transcript": [seg.model_dump(mode="json") for seg in detail.transcript],
+    }
+    trigger_output = await trigger_client.trigger_and_wait("generate-actions", payload, timeout_s=240.0)
+    if trigger_output is not None:
+        return [ActionResult(**item) for item in trigger_output]
+    return await action_executor.execute_actions(actions, transcript=detail.transcript)
+
+
+async def ensure_showcase(rebuild: bool = False):
+    existing = None if rebuild else find_existing_showcase()
+    if existing is not None and _missing_workspace_mirror(existing):
+        checked = [action for action in existing.detected_actions if action.pre_checked] or existing.detected_actions[:3]
+        if checked:
+            results = await _generate(existing, checked)
+            storage.upsert_action_results(existing.id, results)
+            storage.update_session_status(existing.id, SessionStatus.exported)
+            return storage.get_session(existing.id), False
     if existing is not None:
         return existing, False
 
@@ -77,18 +140,12 @@ async def ensure_showcase():
     detail = storage.get_session(session.id)
     if detail is None:
         return None, True
-    actions = await action_detector.detect_actions(
-        session.id,
-        detail.transcript,
-        flags=detail.flagged_moments,
-        known_matters=storage.list_matters(),
-        session_title=detail.title,
-    )
+    actions = await _detect(detail)
     actions = await enrichment.enrich_with_exa(actions)
     storage.set_detected_actions(session.id, actions)
     checked = [action for action in actions if action.pre_checked] or actions[:3]
     if checked:
-        results = await action_executor.execute_actions(checked, transcript=detail.transcript)
+        results = await _generate(detail, checked)
         storage.upsert_action_results(session.id, results)
         storage.update_session_status(session.id, SessionStatus.exported)
     return storage.get_session(session.id), True

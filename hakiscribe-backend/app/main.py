@@ -58,7 +58,9 @@ def root():
 
 
 @app.get("/health")
-def health():
+async def health():
+    from app.integrations import ambiguous_client
+
     return {
         "status": "ok",
         "integrations": {
@@ -66,6 +68,7 @@ def health():
             "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")),
             "exa": bool(os.environ.get("EXA_API_KEY")),
             "ambiguous": bool(os.environ.get("AMBIGUOUS_API_KEY")),
+            "ambiguous_ok": await ambiguous_client.ping() if os.environ.get("AMBIGUOUS_API_KEY") else False,
             "omi": True,
             "omi_secret": bool(os.environ.get("OMI_SHARED_SECRET")),
         },

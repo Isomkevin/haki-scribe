@@ -61,15 +61,17 @@ async def _generate_draft_document(action: DetectedAction, transcript: list[Tran
     result = drafted.model_dump()
 
     doc = await ambiguous_client.create_document(title=action.title, body_text=drafted.document_text)
-    if doc:
+    if doc and doc.get("id"):
         result["ambiguous_document_id"] = doc.get("id")
-        doc_url = doc.get("url") or (f"https://app.ambiguous.ai/documents/{doc['id']}" if doc.get("id") else None)
+        doc_url = doc.get("url") or ambiguous_client.document_url(doc.get("id"))
         if doc_url:
             result["ambiguous_document_url"] = doc_url
-        result["workspace_url"] = ambiguous_client.document_url(doc.get("id"))
+        result["workspace_url"] = doc_url
         await ambiguous_client.post_chat_message(
             f"Draft ready for review: **{action.title}** — {action.preview}"
         )
+    elif ambiguous_client.configured():
+        result["workspace_error"] = ambiguous_client.last_error()
     return _attach_handoff(result, title=action.title, body=drafted.document_text)
 
 
@@ -77,10 +79,14 @@ async def _generate_calendar_event(action: DetectedAction, transcript: list[Tran
     event = await generation.calendar_event_model.generate(action, transcript)
     result = event.model_dump()
 
-    remote = await ambiguous_client.create_calendar_event(event.title, event.start, event.end)
-    if remote:
+    remote = await ambiguous_client.create_calendar_event(
+        event.title, event.start, event.end, description=event.description
+    )
+    if remote and remote.get("id"):
         result["ambiguous_event_id"] = remote.get("id")
-        result["workspace_url"] = ambiguous_client.event_url(remote.get("id"))
+        result["workspace_url"] = remote.get("url") or ambiguous_client.event_url(remote.get("id"))
+    elif ambiguous_client.configured():
+        result["workspace_error"] = ambiguous_client.last_error()
     body = f"{event.title}\n{event.start} – {event.end}\n{event.description}"
     return _attach_handoff(result, title=event.title, body=body)
 

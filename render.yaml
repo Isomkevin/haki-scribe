@@ -23,7 +23,9 @@ services:
       - key: DRAFTING_MODEL
         value: openai/gpt-4o
       - key: AMBIGUOUS_NOTIFY_CHANNEL
-        value: general
+        value: ""
+      - key: BACKEND_INTERNAL_URL
+        value: https://hakiscribe-backend.onrender.com
       # GPT detection/drafting goes through OpenRouter. The openai/ prefix
       # on the model names is an OpenRouter slug, not a second vendor key.
       - key: OPENROUTER_API_KEY
