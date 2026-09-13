@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { CalendarClock, ExternalLink, FileText, Flag, RefreshCw, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hakiApi, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
@@ -244,9 +245,11 @@ export function TrackerPage() {
               ))}
             </ul>
           )}
-        </section>
+          </section>
+          </TabsContent>
 
-        <section>
+          <TabsContent value="sessions">
+          <section>
           <SectionHeading eyebrow="Record" title="All sessions" />
           {loaded.length === 0 && !sessions.isLoading ? (
             <p className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
