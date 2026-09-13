@@ -1,0 +1,766 @@
+"""
+Integration registry — lets a HakiScribe user link the platform to external
+tools (AI assistants, cloud storage, practice suites) so drafted documents,
+research and calendar events can flow to where their practice already lives.
+
+Connections are persisted as a new ``haki_records`` kind ``"integrations"``
+when ``DATABASE_URL`` is set, and otherwise live in the in-memory store /
+JSON snapshot file alongside everything else.
+
+Credentials are stored server-side only. The API never returns a full
+credential — only a masked hint (``sk-…9f2``) and a connected-at timestamp.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import re
+from datetime import datetime
+from typing import Any, Optional
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Provider registry
+# ---------------------------------------------------------------------------
+
+# Each provider declares:
+#   id           — short slug used in the URL and API
+#   name         — display name
+#   group        — "ai" | "storage" | "practice"
+#   fields       — list of {id, label, type, help, placeholder, mask} dicts
+#   what_it_does — one-liner shown on the card
+#   verify       — async fn(creds: dict) -> dict[str, Any]  (returns {"ok": bool, "error": str|None})
+#   capabilities — list of strings the frontend can show ("Ask an AI model", "Export documents")
+
+_PROVIDERS: list[dict[str, Any]] = [
+    {
+        "id": "anthropic",
+        "name": "Anthropic (Claude)",
+        "group": "ai",
+        "what_it_does": "Run the “Ask an AI model” task through your own Claude key.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Anthropic API key",
+                "type": "password",
+                "help": "Found in your Anthropic Console → API Keys.",
+                "placeholder": "sk-ant-…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "openai",
+        "name": "OpenAI (GPT)",
+        "group": "ai",
+        "what_it_does": "Run the “Ask an AI model” task through your own OpenAI key.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "OpenAI API key",
+                "type": "password",
+                "help": "Found in platform.openai.com → API Keys.",
+                "placeholder": "sk-…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "gemini",
+        "name": "Google Gemini",
+        "group": "ai",
+        "what_it_does": "Run the “Ask an AI model” task through your own Gemini key.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Google AI Studio key",
+                "type": "password",
+                "help": "Found in aistudio.google.com → API keys.",
+                "placeholder": "AIza…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "mistral",
+        "name": "Mistral",
+        "group": "ai",
+        "what_it_does": "Run the “Ask an AI model” task through your own Mistral key.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Mistral API key",
+                "type": "password",
+                "help": "Found in console.mistral.ai → API Keys.",
+                "placeholder": "…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "group": "ai",
+        "what_it_does": "Route the “Ask an AI model” task through any model OpenRouter serves.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "OpenRouter API key",
+                "type": "password",
+                "help": "Found in openrouter.ai → Keys.",
+                "placeholder": "sk-or-…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "claude_custom",
+        "name": "Custom OpenAI-compatible endpoint",
+        "group": "ai",
+        "what_it_does": "Point HakiScribe at any OpenAI-compatible API (Legora, Harvey, on-prem LLM).",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "base_url",
+                "label": "Base URL",
+                "type": "text",
+                "help": "e.g. https://api.legora.ai/v1 or https://harvey.example.com/v1",
+                "placeholder": "https://…/v1",
+                "mask": False,
+            },
+            {
+                "id": "api_key",
+                "label": "API key",
+                "type": "password",
+                "help": "The bearer token the endpoint expects.",
+                "placeholder": "…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "google_drive",
+        "name": "Google Drive",
+        "group": "storage",
+        "what_it_does": "Send drafted documents to your firm's Google Drive.",
+        "capabilities": ["Export documents"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Google Drive access token",
+                "type": "password",
+                "help": "Create an OAuth token with drive.file scope in Google Cloud Console.",
+                "placeholder": "ya29.…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "dropbox",
+        "name": "Dropbox",
+        "group": "storage",
+        "what_it_does": "Send drafted documents to your Dropbox.",
+        "capabilities": ["Export documents"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Dropbox access token",
+                "type": "password",
+                "help": "Create an app token with files.content.write in Dropbox Developer.",
+                "placeholder": "sl.…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "onedrive",
+        "name": "Microsoft OneDrive",
+        "group": "storage",
+        "what_it_does": "Send drafted documents to your OneDrive.",
+        "capabilities": ["Export documents"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Microsoft Graph access token",
+                "type": "password",
+                "help": "Create an Azure app token with Files.ReadWrite.All scope.",
+                "placeholder": "eyJ…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "hakichain",
+        "name": "HakiChain",
+        "group": "practice",
+        "what_it_does": "Sync matters and sessions to your HakiChain workspace.",
+        "capabilities": ["Sync matters"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "HakiChain API token",
+                "type": "password",
+                "help": "Found in HakiChain → Workspace → API tokens.",
+                "placeholder": "hkc_…",
+                "mask": True,
+            },
+        ],
+    },
+]
+
+
+def provider_ids() -> list[str]:
+    return [p["id"] for p in _PROVIDERS]
+
+
+def provider_def(provider_id: str) -> Optional[dict[str, Any]]:
+    for p in _PROVIDERS:
+        if p["id"] == provider_id:
+            return p
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Credential masking
+# ---------------------------------------------------------------------------
+
+def _mask(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return value[:2] + "…"
+    return value[:3] + "…" + value[-3:]
+
+
+def _mask_creds(provider_id: str, creds: dict[str, Any]) -> dict[str, str]:
+    definition = provider_def(provider_id)
+    if definition is None:
+        return {}
+    masked: dict[str, str] = {}
+    for field in definition["fields"]:
+        raw = str(creds.get(field["id"], ""))
+        masked[field["id"]] = _mask(raw) if field.get("mask", True) else raw
+    return masked
+
+
+# ---------------------------------------------------------------------------
+# In-memory connection store (persisted via storage snapshot)
+# ---------------------------------------------------------------------------
+
+_connections: dict[str, dict[str, Any]] = {}
+# provider_id -> {"provider_id", "connected_at", "creds": {...}}
+
+
+def list_connections() -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for provider in _PROVIDERS:
+        pid = provider["id"]
+        conn = _connections.get(pid)
+        if conn:
+            result.append(
+                {
+                    "provider_id": pid,
+                    "name": provider["name"],
+                    "group": provider["group"],
+                    "what_it_does": provider["what_it_does"],
+                    "capabilities": provider["capabilities"],
+                    "fields": provider["fields"],
+                    "connected": True,
+                    "connected_at": conn.get("connected_at"),
+                    "masked_creds": _mask_creds(pid, conn.get("creds", {})),
+                }
+            )
+        else:
+            result.append(
+                {
+                    "provider_id": pid,
+                    "name": provider["name"],
+                    "group": provider["group"],
+                    "what_it_does": provider["what_it_does"],
+                    "capabilities": provider["capabilities"],
+                    "fields": provider["fields"],
+                    "connected": False,
+                    "connected_at": None,
+                    "masked_creds": {},
+                }
+            )
+    return result
+
+
+def get_connection(provider_id: str) -> Optional[dict[str, Any]]:
+    return _connections.get(provider_id)
+
+
+def get_creds(provider_id: str) -> Optional[dict[str, Any]]:
+    conn = _connections.get(provider_id)
+    return conn.get("creds") if conn else None
+
+
+def save_connection(provider_id: str, creds: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    _connections[provider_id] = {
+        "provider_id": provider_id,
+        "connected_at": now,
+        "creds": creds,
+    }
+    _persist_integrations()
+    return _connections[provider_id]
+
+
+def remove_connection(provider_id: str) -> bool:
+    if provider_id in _connections:
+        del _connections[provider_id]
+        _persist_integrations()
+        return True
+    return False
+
+
+def connections_snapshot() -> list[dict[str, Any]]:
+    """Serialise for persistence — creds included (server-side store only)."""
+    return list(_connections.values())
+
+
+def restore_connections(payload: list[dict[str, Any]]) -> None:
+    _connections.clear()
+    for item in payload:
+        pid = item.get("provider_id")
+        if pid and provider_def(pid):
+            _connections[pid] = item
+
+
+# ---------------------------------------------------------------------------
+# Persistence — piggybacks on the existing storage snapshot
+# ---------------------------------------------------------------------------
+
+def _persist_integrations() -> None:
+    """Ask storage to save the full snapshot so integrations survive restarts."""
+    try:
+        from app.services import storage
+        storage._persist()  # noqa: SLF001 — internal, same module family
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not persist integrations: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Verification — real API calls that confirm the credential works
+# ---------------------------------------------------------------------------
+
+async def _verify_anthropic(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-3-5-haiku-20241022",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "ping"}],
+                },
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Anthropic returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_openai(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"OpenAI returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_gemini(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={key}&pageSize=1",
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Gemini returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_mistral(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.mistral.ai/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Mistral returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_openrouter(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"OpenRouter returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_custom_openai(creds: dict[str, Any]) -> dict[str, Any]:
+    base = (creds.get("base_url") or "").strip().rstrip("/")
+    key = creds.get("api_key", "")
+    if not base:
+        return {"ok": False, "error": "Missing base URL"}
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Endpoint returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_google_drive(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://www.googleapis.com/drive/v3/about?fields=user",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Google Drive returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_dropbox(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.dropboxapi.com/2/users/get_current_account",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Dropbox returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_onedrive(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://graph.microsoft.com/v1.0/me/drive",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"OneDrive returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API token"}
+    # HakiChain API endpoint — we accept the token and confirm it's non-empty.
+    # The real HakiChain API will be wired once the endpoint is published.
+    return {"ok": True, "error": None}
+
+
+_VERIFIERS = {
+    "anthropic": _verify_anthropic,
+    "openai": _verify_openai,
+    "gemini": _verify_gemini,
+    "mistral": _verify_mistral,
+    "openrouter": _verify_openrouter,
+    "claude_custom": _verify_custom_openai,
+    "google_drive": _verify_google_drive,
+    "dropbox": _verify_dropbox,
+    "onedrive": _verify_onedrive,
+    "hakichain": _verify_hakichain,
+}
+
+
+async def verify(provider_id: str, creds: dict[str, Any]) -> dict[str, Any]:
+    verifier = _VERIFIERS.get(provider_id)
+    if verifier is None:
+        return {"ok": False, "error": f"Unknown provider: {provider_id}"}
+    return await verifier(creds)
+
+
+# ---------------------------------------------------------------------------
+# Document export — storage providers receive the generated artifact
+# ---------------------------------------------------------------------------
+
+async def export_document(provider_id: str, text: str, title: str) -> dict[str, Any]:
+    """Upload a drafted document to the connected storage provider.
+    Returns {"ok": bool, "url": str|None, "error": str|None}."""
+    creds = get_creds(provider_id)
+    if creds is None:
+        return {"ok": False, "url": None, "error": "Provider not connected"}
+
+    if provider_id == "google_drive":
+        return await _export_google_drive(creds, text, title)
+    elif provider_id == "dropbox":
+        return await _export_dropbox(creds, text, title)
+    elif provider_id == "onedrive":
+        return await _export_onedrive(creds, text, title)
+    return {"ok": False, "url": None, "error": f"Provider {provider_id} does not support document export"}
+
+
+async def _export_google_drive(creds: dict[str, Any], text: str, title: str) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Upload metadata + content in a multipart/related request
+            import json
+            boundary = "hakiscribe-boundary"
+            metadata = json.dumps({"name": f"{title}.txt", "mimeType": "text/plain"})
+            body = (
+                f"--{boundary}\r\n"
+                "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+                f"{metadata}\r\n"
+                f"--{boundary}\r\n"
+                "Content-Type: text/plain\r\n\r\n"
+                f"{text}\r\n"
+                f"--{boundary}--"
+            )
+            resp = await client.post(
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": f"multipart/related; boundary={boundary}",
+                },
+                content=body.encode("utf-8"),
+            )
+            if resp.status_code < 400:
+                file_id = resp.json().get("id")
+                return {"ok": True, "url": f"https://drive.google.com/file/d/{file_id}/view" if file_id else None, "error": None}
+            return {"ok": False, "url": None, "error": f"Google Drive returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "url": None, "error": str(exc)}
+
+
+async def _export_dropbox(creds: dict[str, Any], text: str, title: str) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://content.dropboxapi.com/2/files/upload",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Dropbox-API-Arg": f'{{"path": "/HakiScribe/{title}.txt","mode":"add","autorename":true,"mute":false}}',
+                    "Content-Type": "application/octet-stream",
+                },
+                content=text.encode("utf-8"),
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "url": None, "error": None}
+            return {"ok": False, "url": None, "error": f"Dropbox returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "url": None, "error": str(exc)}
+
+
+async def _export_onedrive(creds: dict[str, Any], text: str, title: str) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.put(
+                f"https://graph.microsoft.com/v1.0/me/drive/root:/HakiScribe/{title}.txt:/content",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "text/plain",
+                },
+                content=text.encode("utf-8"),
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "url": None, "error": None}
+            return {"ok": False, "url": None, "error": f"OneDrive returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "url": None, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# LLM completion via a connected provider key
+# ---------------------------------------------------------------------------
+
+async def complete_with_provider(
+    provider_id: str,
+    system_prompt: str,
+    user_prompt: str,
+    model: Optional[str] = None,
+    timeout_s: float = 120.0,
+) -> Optional[str]:
+    """Run a completion through the user's own connected LLM key.
+    Returns None when the provider is not connected or the call fails."""
+    creds = get_creds(provider_id)
+    if creds is None:
+        return None
+    try:
+        if provider_id == "anthropic":
+            return await _complete_anthropic(creds, system_prompt, user_prompt, model or "claude-3-5-sonnet-20241022", timeout_s)
+        elif provider_id == "openai":
+            return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, "https://api.openai.com/v1")
+        elif provider_id == "gemini":
+            return await _complete_gemini(creds, system_prompt, user_prompt, model or "gemini-1.5-flash", timeout_s)
+        elif provider_id == "mistral":
+            return await _complete_openai(creds, system_prompt, user_prompt, model or "mistral-large-latest", timeout_s, "https://api.mistral.ai/v1")
+        elif provider_id == "openrouter":
+            return await _complete_openai(creds, system_prompt, user_prompt, model or "openai/gpt-4o", timeout_s, "https://openrouter.ai/api/v1")
+        elif provider_id == "claude_custom":
+            base = (creds.get("base_url") or "").strip().rstrip("/")
+            return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
+        return None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Provider %s completion failed: %s", provider_id, exc)
+        return None
+
+
+async def _complete_anthropic(creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float) -> Optional[str]:
+    key = creds.get("api_key", "")
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 4096,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}],
+            },
+        )
+        resp.raise_for_status()
+        content = resp.json().get("content", [])
+        if content and isinstance(content, list):
+            return (content[0].get("text") or "").strip() or None
+        return None
+
+
+async def _complete_openai(creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float, base_url: str) -> Optional[str]:
+    key = creds.get("api_key", "")
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            },
+        )
+        resp.raise_for_status()
+        choices = resp.json().get("choices", [])
+        if choices:
+            return (choices[0].get("message", {}).get("content") or "").strip() or None
+        return None
+
+
+async def _complete_gemini(creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float) -> Optional[str]:
+    key = creds.get("api_key", "")
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            },
+        )
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return (parts[0].get("text") or "").strip() or None
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Connected LLM models for the picker
+# ---------------------------------------------------------------------------
+
+def connected_llm_models() -> list[dict[str, str]]:
+    """Return model options for connected LLM providers so the Ask picker
+    can list them alongside the built-in default."""
+    models: list[dict[str, str]] = []
+    if get_connection("anthropic"):
+        models.append({"id": "anthropic:claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet (your key)"})
+        models.append({"id": "anthropic:claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku (your key)"})
+    if get_connection("openai"):
+        models.append({"id": "openai:gpt-4o", "label": "GPT-4o (your key)"})
+    if get_connection("gemini"):
+        models.append({"id": "gemini:gemini-1.5-flash", "label": "Gemini 1.5 Flash (your key)"})
+    if get_connection("mistral"):
+        models.append({"id": "mistral:mistral-large-latest", "label": "Mistral Large (your key)"})
+    if get_connection("openrouter"):
+        models.append({"id": "openrouter:openai/gpt-4o", "label": "OpenRouter GPT-4o (your key)"})
+    if get_connection("claude_custom"):
+        models.append({"id": "claude_custom:gpt-4o", "label": "Custom endpoint (your key)"})
+    return models

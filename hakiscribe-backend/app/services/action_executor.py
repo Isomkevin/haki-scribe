@@ -27,7 +27,7 @@ from app.models.schemas import (
     ResearchSource,
     TranscriptSegment,
 )
-from app.services import generation, storage, workspace
+from app.services import generation, integrations, storage, workspace
 
 RESEARCH_SYSTEM_PROMPT = (
     "You are a Kenyan advocate's research assistant. Answer the question using ONLY "
@@ -269,19 +269,31 @@ async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegme
     record = generation.format_transcript(transcript)
 
     output = None
-    try:
-        output = await llm_client.complete(
-            ASK_SYSTEM_PROMPT,
-            f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
-            model=model,
-        )
-    except Exception as exc:  # noqa: BLE001 — surfaced on the card
-        output = f"The model could not be reached: {exc}"
+    # Check if the model is a connected-provider model (e.g. "anthropic:claude-3-5-sonnet")
+    if ":" in model and model.split(":")[0] in integrations.provider_ids():
+        provider_id, model_name = model.split(":", 1)
+        try:
+            output = await integrations.complete_with_provider(
+                provider_id, ASK_SYSTEM_PROMPT,
+                f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
+                model=model_name,
+            )
+        except Exception as exc:  # noqa: BLE001
+            output = f"The model could not be reached: {exc}"
+    else:
+        try:
+            output = await llm_client.complete(
+                ASK_SYSTEM_PROMPT,
+                f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
+                model=model,
+            )
+        except Exception as exc:  # noqa: BLE001 — surfaced on the card
+            output = f"The model could not be reached: {exc}"
 
     if not output:
         output = (
             "No language model is configured for this workspace, so this instruction "
-            "was not run. Add an OpenRouter key to enable it."
+            "was not run. Add an OpenRouter key or connect a model provider under Connectors."
         )
     return LlmTaskResult(model=model, instruction=instruction, output=output).model_dump()
 

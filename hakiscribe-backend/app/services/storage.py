@@ -299,6 +299,7 @@ def _uuid_map(raw: dict) -> dict[uuid.UUID, list[uuid.UUID]]:
 
 
 def _snapshot() -> dict:
+    from app.services import integrations
     return {
             "sessions": [session.model_dump(mode="json") for session in _sessions.values()],
             "transcripts": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _transcripts.items()},
@@ -307,6 +308,7 @@ def _snapshot() -> dict:
             "results": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _results.items()},
             "matters": [item.model_dump(mode="json") for item in _matters.values()],
             "contacts": [item.model_dump(mode="json") for item in _contacts.values()],
+            "integrations": integrations.connections_snapshot(),
             "session_matter_ids": {str(key): [str(item) for item in value] for key, value in _session_matter_ids.items()},
             "session_contact_ids": {str(key): [str(item) for item in value] for key, value in _session_contact_ids.items()},
     }
@@ -343,6 +345,7 @@ def _load() -> None:
 
 
 def _restore(payload: dict) -> None:
+    from app.services import integrations
     _sessions.update({item.id: item for item in (Session(**raw) for raw in payload.get("sessions", []))})
     for key, value in payload.get("transcripts", {}).items():
         _transcripts[uuid.UUID(key)] = [TranscriptSegment(**item) for item in value]
@@ -356,6 +359,7 @@ def _restore(payload: dict) -> None:
     _contacts.update({item.id: item for item in (Contact(**raw) for raw in payload.get("contacts", []))})
     _session_matter_ids.update(_uuid_map(payload.get("session_matter_ids", {})))
     _session_contact_ids.update(_uuid_map(payload.get("session_contact_ids", {})))
+    integrations.restore_connections(payload.get("integrations", []))
 
 
 _load()

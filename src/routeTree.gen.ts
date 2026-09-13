@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
@@ -17,6 +18,11 @@ import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessio
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectorsRoute = ConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResearchRoute = ResearchRouteImport.update({
@@ -37,12 +43,14 @@ const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/research': typeof ResearchRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/research': typeof ResearchRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
@@ -50,20 +58,29 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connectors': typeof ConnectorsRoute
   '/research': typeof ResearchRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/research' | '/tracker' | '/sessions/$sessionId'
+  fullPaths:
+    '/' | '/connectors' | '/research' | '/tracker' | '/sessions/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/research' | '/tracker' | '/sessions/$sessionId'
-  id: '__root__' | '/' | '/research' | '/tracker' | '/sessions/$sessionId'
+  to: '/' | '/connectors' | '/research' | '/tracker' | '/sessions/$sessionId'
+  id:
+    | '__root__'
+    | '/'
+    | '/connectors'
+    | '/research'
+    | '/tracker'
+    | '/sessions/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnectorsRoute: typeof ConnectorsRoute
   ResearchRoute: typeof ResearchRoute
   TrackerRoute: typeof TrackerRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
@@ -76,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connectors': {
+      id: '/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof ConnectorsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/research': {
@@ -104,6 +128,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnectorsRoute: ConnectorsRoute,
   ResearchRoute: ResearchRoute,
   TrackerRoute: TrackerRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,

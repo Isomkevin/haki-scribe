@@ -149,6 +149,35 @@ export interface SessionDetail extends Session {
   action_results?: ActionResult[];
 }
 
+export interface IntegrationField {
+  id: string;
+  label: string;
+  type: "password" | "text";
+  help: string;
+  placeholder: string;
+  mask: boolean;
+}
+
+export interface Integration {
+  provider_id: string;
+  name: string;
+  group: "ai" | "storage" | "practice";
+  what_it_does: string;
+  capabilities: string[];
+  fields: IntegrationField[];
+  connected: boolean;
+  connected_at: string | null;
+  masked_creds: Record<string, string>;
+}
+
+export interface IntegrationStatus {
+  provider_id: string;
+  name: string;
+  connected: boolean;
+  connected_at: string;
+  masked_creds: Record<string, string>;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -255,6 +284,21 @@ export const hakiApi = {
   createContact: (body: { name: string; updates?: Record<string, unknown>; matter_id?: string; session_id?: string }) =>
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
+  listIntegrations: () => request<Integration[]>("/integrations"),
+  connectIntegration: (providerId: string, credentials: Record<string, string>) =>
+    request<IntegrationStatus>(`/integrations/${providerId}`, {
+      method: "POST",
+      body: JSON.stringify({ credentials }),
+    }),
+  disconnectIntegration: (providerId: string) =>
+    request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {
+      method: "DELETE",
+    }),
+  exportDocument: (sessionId: string, actionId: string, provider: string) =>
+    request<{ ok: boolean; url: string | null; provider: string }>(
+      `/integrations/${sessionId}/documents/${actionId}/export`,
+      { method: "POST", body: JSON.stringify({ provider }) },
+    ),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
   searchLegalIntel: (body: { session_id?: string | undefined; matter_id?: string | undefined; query?: string }) =>
     request<LegalIntelResult>("/news/search", { method: "POST", body: JSON.stringify(body) }),

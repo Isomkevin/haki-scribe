@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS haki_records_kind_idx ON haki_records (kind);
 """
 
 # kind -> how the snapshot payload stores it.
-_LIST_KEYS = ("sessions", "matters", "contacts")  # list of objects with an "id"
+_LIST_KEYS = ("sessions", "matters", "contacts", "integrations")  # list of objects with an "id"
 _MAP_KEYS = ("transcripts", "actions", "flags", "results")  # session_id -> list
 _LINK_KEYS = ("session_matter_ids", "session_contact_ids")  # session_id -> ids
 
