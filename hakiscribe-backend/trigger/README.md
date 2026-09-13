@@ -6,20 +6,25 @@ the LLM prompts, Ambiguous AI calls, and matter-continuity logic all
 live in `action_detector.py`/`action_executor.py` on the backend side,
 so there's exactly one place to change them.
 
+The canonical Trigger.dev worker now lives at the repo root
+(`trigger.config.ts`, `src/trigger/`). Run it from there:
+
+```
+npx trigger.dev@latest dev
+```
+
 ## Setup
 
-```
-cd trigger
-npm install
-npx trigger.dev@latest login
-npx trigger.dev@latest init     # links this to your Trigger.dev project
-```
+These files remain as a reference for the Python relay tasks. Prefer
+editing `src/trigger/` at the repo root so `trigger dev` registers one
+worker.
 
-Replace `proj_hakiscribe_replace_me` in `trigger.config.ts` with the
-project ref from the dashboard (`proj_...`).
+`hakiscribe-backend/.env.local` is only read by the FastAPI process and
+by `npx trigger.dev@latest deploy` (via `syncEnvVars`). The running
+tasks on Trigger.dev's cloud do **not** read that file.
 
-Set these in the Trigger.dev dashboard Environment Variables (the tasks
-run on Trigger.dev's cloud, not Render):
+Set these in the Trigger.dev dashboard Environment Variables, or redeploy
+so `syncEnvVars` copies them from `.env.local`:
 
 - `BACKEND_INTERNAL_URL` = `https://hakiscribe-backend.onrender.com`
 - `BACKEND_INTERNAL_SECRET` = the same value as Render's
