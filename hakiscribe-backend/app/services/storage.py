@@ -298,10 +298,8 @@ def _uuid_map(raw: dict) -> dict[uuid.UUID, list[uuid.UUID]]:
     return {uuid.UUID(key): [uuid.UUID(item) for item in value] for key, value in raw.items()}
 
 
-def _persist() -> None:
-    try:
-        _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
+def _snapshot() -> dict:
+    return {
             "sessions": [session.model_dump(mode="json") for session in _sessions.values()],
             "transcripts": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _transcripts.items()},
             "actions": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _actions.items()},
