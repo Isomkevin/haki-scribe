@@ -16,6 +16,8 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 _STORE_PATH = Path(os.environ.get("HAKISCRIBE_STORE", "data/store.json"))
 
+from app.services import db, object_store
+
 from app.models.schemas import (
     ActionResult,
     ActionStatus,
