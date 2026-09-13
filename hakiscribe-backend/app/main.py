@@ -60,9 +60,11 @@ def root():
 @app.get("/health")
 async def health():
     from app.integrations import ambiguous_client
+    from app.services import db, object_store
 
     return {
         "status": "ok",
+        "storage": {"database": db.status(), "documents": object_store.status()},
         "integrations": {
             "openrouter": bool(os.environ.get("OPENROUTER_API_KEY")),
             "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")),
