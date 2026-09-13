@@ -6,6 +6,7 @@
 - [x] Include privileged/off-record locking before analysis.
 - [x] Surface Ambiguous delivery, Trigger.dev processing, OpenAI/OpenRouter generation, and Exa enrichment according to the backend response contract.
 - [x] Verify mobile and desktop behavior against the live preview.
+- [x] Complete the platform-wide phone, tablet, and desktop refinement pass.
 
 ## External setup
 

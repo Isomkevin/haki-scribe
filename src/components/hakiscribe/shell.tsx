@@ -10,16 +10,16 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background paper-grain">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto grid h-[4.25rem] max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 sm:flex sm:justify-between sm:px-6">
           {back ? (
             <Link
               to="/"
-              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <span aria-hidden className="grid size-8 place-items-center rounded-md border border-border bg-card">
                 <ArrowLeft className="size-4" />
               </span>
-              Library
+              <span className="hidden sm:inline">Library</span>
             </Link>
           ) : (
             <Brand />
@@ -50,10 +50,10 @@ export function SectionHeading({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex items-end justify-between gap-4">
-      <div>
+    <div className="mb-6 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:mb-7">
+      <div className="min-w-0">
         <SectionEyebrow>{eyebrow}</SectionEyebrow>
-        <h2 className="mt-2 font-serif text-3xl font-semibold tracking-tight">{title}</h2>
+        <h2 className="mt-2 font-serif text-2xl font-semibold sm:text-3xl">{title}</h2>
       </div>
       {action}
     </div>
@@ -82,7 +82,7 @@ export function SourceIcon({ source, className }: { source: "mic" | "omi"; class
 
 export function FlowProgress({ current, labels }: { current: number; labels: string[] }) {
   return (
-    <ol className="mb-8 grid grid-cols-3 gap-2" aria-label="Session review progress">
+    <ol className="mb-7 grid grid-cols-3 gap-1.5 sm:mb-8 sm:gap-2" aria-label="Session review progress">
       {labels.map((label, index) => {
         const step = index + 1;
         const active = step === current;
@@ -91,7 +91,7 @@ export function FlowProgress({ current, labels }: { current: number; labels: str
           <li
             key={label}
             className={cn(
-              "rounded-lg border px-3 py-2.5",
+              "min-w-0 rounded-lg border px-2 py-2.5 sm:px-3",
               active && "border-primary bg-secondary/70",
               done && "border-border bg-card",
               !active && !done && "border-transparent bg-muted/60 text-muted-foreground",
@@ -100,7 +100,7 @@ export function FlowProgress({ current, labels }: { current: number; labels: str
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Step {step}
             </p>
-            <p className={cn("mt-0.5 text-sm font-medium", active && "text-primary")}>{label}</p>
+            <p className={cn("mt-0.5 truncate text-xs font-medium sm:text-sm", active && "text-primary")}>{label}</p>
           </li>
         );
       })}
@@ -111,12 +111,12 @@ export function FlowProgress({ current, labels }: { current: number; labels: str
 export function WorkspaceFooter() {
   return (
     <footer className="mt-16 border-t border-border bg-card/60">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <div className="flex items-center gap-3">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-7 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-8">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="grid size-9 place-items-center rounded-md bg-primary text-primary-foreground">
             <Scale className="size-4" />
           </span>
-          <div>
+          <div className="min-w-0">
             <p className="font-serif text-lg font-semibold">Leave the room with the work begun.</p>
             <p className="text-xs text-muted-foreground">A listening instrument of HakiChain · Nairobi</p>
           </div>
