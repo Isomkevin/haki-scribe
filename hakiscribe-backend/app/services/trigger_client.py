@@ -20,6 +20,7 @@ REST reference:
 """
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any, Optional
@@ -69,7 +70,10 @@ async def trigger_and_wait(
                 result = result_resp.json()
                 if not result.get("ok", False):
                     raise RuntimeError(f"Trigger.dev task {task_id} (run {run_id}) failed: {result.get('error')}")
-                return result.get("output")
+                output = result.get("output")
+                if isinstance(output, str) and result.get("outputType", "application/json").startswith("application/json"):
+                    output = json.loads(output)
+                return output
 
             raise TimeoutError(f"Trigger.dev task {task_id} (run {run_id}) did not finish within {timeout_s}s")
     except Exception as exc:  # noqa: BLE001 — callers fall back to in-process logic
