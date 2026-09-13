@@ -14,6 +14,8 @@ interface TrackedDocument {
   sessionTitle: string;
   kind: string;
   url: string | null;
+  createdAt: string | null;
+  archived: boolean;
 }
 
 interface TrackedEvent {
@@ -37,6 +39,8 @@ function documentOf(result: ActionResult, detail: SessionDetail): TrackedDocumen
     sessionTitle: detail.title,
     kind: kind.replace(/[-_]/g, " "),
     url: str(result.result["ambiguous_document_url"]) ?? str(result.result["s3_url"]),
+    createdAt: str(result.created_at ?? null) ?? detail.created_at,
+    archived: Boolean(str(result.result["s3_url"])),
   };
 }
 
