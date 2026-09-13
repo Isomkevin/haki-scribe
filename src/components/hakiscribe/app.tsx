@@ -279,7 +279,14 @@ export function HomePage() {
           <SectionHeading
             eyebrow="Session library"
             title="Past sessions"
-            action={sessions.data && <span className="text-sm text-muted-foreground">{sessions.data.length} total</span>}
+            action={
+              <div className="flex items-center gap-3">
+                {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/tracker">Case tracker</Link>
+                </Button>
+              </div>
+            }
           />
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
           {sessions.error && <ConnectionError message={sessions.error.message} retry={() => void sessions.refetch()} />}
