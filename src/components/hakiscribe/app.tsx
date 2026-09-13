@@ -170,17 +170,17 @@ export function HomePage() {
     <PageShell>
       <main>
         <section className="relative border-b border-border/80">
-          <div className="mx-auto grid max-w-6xl items-start gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_24.5rem] lg:gap-14 lg:py-16">
+          <div className="mx-auto grid max-w-6xl items-start gap-8 px-4 py-7 sm:px-6 sm:py-10 lg:grid-cols-[minmax(0,1fr)_24.5rem] lg:gap-14 lg:py-16">
             <div className="order-2 max-w-2xl animate-ink-rise lg:order-1">
               <SectionEyebrow>Conversation to legal work</SectionEyebrow>
-              <h1 className="mt-4 font-serif text-4xl font-semibold leading-[1.12] tracking-tight text-foreground sm:text-6xl">
+              <h1 className="mt-3 font-serif text-4xl font-semibold leading-[1.12] text-foreground sm:mt-4 sm:text-6xl">
                 Capture what matters.{" "}
                 <em className="italic text-primary">Leave with work ready.</em>
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
                 An agent for the rooms where justice is spoken — not another chatbot. Record a meeting or proceeding, verify the record, then choose the work it prepares.
               </p>
-              <ol className="mt-8 grid gap-3 sm:grid-cols-3">
+              <ol className="mt-7 grid gap-3 sm:grid-cols-3">
                 {practiceSteps.map((step) => (
                   <li key={step.n} className="rounded-xl border border-border/80 bg-card/80 p-4">
                     <p className="font-serif text-sm text-action">{step.n}</p>
@@ -189,7 +189,7 @@ export function HomePage() {
                   </li>
                 ))}
               </ol>
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="mt-6 hidden gap-3 sm:grid sm:grid-cols-3">
                 {environments.map((item) => (
                   <div key={item.place} className="rounded-xl border border-border/70 bg-background/70 p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{item.place}</p>
@@ -198,18 +198,18 @@ export function HomePage() {
                   </div>
                 ))}
               </div>
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <TrustLine className="rounded-full border border-border bg-card/80 px-3 py-1.5" />
+              <div className="mt-6 flex flex-col items-start gap-2 sm:mt-7 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                <TrustLine className="max-w-full rounded-md border border-border bg-card/80 px-3 py-2 text-left sm:rounded-full sm:py-1.5" />
                 <span className="rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground">
                   English + Kiswahili
                 </span>
               </div>
             </div>
 
-            <div className="desk-card relative order-1 overflow-hidden rounded-2xl border border-border p-5 sm:p-6 lg:order-2">
+            <div className="desk-card relative order-1 overflow-hidden rounded-lg border border-border p-4 sm:p-6 lg:order-2">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-action to-primary" />
-              <div className="flex items-start justify-between gap-3">
-                <div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                <div className="min-w-0">
                   <h2 className="font-serif text-2xl font-semibold">Start a session</h2>
                   <p className="mt-1 text-sm text-muted-foreground">No document choice needed. HakiScribe listens first.</p>
                 </div>
@@ -219,12 +219,12 @@ export function HomePage() {
               </div>
               <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="session-title">Session title</label>
               <Input id="session-title" className="mt-2 h-11 bg-background" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Wanjiku client meeting" />
-              <div className="mt-5 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" aria-label="Recording source">
+              <div className="mt-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="Recording source">
                 {(["mic", "omi"] as const).map((item) => {
                   const Icon = item === "mic" ? Mic : Headphones;
                   return (
-                    <Button key={item} type="button" variant={source === item ? "default" : "ghost"} className="h-10 shadow-none" onClick={() => setSource(item)}>
-                      <Icon />{item === "mic" ? "Microphone" : "Omi wearable"}
+                    <Button key={item} type="button" variant={source === item ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none sm:px-4" onClick={() => setSource(item)}>
+                      <Icon className="shrink-0" /><span className="truncate">{item === "mic" ? "Microphone" : "Omi wearable"}</span>
                     </Button>
                   );
                 })}
@@ -261,7 +261,7 @@ export function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 py-9 sm:px-6 sm:py-12">
           {hasApiConfiguration && !sessions.error && (
             <div className="mb-10 grid gap-3 sm:grid-cols-3">
               {[
@@ -325,7 +325,7 @@ function SessionRow({ session }: { session: Session }) {
       to="/sessions/$sessionId"
       params={{ sessionId: session.id }}
       search={{ fresh: false }}
-      className="chamber-card group grid grid-cols-[auto_1fr_auto] items-center gap-4 rounded-xl border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/30 sm:px-5"
+      className="chamber-card group grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-border p-4 transition-all hover:border-primary/30 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-4 sm:px-5 sm:hover:-translate-y-0.5"
     >
       <span className="grid size-12 place-items-center rounded-xl bg-secondary text-secondary-foreground">
         <SourceIcon source={session.source} className="size-4" />
@@ -353,7 +353,7 @@ function SessionRow({ session }: { session: Session }) {
           </span>
         )}
       </span>
-      <StatusBadge status={session.status} />
+      <span className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end"><StatusBadge status={session.status} /></span>
     </Link>
   );
 }
@@ -378,8 +378,8 @@ function LibraryMatters({ matters, contacts }: { matters: Matter[]; contacts: Co
           const initials = matter.client_name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
           return (
             <article key={matter.id} className="chamber-card rounded-xl border border-border p-5">
-              <div className="flex items-start gap-3">
-                <span className="grid size-12 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+                <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground">
                   {initials || <BriefcaseBusiness className="size-4" />}
                 </span>
                 <div className="min-w-0">
@@ -501,21 +501,21 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-primary text-primary-foreground">
+    <div className="relative flex min-h-[100svh] flex-col overflow-hidden bg-primary text-primary-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,oklch(1_0_0/0.08),transparent_42%)]" />
-      <header className="relative z-10 flex items-center justify-between border-b border-primary-foreground/15 px-4 py-4 sm:px-8">
+      <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-primary-foreground/15 px-4 py-3 sm:px-8 sm:py-4">
         <span className="font-serif text-xl font-semibold">HakiScribe</span>
         <span className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1 text-xs">
           <span className="size-2 animate-live-dot rounded-full bg-action" /> Recording
         </span>
       </header>
-      <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-8 sm:px-8">
+      <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-5 sm:px-8 sm:py-8">
         <div className="text-center">
           <p className="text-sm text-primary-foreground/70">{session.title}</p>
-          <div className="relative mx-auto mt-5 grid size-44 place-items-center sm:size-52">
+          <div className="relative mx-auto mt-3 grid size-36 place-items-center sm:mt-5 sm:size-52">
             <span className="absolute inset-0 rounded-full border border-primary-foreground/15 animate-pulse-ring" />
             <span className="absolute inset-4 rounded-full border border-primary-foreground/10" />
-            <p className="relative font-mono text-5xl tabular-nums sm:text-6xl">{formatDuration(elapsed)}</p>
+            <p className="relative font-mono text-4xl tabular-nums sm:text-6xl">{formatDuration(elapsed)}</p>
           </div>
         </div>
         <div className="mt-6 flex min-h-8 gap-2 overflow-x-auto pb-2">
@@ -525,12 +525,12 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
             </span>
           ))}
         </div>
-        <div className="my-7 flex h-24 items-center justify-center gap-1" aria-label="Live audio waveform">
+        <div className="my-4 flex h-16 items-center justify-center gap-1 sm:my-7 sm:h-24" aria-label="Live audio waveform">
           {Array.from({ length: 32 }, (_, index) => (
             <span
               key={index}
               className={cn(
-                "h-16 w-1 rounded-full bg-primary-foreground/75 animate-waveform",
+                "h-12 w-1 rounded-full bg-primary-foreground/75 animate-waveform sm:h-16",
                 index % 3 === 1 && "[animation-delay:180ms]",
                 index % 3 === 2 && "[animation-delay:360ms]",
               )}
@@ -544,10 +544,10 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
             </Button>
           ))}
         </div>
-        <Button variant="warm" className="mx-auto h-24 w-full max-w-md text-xl shadow-lg" onClick={() => void flag()}>
+        <Button variant="warm" className="mx-auto h-20 w-full max-w-md text-lg shadow-lg sm:h-24 sm:text-xl" onClick={() => void flag()}>
           <Flag className="size-7" /> Flag this moment
         </Button>
-        <div className="mt-8 min-h-24 rounded-xl border border-primary-foreground/10 bg-primary-foreground/5 px-4 py-4">
+        <div className="mt-5 min-h-20 rounded-lg border border-primary-foreground/10 bg-primary-foreground/5 px-4 py-3 sm:mt-8 sm:min-h-24 sm:py-4">
           {session.source === "omi" && !captions.length ? (
             <div className="space-y-3 text-sm text-primary-foreground/80">
               <p className="flex items-center justify-center gap-2">
@@ -580,8 +580,8 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
           )}
         </div>
         {error && <p className="mt-4 text-center text-sm text-primary-foreground">{error}</p>}
-        <div className="mt-auto flex flex-col items-center pt-8">
-          <Button variant="quiet" className="h-12 min-w-36 border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20" onClick={() => void stop()} disabled={stoppingNow}>
+        <div className="safe-bottom mt-auto flex flex-col items-center pt-5 sm:pt-8">
+          <Button variant="quiet" className="h-12 w-full max-w-md border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20 sm:w-auto sm:min-w-36" onClick={() => void stop()} disabled={stoppingNow}>
             <Square className="fill-current" /> {stoppingNow ? "Stopping…" : "Stop"}
           </Button>
           <TrustLine className="mt-5 text-primary-foreground/65 [&_svg]:text-primary-foreground" />
@@ -638,9 +638,9 @@ function SpeakerScreen({ session, onNext }: { session: SessionDetail; onNext: ()
         </div>
         {!speakers.length && <p className="chamber-card rounded-xl border border-dashed border-border py-8 text-center text-muted-foreground">No speaker labels were found. You can continue to the transcript check.</p>}
         {mutation.error && <p className="mt-4 text-sm text-destructive">{mutation.error.message}</p>}
-        <div className="mt-8 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onNext}>Skip</Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !Object.values(mapping).some((name) => name.trim())}>
+        <div className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:justify-end">
+          <Button variant="ghost" className="h-11" onClick={onNext}>Skip</Button>
+          <Button className="h-11" onClick={() => mutation.mutate()} disabled={mutation.isPending || !Object.values(mapping).some((name) => name.trim())}>
             {mutation.isPending ? "Saving…" : "Save names"}
           </Button>
         </div>
@@ -685,8 +685,8 @@ function RedactScreen({ session, onNext }: { session: SessionDetail; onNext: () 
           ))}
         </div>
         {!segments.length && <p className="chamber-card rounded-xl border border-dashed border-border py-10 text-center text-muted-foreground">No transcript segments have arrived yet. You can still continue and analyze the available session data.</p>}
-        <div className="sticky bottom-0 mt-6 border-t border-border bg-background/90 py-4 text-right backdrop-blur-md">
-          <Button size="lg" onClick={() => void continueFlow()}>Continue to analysis</Button>
+        <div className="safe-bottom sticky bottom-0 z-20 mt-6 border-t border-border bg-background/95 py-3 text-right backdrop-blur-md sm:py-4">
+          <Button size="lg" className="w-full sm:w-auto" onClick={() => void continueFlow()}>Continue to analysis</Button>
         </div>
       </main>
     </PageShell>
@@ -771,25 +771,25 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
     }
   };
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10">
       <div className="flex flex-col justify-between gap-5 border-b border-border pb-8 sm:flex-row sm:items-end">
-        <div>
+        <div className="min-w-0">
           <SectionEyebrow>{tab === "results" ? "Generated work" : tab === "record" ? "Verified record" : "Action tray"}</SectionEyebrow>
-          <h1 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">{session.title}</h1>
+          <h1 className="mt-2 break-words font-serif text-3xl font-semibold leading-tight sm:text-4xl">{session.title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {tab === "results" ? "Review and edit before anything leaves your workspace." : tab === "record" ? "The same record the tray used, including what you locked." : `${visibleActions.length} possible legal actions, each grounded in the transcript.`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onVerify}>Back to verify</Button>
-          <TrustLine className="rounded-full border border-border bg-card px-3 py-1.5" />
+        <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={onVerify}>Back to verify</Button>
+          <TrustLine className="max-w-full rounded-md border border-border bg-card px-3 py-2 text-left sm:rounded-full sm:py-1.5" />
         </div>
       </div>
       <FlaggedMomentsBar flags={session.flagged_moments} />
-      <div className="mt-6 flex flex-wrap gap-2 rounded-lg bg-muted p-1">
-        <Button variant={tab === "tray" ? "default" : "ghost"} className="shadow-none" onClick={() => { setTab("tray"); onTray(); }}>Detected actions</Button>
-        <Button variant={tab === "record" ? "default" : "ghost"} className="shadow-none" onClick={() => setTab("record")}>Transcript</Button>
-        {results.length > 0 && <Button variant={tab === "results" ? "default" : "ghost"} className="shadow-none" onClick={() => { setTab("results"); onResults(); }}>Results ({results.length})</Button>}
+      <div className={cn("mt-6 grid gap-1 rounded-lg bg-muted p-1", results.length > 0 ? "grid-cols-3" : "grid-cols-2")}>
+        <Button variant={tab === "tray" ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none" onClick={() => { setTab("tray"); onTray(); }}><span className="truncate">Actions</span></Button>
+        <Button variant={tab === "record" ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none" onClick={() => setTab("record")}><span className="truncate">Transcript</span></Button>
+        {results.length > 0 && <Button variant={tab === "results" ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none" onClick={() => { setTab("results"); onResults(); }}><span className="truncate">Results ({results.length})</span></Button>}
       </div>
       {tab === "record" ? (
         <TranscriptPanel transcript={session.transcript} actions={visibleActions} />
@@ -806,14 +806,14 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
         </>
       ) : (
         <>
-          <div className="my-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="my-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <p className="text-sm text-muted-foreground">Review, edit, then choose what HakiScribe should produce.</p>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowDismissed((current) => !current)}>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setShowDismissed((current) => !current)}>
                 {showDismissed ? "Hide dismissed" : "Show dismissed"}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setSelected(new Set(visibleActions.filter((action) => action.pre_checked).map((action) => action.id)))}>
-                <Check /> Select high-confidence
+              <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setSelected(new Set(visibleActions.filter((action) => action.pre_checked).map((action) => action.id)))}>
+                <Check className="shrink-0" /> <span className="truncate">Select likely</span>
               </Button>
             </div>
           </div>
@@ -861,7 +861,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
           />
           <LegalIntelligence sessionId={session.id} matterId={session.matters?.[0]?.id} />
           {generate.error && <div className="mt-5"><ConnectionError message={generate.error.message} /></div>}
-          <div className="sticky bottom-0 mt-8 border-t border-border bg-background/90 py-4 backdrop-blur-md">
+          <div className="safe-bottom sticky bottom-0 z-20 mt-8 border-t border-border bg-background/95 py-3 backdrop-blur-md sm:py-4">
             <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate(Array.from(selected))}>
               {generate.isPending ? "Generating selected work…" : `Generate selected (${selected.size})`}
             </Button>
@@ -913,22 +913,22 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
       speculative && !checked && "opacity-70",
       action.status === "dismissed" && "opacity-50",
     )}>
-      <div className="grid grid-cols-[auto_1fr_auto] gap-3 p-4 sm:p-5">
-        <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Icon className="size-5" /></span>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 p-4 sm:p-5">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Icon className="size-5" /></span>
         <button type="button" className="min-w-0 text-left" onClick={() => setOpen(!open)}>
-          <h2 className="font-semibold text-foreground">{action.title}</h2>
+          <h2 className="break-words font-semibold text-foreground">{action.title}</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.preview}</p>
         </button>
         <Checkbox checked={checked} onCheckedChange={(value) => onChecked(value === true)} aria-label={`Select ${action.title}`} className="mt-2 size-5" disabled={action.status === "dismissed"} />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/80 px-4 py-3 text-xs sm:px-5">
+      <div className="grid gap-3 border-t border-border/80 px-4 py-3 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={speculative ? "outline" : "secondary"}>{action.confidence_reason ?? `${Math.round(action.confidence * 100)}% confidence`}</Badge>
           {flagged && <Badge variant="secondary">Honours flag{flagged.label ? `: ${flagged.label}` : ""}</Badge>}
           {detectionMode === "heuristic" && <Badge variant="outline">From the record</Badge>}
           {background !== undefined && <Badge variant="outline">External research</Badge>}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-h-8 items-center justify-end gap-4">
           {source && <button type="button" className="font-semibold text-primary hover:underline" onClick={() => setSourceOpen(!sourceOpen)}>View source</button>}
           {action.status !== "dismissed" && <button type="button" className="text-muted-foreground hover:text-foreground" onClick={onDismiss}>Dismiss</button>}
           <button type="button" aria-label={open ? "Collapse action" : "Edit action"} onClick={() => setOpen(!open)}>
@@ -979,8 +979,8 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
     "Draft talking points for the next mention.",
   ];
   return (
-    <section className="chamber-card mt-8 rounded-xl border border-border p-4 sm:p-5">
-      <div className="flex items-start gap-3">
+    <section className="chamber-card mt-8 rounded-lg border border-border p-4 sm:p-5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
         <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Sparkles className="size-5" /></span>
         <div className="min-w-0">
           <h2 className="font-semibold text-foreground">Ask anything about this session</h2>
@@ -998,7 +998,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
       />
       <div className="mt-2 flex flex-wrap gap-2">
         {suggestions.map((item) => (
-          <button key={item} type="button" className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground" onClick={() => setInstruction(item)}>
+            <button key={item} type="button" className="min-h-9 rounded-full border border-border px-3 py-1 text-left text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground" onClick={() => setInstruction(item)}>
             {item}
           </button>
         ))}
@@ -1015,7 +1015,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
             {catalogue.data?.models.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
           </select>
         </label>
-        <Button className="h-11 sm:self-end" disabled={!instruction.trim() || ask.isPending} onClick={() => ask.mutate()}>
+        <Button className="h-11 w-full sm:w-auto sm:self-end" disabled={!instruction.trim() || ask.isPending} onClick={() => ask.mutate()}>
           {ask.isPending ? "Working…" : "Run on this session"}
         </Button>
       </div>
@@ -1090,7 +1090,7 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
   return (
     <section className="mt-10 overflow-hidden rounded-lg border border-intelligence-border bg-intelligence text-intelligence-foreground shadow-desk font-interface">
       <div className="border-b border-intelligence-border px-5 py-5 sm:px-6 sm:py-6">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:flex sm:items-end sm:justify-between">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-intelligence-accent">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-intelligence-accent animate-live-dot" />
@@ -1101,11 +1101,11 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
               Exa only retrieves statutes, cases and legal developments that match a matter or the verified transcript. Unrelated web news is dropped.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
             <Button
               variant="outline"
               size="sm"
-              className="border-intelligence-border bg-intelligence-panel text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
+              className="min-w-0 border-intelligence-border bg-intelligence-panel px-2 text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground sm:px-3"
               onClick={() => retrieve.mutate()}
               disabled={retrieve.isPending || !hasApiConfiguration || !canGround}
             >
@@ -1115,7 +1115,7 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
             <Button
               variant="ghost"
               size="sm"
-              className="text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
+              className="min-w-0 text-intelligence-foreground hover:bg-intelligence-hover hover:text-intelligence-foreground"
               onClick={() => watch.mutate()}
               disabled={watch.isPending || !hasApiConfiguration || !canGround}
             >
@@ -1168,12 +1168,12 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
         <p className="px-5 py-12 text-center text-sm text-intelligence-muted sm:px-6">No authorities match this filter.</p>
       )}
 
-      <ol className="grid sm:grid-cols-2 xl:grid-cols-3">
+      <ol className="grid md:grid-cols-2 xl:grid-cols-3">
         {visibleHits.map((hit: NewsHit, index) => {
           const key = hit.id ?? hit.url ?? String(index);
           const isExpanded = expanded.has(key);
           return (
-            <li key={key} className="group flex min-w-0 flex-col border-b border-intelligence-border p-5 sm:border-r sm:p-6 xl:[&:nth-child(3n)]:border-r-0">
+            <li key={key} className="group flex min-w-0 flex-col border-b border-intelligence-border p-5 md:border-r md:p-6 xl:[&:nth-child(3n)]:border-r-0">
               <div className="flex items-center justify-between gap-3 text-[10px] font-medium uppercase tracking-[0.1em] text-intelligence-muted">
                 <span className="rounded border border-intelligence-accent/30 bg-intelligence-accent/10 px-2 py-1 text-intelligence-accent">{hit.kind || "Authority"}</span>
                 <time dateTime={hit.published ?? undefined}>{hit.published?.slice(0, 10) ?? "Date unavailable"}</time>
@@ -1234,7 +1234,7 @@ function SourceList({ sources }: { sources: ResearchSource[] }) {
         <li key={`${source.url ?? index}`} className="text-sm">
           <span className="mr-2 font-mono text-xs text-muted-foreground">[{index + 1}]</span>
           {source.url ? (
-            <a href={source.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{source.title ?? source.url}</a>
+            <a href={source.url} target="_blank" rel="noreferrer" className="break-words font-medium text-primary hover:underline">{source.title ?? source.url}</a>
           ) : (
             <span className="font-medium">{source.title ?? "Untitled source"}</span>
           )}
@@ -1286,26 +1286,26 @@ function ResultCard({ result }: { result: ActionResult }) {
   const longText = result.type === "time_entry" ? displayValue(result.result["narrative"] ?? result.result["activity_description"] ?? "") : result.type === "calendar_event" ? displayValue(result.result["description"] ?? "") : result.type === "private_note" ? displayValue(result.result["note_text"] ?? "") : "";
   return (
     <article className="chamber-card overflow-hidden rounded-xl border border-border">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-6">
+      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-4 sm:px-6">
         <span className="grid size-10 place-items-center rounded-xl bg-success text-success-foreground"><Icon className="size-4" /></span>
-        <div>
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-success-foreground">Generated</p>
-          <h2 className="font-semibold capitalize">{title}</h2>
+          <h2 className="break-words font-semibold capitalize">{title}</h2>
         </div>
       </header>
       {result.type === "draft_document" ? (
         <div className="p-4 sm:p-8">
-          <div className="mb-3 flex flex-wrap justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard.writeText(documentText); toast.success("Draft copied"); }}><Copy /> Copy</Button>
-            <Button variant="outline" size="sm" onClick={() => { downloadTextFile("hakiscribe-draft.txt", documentText); toast.success("Draft downloaded"); }}><Download /> Download</Button>
-            <Button asChild variant="outline" size="sm"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp review</a></Button>
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            <Button variant="outline" size="sm" className="min-w-0" onClick={() => { void navigator.clipboard.writeText(documentText); toast.success("Draft copied"); }}><Copy /> Copy</Button>
+            <Button variant="outline" size="sm" className="min-w-0" onClick={() => { downloadTextFile("hakiscribe-draft.txt", documentText); toast.success("Draft downloaded"); }}><Download /> Download</Button>
+            <Button asChild variant="outline" size="sm" className="min-w-0"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> <span className="truncate">WhatsApp review</span></a></Button>
             {(workspaceUrl || typeof result.result["ambiguous_document_url"] === "string") && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm" className="min-w-0">
                 <a href={(workspaceUrl || result.result["ambiguous_document_url"]) as string} target="_blank" rel="noreferrer"><FileText /> Open in Ambiguous</a>
               </Button>
             )}
           </div>
-          <Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[28rem] resize-y border-0 bg-background p-6 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:p-10" />
+          <Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[22rem] resize-y border-0 bg-background p-4 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:min-h-[28rem] sm:p-10" />
         </div>
       ) : result.type === "legal_research" || result.type === "web_search" ? (
         <div className="p-5 sm:p-6">
@@ -1356,14 +1356,14 @@ function ResultCard({ result }: { result: ActionResult }) {
               <p className="mt-2 whitespace-pre-wrap font-serif text-base leading-7">{longText}</p>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            {calendarHref && <Button asChild variant="outline"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
-            <Button asChild variant="outline"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
-            {workspaceUrl && <Button asChild variant="outline"><a href={workspaceUrl} target="_blank" rel="noreferrer">Open in Ambiguous</a></Button>}
+          <div className="grid gap-2 sm:col-span-2 sm:flex sm:flex-wrap">
+            {calendarHref && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
+            <Button asChild variant="outline" className="w-full sm:w-auto"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
+            {workspaceUrl && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={workspaceUrl} target="_blank" rel="noreferrer">Open in Ambiguous</a></Button>}
           </div>
         </div>
       )}
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-6">
+      <footer className="grid gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
         <span>
           {Object.keys(result.result).some((key) => ["document_id", "ambiguous_document_id", "calendar_id", "ambiguous_event_id", "contact_id", "matter_id", "workspace_url"].includes(key))
             ? "Saved to the Session Library and connected tools"
