@@ -16,7 +16,7 @@ export const researchActions = task({
   id: "research-actions",
   maxDuration: 600,
   run: async (payload: ResearchActionsPayload) => {
-    const backendUrl = process.env.BACKEND_INTERNAL_URL;
+    const backendUrl = process.env['BACKEND_INTERNAL_URL'];
     if (!backendUrl) {
       throw new Error("BACKEND_INTERNAL_URL is not set");
     }
@@ -25,7 +25,7 @@ export const researchActions = task({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Secret": process.env.BACKEND_INTERNAL_SECRET ?? "",
+        "X-Internal-Secret": process.env['BACKEND_INTERNAL_SECRET'] ?? "",
       },
       body: JSON.stringify(payload),
     });

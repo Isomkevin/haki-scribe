@@ -20,7 +20,7 @@ type DetectActionsPayload = {
 export const detectActions = task({
   id: "detect-actions",
   run: async (payload: DetectActionsPayload) => {
-    const backendUrl = process.env.BACKEND_INTERNAL_URL;
+    const backendUrl = process.env['BACKEND_INTERNAL_URL'];
     if (!backendUrl) {
       throw new Error("BACKEND_INTERNAL_URL is not set");
     }
@@ -29,7 +29,7 @@ export const detectActions = task({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Secret": process.env.BACKEND_INTERNAL_SECRET ?? "",
+        "X-Internal-Secret": process.env['BACKEND_INTERNAL_SECRET'] ?? "",
       },
       body: JSON.stringify(payload),
     });
