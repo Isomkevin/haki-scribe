@@ -21,7 +21,17 @@ A new "Connectors" page where a lawyer links HakiScribe to the other tools they 
 
 - `src/routes/connectors.tsx` + `src/components/hakiscribe/connectors.tsx` — page with grouped provider cards, connect dialog, status badges, masked credential display, disconnect with confirm.
 - `src/lib/hakiscribe.ts` — `Integration` type, `listIntegrations()`, `connectIntegration()`, `disconnectIntegration()`, `exportDocument()`.
-- Result cards for drafted documents gain an "Export" menu listing connected storage providers; the Ask composer offers "Claude" as a model choice when connected.
+- Result cards for drafted documents gain an "Export" menu listing connected storage providers; the Ask composer offers every connected LLM provider as a model choice, not just the built-in default.
+
+## How connectors reach the transcript and automation
+
+Connectors never get raw, unfettered access to the session; they plug into the existing transcript-driven action pipeline that already powers detection and generation:
+
+- **Transcript is the single source of truth.** Every connector that does AI or export work receives the verified, non-redacted transcript — the same `SessionDetail.transcript` (speaker-labelled, redactions honoured) that `/detect`, `/generate` and `/ask` already pass to `action_executor`. A connector never sees redacted lines and never edits the transcript.
+- **LLM providers extend `/ask`, not the transcript.** `POST /sessions/{id}/ask` already takes `{ instruction, model? }` and builds a server-side prompt from the transcript. When a provider connector is connected, the model picker lists it; selecting it routes that same call through the provider's key in `llm_client.complete(system, user, model=...)`. The provider receives the assembled prompt + transcript slice — never a session id, never direct DB access.
+- **Storage providers receive generated artifacts, not the raw record.** `POST /sessions/{id}/documents/{action_id}/export` reads the already-generated `ActionResult` text (the drafted document, calendar `.ics`, research report) from storage, uploads it through the provider's SDK, and records the destination link on the result. The export payload is the artifact, not the transcript.
+- **AI/automation runs server-side only.** All provider calls happen inside the backend's existing Trigger.dev-backed pipeline (`trigger_client.trigger_and_wait`), so a connector's work is durable and retried like detection/generation; the browser only shows progress and results. Credentials live server-side (masked in API responses), never in the frontend bundle.
+- **Scope per connector.** Each provider declares what it can do: LLM providers implement `run(instruction, transcript) -> text`; storage providers implement `export_document(text, title) -> link`; HakiChain implements `sync_matter(matter) -> remote_id`. The integrations service routes each transcript-derived action to the matching provider method, so a connector only ever touches the artifact type it's built for.
 - Mobile-first, same HakiChain palette and restrained card styling as the tracker.
 
 ## Notes
