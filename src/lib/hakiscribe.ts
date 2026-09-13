@@ -139,6 +139,7 @@ export interface ActionResult {
   status: "success" | "error";
   result: Record<string, unknown>;
   error: string | null;
+  created_at?: string | null;
 }
 
 export interface SessionDetail extends Session {
