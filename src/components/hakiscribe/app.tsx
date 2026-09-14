@@ -1028,7 +1028,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
       />
       <div className="mt-2 flex flex-wrap gap-2">
         {suggestions.map((item) => (
-            <button key={item} type="button" className="min-h-9 rounded-full border border-border px-3 py-1 text-left text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground" onClick={() => setInstruction(item)}>
+          <button key={item} type="button" className="min-h-9 rounded-full border border-border px-3 py-1 text-left text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground" onClick={() => setInstruction(item)}>
             {item}
           </button>
         ))}
