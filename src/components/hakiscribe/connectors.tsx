@@ -282,7 +282,7 @@ function OmiSetupDialog({
   onLinkManual,
 }: {
   open: boolean;
-  status?: OmiStatus;
+  status?: OmiStatus | undefined;
   manualUid: string;
   onManualUid: (value: string) => void;
   error: string | null;
@@ -377,13 +377,13 @@ function OmiProviderCard({
   isDisconnecting,
 }: {
   provider: Integration;
-  status?: OmiStatus;
+  status?: OmiStatus | undefined;
   onOpen: () => void;
   onDisconnect: () => void;
   isDisconnecting: boolean;
 }) {
   const linked = provider.connected || Boolean(status?.linked);
-  const masked = status?.masked_uid || provider.masked_creds?.uid;
+  const masked = status?.masked_uid || provider.masked_creds?.['uid'];
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
