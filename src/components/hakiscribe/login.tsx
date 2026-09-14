@@ -291,7 +291,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                   <div className="rounded-xl border border-dashed border-border bg-muted/35 p-4">
                     <p className="text-xs leading-5 text-muted-foreground">
                       <span className="font-semibold text-foreground">Temporary demo access.</span>{" "}
-                      Shared for judging — remove before real client work.
+                      Shared for judging.
                     </p>
 
                     {demoWaking && !demo.isSuccess ? (
