@@ -146,7 +146,7 @@ export function LandingPage() {
             <div className="max-w-3xl animate-ink-rise">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-intelligence-accent">Conversation to legal work</p>
               <h1 className="mt-4 max-w-3xl font-serif text-4xl font-semibold leading-[1.08] sm:text-6xl lg:text-7xl">
-                Capture what matters. <em className="italic text-intelligence-accent">Leave with your Legal work.</em>
+                Capture what matters. <em className="italic text-intelligence-accent">Leave with your Legal work ready.</em>
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-7 text-intelligence-muted sm:text-lg">
                 HakiScribe is the private listening companion for legal rooms. Verify the record, protect privilege, then choose the source-traceable work it prepares.
