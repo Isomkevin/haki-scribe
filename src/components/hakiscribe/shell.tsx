@@ -19,7 +19,7 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
               <span aria-hidden className="grid size-8 place-items-center rounded-md border border-border bg-card">
                 <ArrowLeft className="size-4" />
               </span>
-              <span className="hidden sm:inline">Library</span>
+              <span className="hidden sm:inline">Home</span>
             </Link>
           ) : (
             <Brand />
