@@ -30,7 +30,18 @@ def _load_env_files() -> None:
 _load_env_files()
 
 from app.integrations import llm_client
-from app.routers import actions, demo, integrations, internal, matters, news, sessions, omi_webhook, stream
+from app.routers import (
+    actions,
+    auth,
+    demo,
+    integrations,
+    internal,
+    matters,
+    news,
+    sessions,
+    omi_webhook,
+    stream,
+)
 from app.services import demo_library
 
 
