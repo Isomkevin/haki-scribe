@@ -64,6 +64,20 @@ _CONFIG: dict[str, dict[str, Any]] = {
         "extra_auth_params": {"access_type": "offline", "prompt": "consent"},
         "console": "https://console.cloud.google.com/apis/credentials",
     },
+    "gemini_oauth": {
+        "label": "Google Gemini (sign in)",
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "openid",
+            "email",
+        ],
+        "client_id_env": ("GOOGLE_OAUTH_CLIENT_ID",),
+        "client_secret_env": ("GOOGLE_OAUTH_CLIENT_SECRET",),
+        "extra_auth_params": {"access_type": "offline", "prompt": "consent"},
+        "console": "https://console.cloud.google.com/apis/credentials",
+    },
     "dropbox": {
         "label": "Dropbox",
         "authorize_url": "https://www.dropbox.com/oauth2/authorize",
