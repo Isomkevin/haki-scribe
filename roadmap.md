@@ -7,7 +7,7 @@
 - [x] Surface Ambiguous delivery, Trigger.dev processing, OpenAI/OpenRouter generation, and Exa enrichment according to the backend response contract.
 - [x] Verify mobile and desktop behavior against the live preview.
 - [x] Complete the platform-wide phone, tablet, and desktop refinement pass.
-- [ ] Separate the public landing page from session creation and all private session work.
+- [x] Separate the public landing page from session creation and all private session work.
 
 ## External setup
 

@@ -129,7 +129,7 @@ export function LandingPage() {
   return (
     <PageShell>
       <main>
-        <section className="relative isolate min-h-[calc(100svh-4.25rem)] overflow-hidden border-b border-border bg-intelligence text-intelligence-foreground">
+        <section className="relative isolate min-h-[calc(100svh-7.25rem)] overflow-hidden border-b border-border bg-intelligence text-intelligence-foreground">
           <img
             src={legalRoomImage}
             alt="Kenyan legal professionals reviewing case papers around a conference table"
@@ -138,7 +138,7 @@ export function LandingPage() {
             className="absolute inset-0 size-full object-cover object-[62%_center]"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-intelligence via-intelligence/95 to-intelligence/20" />
-          <div className="relative mx-auto flex min-h-[calc(100svh-4.25rem)] max-w-6xl items-end px-4 pb-14 pt-20 sm:px-6 sm:pb-20 lg:items-center lg:pb-24">
+          <div className="relative mx-auto flex min-h-[calc(100svh-7.25rem)] max-w-6xl items-end px-4 pb-14 pt-20 sm:px-6 sm:pb-20 lg:items-center lg:pb-24">
             <div className="max-w-3xl animate-ink-rise">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-intelligence-accent">Conversation to legal work</p>
               <h1 className="mt-4 max-w-3xl font-serif text-4xl font-semibold leading-[1.08] sm:text-6xl lg:text-7xl">
