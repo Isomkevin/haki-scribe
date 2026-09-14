@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SessionStatus } from "@/lib/hakiscribe";
 import { Brand, SecureBadge } from "./brand";
+import { InstallAppButton } from "./pwa-register";
 
 export function PageShell({ children, back }: { children: ReactNode; back?: boolean }) {
   return (
@@ -28,16 +29,19 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
           {back && <Brand compact />}
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {back && (
-              <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-                <Link
-                  to="/settings"
-                  activeProps={{ className: "bg-accent text-foreground" }}
-                  aria-label="Settings"
-                >
-                  <Settings2 />
-                  <span className="hidden sm:inline">Settings</span>
-                </Link>
-              </Button>
+              <>
+                <InstallAppButton compact className="hidden h-8 px-2 text-muted-foreground sm:inline-flex" />
+                <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+                  <Link
+                    to="/settings"
+                    activeProps={{ className: "bg-accent text-foreground" }}
+                    aria-label="Settings"
+                  >
+                    <Settings2 />
+                    <span className="hidden sm:inline">Settings</span>
+                  </Link>
+                </Button>
+              </>
             )}
             <SecureBadge />
           </div>

@@ -32,6 +32,7 @@ import {
   type WorkspaceSettings,
 } from "@/lib/workspace-settings";
 import { ConnectorsSection } from "./connectors";
+import { InstallAppButton } from "./pwa-register";
 import { PageShell, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
 
@@ -320,6 +321,15 @@ function AboutSection() {
         Session setup, transcripts, speaker review, and generated artifacts live in the private workspace. This settings
         page is for workspace configuration only.
       </p>
+      <div className="mt-6 rounded-lg border border-border bg-card p-4">
+        <p className="text-sm font-medium text-foreground">Install on this device</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Add HakiScribe as an app for faster access in chambers. The offline shell never stores privileged records.
+        </p>
+        <div className="mt-3">
+          <InstallAppButton />
+        </div>
+      </div>
       <div className="mt-6 flex flex-wrap gap-2">
         <Button asChild variant="outline">
           <Link to="/">Product landing</Link>
