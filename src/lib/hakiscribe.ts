@@ -477,15 +477,23 @@ export const hakiApi = {
 };
 
 /** URL the connect popup opens; the server bounces it to the provider's consent screen. */
-export function integrationOAuthUrl(providerId: string) {
+export function integrationOAuthUrl(providerId: string, params?: Record<string, string>) {
   const base = configuredBaseUrl || PRODUCTION_API_URL;
-  return `${base}/integrations/oauth/${providerId}/start`;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString();
+  return `${base}/integrations/oauth/${providerId}/start${suffix ? `?${suffix}` : ""}`;
 }
 
 /** Opens the provider consent popup and resolves once it reports back. */
-export function startIntegrationOAuth(providerId: string): Promise<"connected" | "failed"> {
+export function startIntegrationOAuth(
+  providerId: string,
+  params?: Record<string, string>,
+): Promise<"connected" | "failed"> {
   return new Promise((resolve, reject) => {
-    const popup = window.open(integrationOAuthUrl(providerId), "hakiscribe-oauth", "width=520,height=680");
+    const popup = window.open(integrationOAuthUrl(providerId, params), "hakiscribe-oauth", "width=520,height=680");
     if (!popup) {
       reject(new Error("Your browser blocked the sign-in window. Allow pop-ups for HakiScribe and try again."));
       return;
