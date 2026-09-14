@@ -278,3 +278,68 @@ All names match `hakiscribe-backend/.env.example`.
 | `OAUTH_REDIRECT_BASE_URL`   | Optional override; defaults to `BACKEND_INTERNAL_URL` (`https://hakiscribe-backend.onrender.com`). Use `http://127.0.0.1:8000` for local testing. |
 
 Set these in **Render → hakiscribe-backend → Environment**, then deploy. Do **not** put them in the committed `.env` — secrets must live in Render's environment, not in the repo.
+
+---
+
+## AI model connectors
+
+### Google Gemini — real "Sign in with Google" (Vertex AI)
+
+Gemini is the one AI provider with a genuine OAuth sign-in, because Vertex
+AI accepts Google account tokens.
+
+1. Reuse the same OAuth client you created for Drive/Calendar
+   (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`).
+2. Add this callback to the client's authorised redirect URIs:
+   `{BACKEND_INTERNAL_URL}/integrations/oauth/gemini_oauth/callback`
+3. In the same Google Cloud project, enable **Vertex AI API**.
+4. Give the signed-in account the **Vertex AI User** role on that project.
+5. On the Connectors page, choose *Google Gemini (sign in)*, enter the
+   Google Cloud **project ID** (and optionally a region — default
+   `us-central1`), then complete the Google consent screen.
+
+The scope requested is `cloud-platform`; the access token is refreshed
+automatically and never leaves the server. Connected Gemini models appear
+in the "Ask an AI model" picker as *Gemini … (signed in with Google)*.
+
+### Anthropic (Claude) and OpenAI — verified key connections
+
+Neither Anthropic nor OpenAI offers a public OAuth flow for API access;
+there is no "Sign in with Claude" to build against. Both are therefore
+connected with an API key that HakiScribe verifies live at connect time,
+stores server-side only, and shows masked on the card.
+
+**Anthropic**
+1. Sign in at https://console.anthropic.com
+2. Settings → API keys → **Create key** (scoped to a workspace if you want
+   a separate budget for HakiScribe).
+3. Copy the `sk-ant-…` key into the Connectors page → *Anthropic (Claude)*.
+
+**OpenAI**
+1. Sign in at https://platform.openai.com
+2. **API keys** → *Create new secret key*; give it a project so usage is
+   visible separately.
+3. Copy the `sk-…` key into the Connectors page → *OpenAI*.
+
+A key that fails verification is never saved, so a typo is reported on the
+card instead of silently failing later during a session.
+
+---
+
+## Private workspace sign-in
+
+Recording, transcripts, the case tracker, research and settings sit behind
+a sign-in. Accounts are configured on the server:
+
+```
+HAKISCRIBE_USERS="advocate@firm.co.ke:strong-password|Jane Advocate, clerk@firm.co.ke:another"
+AUTH_SECRET=<any long random string — keeps sign-ins valid across restarts>
+```
+
+A **temporary demo account** is enabled by default so a judge can open the
+private side in one tap (`DEMO_EMAIL` / `DEMO_PASSWORD`, defaults
+`demo@hakiscribe.app` / `hakiscribe-demo`). Set `DEMO_LOGIN_ENABLED=false`
+to remove the demo button and the account entirely before real client work.
+
+Scope note: everyone signed in shares the same workspace today. Per-lawyer
+vaults are the next step.
