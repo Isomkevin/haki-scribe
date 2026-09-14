@@ -460,6 +460,10 @@ export function NewSessionPage() {
   const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
   const omiStatus = useQuery({ queryKey: ["omi-status"], queryFn: hakiApi.omiStatus, enabled: hasApiConfiguration, retry: false });
   const omiLinked = Boolean(omiStatus.data?.linked || health.data?.omi_miniapp?.linked);
+  const omiStatusResolved = !hasApiConfiguration || omiStatus.isFetched || omiStatus.isError;
+  useEffect(() => {
+    if (omiStatusResolved && !omiLinked && source === "omi") setSource("mic");
+  }, [omiLinked, omiStatusResolved, source]);
   const sessionCount = sessions.data?.length ?? 0;
   const matterCount = matters.data?.length ?? 0;
   const readyCount = sessions.data?.filter((session) => session.status === "ready" || session.status === "exported").length ?? 0;
@@ -489,30 +493,57 @@ export function NewSessionPage() {
                 <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="session-title">Session title</label>
                 <Input id="session-title" className="mt-2 h-11 bg-background" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Wanjiku client meeting" />
                 <div className="mt-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="Recording source">
-                  {(["mic", "omi"] as const).map((item) => { const Icon = item === "mic" ? Mic : Headphones; return <Button key={item} type="button" variant={source === item ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none sm:px-4" onClick={() => setSource(item)}><Icon className="shrink-0" /><span className="truncate">{item === "mic" ? "Microphone" : "Omi wearable"}</span></Button>; })}
+                  {(["mic", "omi"] as const).map((item) => {
+                    const Icon = item === "mic" ? Mic : Headphones;
+                    const omiDisabled = item === "omi" && !omiLinked;
+                    return (
+                      <Button
+                        key={item}
+                        type="button"
+                        variant={source === item ? "default" : "ghost"}
+                        className="h-11 min-w-0 px-2 shadow-none sm:px-4"
+                        disabled={omiDisabled}
+                        title={omiDisabled ? "Connect Omi under Settings → Connectors first" : undefined}
+                        onClick={() => {
+                          if (omiDisabled) return;
+                          setSource(item);
+                        }}
+                      >
+                        <Icon className="shrink-0" />
+                        <span className="truncate">{item === "mic" ? "Microphone" : "Omi wearable"}</span>
+                      </Button>
+                    );
+                  })}
                 </div>
+                {omiStatusResolved && !omiLinked ? (
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Connect Omi under{" "}
+                    <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
+                      Settings → Connectors
+                    </Link>{" "}
+                    to start sessions from the wearable.
+                  </p>
+                ) : null}
                 <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
                 <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"><option value="code-switch">English + Kiswahili</option><option value="en">English</option><option value="sw">Kiswahili</option></select>
-                {source === "omi" && (
+                {source === "omi" && omiLinked ? (
                   <div className="mt-4 space-y-2 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-                    {omiLinked ? (
-                      <p>
-                        Omi is connected. Speak with the wearable — HakiScribe opens or attaches a session automatically.
-                        You can still open a desk session here to watch captions live.
-                      </p>
-                    ) : (
-                      <p>
-                        Connect Omi under{" "}
-                        <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
-                          Settings → Connectors
-                        </Link>{" "}
-                        (Miniapp auth), or pair after the session opens with{" "}
-                        <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>.
-                      </p>
-                    )}
+                    <p>
+                      Omi is connected. Speak with the wearable — HakiScribe opens or attaches a session automatically.
+                      You can still open a desk session here to watch captions live.
+                    </p>
                   </div>
-                )}
-                <Button variant="warm" size="lg" className="mt-6 h-14 w-full text-base" onClick={() => create.mutate()} disabled={create.isPending || !hasApiConfiguration}><span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />{create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}</Button>
+                ) : null}
+                <Button
+                  variant="warm"
+                  size="lg"
+                  className="mt-6 h-14 w-full text-base"
+                  onClick={() => create.mutate()}
+                  disabled={create.isPending || !hasApiConfiguration || (source === "omi" && !omiLinked)}
+                >
+                  <span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />
+                  {create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}
+                </Button>
                 <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
                 {create.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(create.error, "The session could not be opened. Try again.")}</p>}
                 {showcase.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(showcase.error, "The demo session could not be opened. Try again.")}</p>}
