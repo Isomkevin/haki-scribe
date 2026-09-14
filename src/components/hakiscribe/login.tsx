@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { friendlyErrorMessage, hakiApi } from "@/lib/hakiscribe";
 import { signIn } from "@/lib/auth";
-import { BrandMark } from "./brand";
+import { Brand } from "./brand";
 
-export function LoginPage({ next }: { next?: string }) {
+export function LoginPage({ next }: { next?: string | undefined }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,7 +51,7 @@ export function LoginPage({ next }: { next?: string }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
       <div className="flex flex-col items-center gap-3 text-center">
-        <BrandMark />
+        <Brand />
         <h1 className="font-serif text-2xl text-foreground">Sign in to your workspace</h1>
         <p className="text-sm text-muted-foreground">
           Recordings, transcripts and drafted documents stay behind this sign-in.
