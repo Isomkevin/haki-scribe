@@ -695,7 +695,38 @@ async def _verify_google_calendar(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def vertex_location(creds: dict[str, Any]) -> str:
+    return (str(creds.get("location") or "").strip() or os.environ.get("VERTEX_LOCATION") or "us-central1")
+
+
+async def _verify_gemini_oauth(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    project = str(creds.get("project_id") or "").strip()
+    if not token:
+        return {"ok": False, "error": "Sign in with Google first"}
+    if not project:
+        return {"ok": False, "error": "Missing Google Cloud project ID"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {
+                "ok": False,
+                "error": (
+                    f"Google could not open project “{project}” ({resp.status_code}). "
+                    "Check the project ID and that this account has access."
+                ),
+            }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 _VERIFIERS = {
+    "gemini_oauth": _verify_gemini_oauth,
     "google_calendar": _verify_google_calendar,
     "anthropic": _verify_anthropic,
     "openai": _verify_openai,
