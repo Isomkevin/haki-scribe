@@ -1,0 +1,10 @@
+/assets/*
+  cache-control: public, max-age=31536000, immutable
+
+/sw.js
+  cache-control: no-cache
+  content-type: text/javascript; charset=utf-8
+
+/manifest.webmanifest
+  content-type: application/manifest+json
+  cache-control: no-cache
