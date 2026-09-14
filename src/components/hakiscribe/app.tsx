@@ -1573,7 +1573,14 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
   const storageProviders = useQuery({
     queryKey: ["integrations"],
     queryFn: hakiApi.listIntegrations,
-    select: (items) => items.filter((item) => item.group === "storage" && item.connected),
+    select: (items) =>
+      items.filter((item) => item.group === "storage" && item.connected && item.provider_id !== "google_calendar"),
+    retry: false,
+  });
+  const calendarProvider = useQuery({
+    queryKey: ["integrations"],
+    queryFn: hakiApi.listIntegrations,
+    select: (items) => items.find((item) => item.provider_id === "google_calendar" && item.connected) ?? null,
     retry: false,
   });
   const [exportOpen, setExportOpen] = useState(false);
@@ -1712,6 +1719,16 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
           )}
           <div className="grid gap-2 sm:col-span-2 sm:flex sm:flex-wrap">
             {calendarHref && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
+            {calendarProvider.data && (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={exportDoc.isPending}
+                onClick={() => exportDoc.mutate({ provider: "google_calendar" })}
+              >
+                <CalendarPlus /> Add to Google Calendar
+              </Button>
+            )}
             <Button asChild variant="outline" className="w-full sm:w-auto"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
             {workspaceUrl && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={workspaceUrl} target="_blank" rel="noreferrer">Open in Ambiguous</a></Button>}
           </div>
