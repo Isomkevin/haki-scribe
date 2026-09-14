@@ -41,10 +41,22 @@ def omi_status():
 
 
 @router.get("/oauth/{provider_id}/start")
-def oauth_start(provider_id: str):
-    """Popup lands here; we bounce it to the provider's consent screen."""
+def oauth_start(
+    provider_id: str,
+    project_id: str | None = Query(default=None),
+    location: str | None = Query(default=None),
+):
+    """Popup lands here; we bounce it to the provider's consent screen.
+
+    Extras such as the Google Cloud project id are stashed with the CSRF
+    state and reattached to the credentials after the code exchange."""
+    extras = {
+        key: value.strip()
+        for key, value in (("project_id", project_id or ""), ("location", location or ""))
+        if value and value.strip()
+    }
     try:
-        url = oauth.authorization_url(provider_id)
+        url = oauth.authorization_url(provider_id, extras or None)
     except oauth.OAuthError as exc:
         return HTMLResponse(
             status_code=exc.status_code,
