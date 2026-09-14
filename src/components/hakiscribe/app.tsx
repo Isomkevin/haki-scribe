@@ -65,12 +65,18 @@ import {
   type TranscriptSegment,
   displayValue,
   downloadTextFile,
+  formatBillableHours,
   formatDuration,
   friendlyErrorMessage,
+  friendlyModelName,
+  friendlyStatusNote,
   hakiApi,
   hasApiConfiguration,
+  humanizeFieldLabel,
+  isTechnicalFieldKey,
   omiWebhookUrl,
   parseBackgroundInfo,
+  shouldShowResultField,
   sourceHostname,
   whatsappShareUrl,
   websocketUrl,
@@ -1207,7 +1213,7 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
       </div>
       <div className="grid gap-3 border-t border-border/80 px-4 py-3 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={speculative ? "outline" : "secondary"}>{action.confidence_reason ?? `${Math.round(action.confidence * 100)}% confidence`}</Badge>
+          <Badge variant={speculative ? "outline" : "secondary"}>{action.confidence_reason ?? (speculative ? "Suggested from context" : "Clear from the record")}</Badge>
           {flagged && <Badge variant="secondary">Honours flag{flagged.label ? `: ${flagged.label}` : ""}</Badge>}
           {detectionMode === "heuristic" && <Badge variant="outline">From the record</Badge>}
           {background !== undefined && <Badge variant="outline">External research</Badge>}
@@ -1229,11 +1235,13 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
       {background !== undefined && <BackgroundResearch value={background} />}
       {open && (
         <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 sm:p-5">
-          {Object.entries(action.extracted_fields).filter(([key]) => !hiddenFieldKeys.has(key)).map(([key, value]) => (
-            <label key={key} className={cn("text-xs font-semibold capitalize text-muted-foreground", typeof value === "object" && "sm:col-span-2")}>
-              {key.replaceAll("_", " ")}
+          {Object.entries(action.extracted_fields)
+            .filter(([key, value]) => !hiddenFieldKeys.has(key) && !isTechnicalFieldKey(key) && shouldShowResultField(key, value))
+            .map(([key, value]) => (
+            <label key={key} className={cn("text-xs font-semibold text-muted-foreground", typeof value === "object" && "sm:col-span-2")}>
+              {humanizeFieldLabel(key)}
               {typeof value === "object" ? (
-                <Textarea className="mt-2 min-h-24 bg-background font-mono text-xs" value={displayValue(value)} onChange={(event) => onFields({ ...action.extracted_fields, [key]: event.target.value })} />
+                <Textarea className="mt-2 min-h-24 bg-background text-sm leading-6 text-foreground" value={displayValue(value)} onChange={(event) => onFields({ ...action.extracted_fields, [key]: event.target.value })} />
               ) : (
                 <Input className="mt-2 bg-background text-foreground" value={displayValue(value)} onChange={(event) => onFields({ ...action.extracted_fields, [key]: event.target.value })} />
               )}
@@ -1541,7 +1549,7 @@ function BackgroundResearch({ value }: { value: unknown }) {
               )}
               {(host || source.published) && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {[host, source.published?.slice(0, 10)].filter(Boolean).join(" · ")}
+                  {[host, source.published ? displayValue(source.published) : null].filter(Boolean).join(" · ")}
                 </p>
               )}
               {extract && (
@@ -1579,15 +1587,19 @@ function SourceList({ sources }: { sources: ResearchSource[] }) {
     <ol className="mt-5 space-y-3 border-t border-border pt-4">
       {sources.map((source, index) => (
         <li key={`${source.url ?? index}`} className="text-sm">
-          <span className="mr-2 font-mono text-xs text-muted-foreground">[{index + 1}]</span>
+          <span className="mr-2 text-xs font-semibold text-muted-foreground">{index + 1}.</span>
           {source.url ? (
-            <a href={source.url} target="_blank" rel="noreferrer" className="break-words font-medium text-primary hover:underline">{source.title ?? source.url}</a>
+            <a href={source.url} target="_blank" rel="noreferrer" className="break-words font-medium text-primary hover:underline">{source.title ?? sourceHostname(source.url) ?? "Open source"}</a>
           ) : (
             <span className="font-medium">{source.title ?? "Untitled source"}</span>
           )}
           {source.citation && <span className="ml-2 text-xs text-muted-foreground">{source.citation}</span>}
           {source.kind && <Badge variant="outline" className="ml-2 capitalize">{source.kind}</Badge>}
-          {source.published && <span className="ml-2 text-xs text-muted-foreground">{source.published.slice(0, 10)}</span>}
+          {source.published && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {displayValue(source.published)}
+            </span>
+          )}
           {source.extract && <p className="mt-1 text-xs leading-5 text-muted-foreground">{source.extract}</p>}
         </li>
       ))}
@@ -1675,7 +1687,7 @@ function ResultActions({ children }: { children: ReactNode }) {
   );
 }
 
-function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; sessionId: string; index?: number }) {
+function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: string; index?: number }) {
   const Icon = actionIcons[result.type];
   const [documentText, setDocumentText] = useState(displayValue(result.result["document_text"] ?? ""));
   const queryClient = useQueryClient();
@@ -1707,6 +1719,7 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
   const savedExternally = Object.keys(result.result).some((key) =>
     ["document_id", "ambiguous_document_id", "calendar_id", "ambiguous_event_id", "contact_id", "matter_id", "workspace_url"].includes(key),
   );
+  const statusNote = friendlyStatusNote(result.result["note"]);
 
   if (result.status === "error") {
     return (
@@ -1735,7 +1748,10 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
   const shareUrl = typeof result.result["whatsapp_share_url"] === "string"
     ? result.result["whatsapp_share_url"]
     : whatsappShareUrl(documentText || displayValue(result.result["note_text"] ?? result.result["narrative"] ?? result.result["description"] ?? result.result["matter_name"] ?? result.type));
-  const hiddenResultKeys = new Set(["ics", "narrative", "description", "document_text", "note_text", "whatsapp_share_url", "whatsapp_share_text", "workspace_url", "activity_description"]);
+  const visibleMeta = Object.entries(result.result).filter(([key, value]) => {
+    if (key === "note" && statusNote) return false;
+    return shouldShowResultField(key, value);
+  });
   const title = result.type === "workspace_matter"
     ? `${result.result["note"] ? String(result.result["note"]).startsWith("linked") ? "Linked matter" : "New matter" : "Matter"}: ${displayValue(result.result["matter_name"])}`
     : result.type === "crm_entry"
@@ -1743,7 +1759,7 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
       : result.type === "private_note"
         ? "Private note"
         : result.type === "time_entry"
-          ? `${displayValue(result.result["duration_hours"])}h · ${displayValue(result.result["matter_name"] ?? "This session")}`
+          ? `${formatBillableHours(result.result["duration_hours"])} · ${displayValue(result.result["matter_name"] ?? "This session")}`
           : result.type === "draft_document"
             ? "Editable legal draft"
             : typeLabel;
@@ -1761,9 +1777,6 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
               Ready to review
             </Badge>
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</span>
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-              {String(index + 1).padStart(2, "0")}
-            </span>
           </div>
           <h2 className="mt-2 break-words font-serif text-xl font-semibold leading-snug capitalize sm:text-2xl">{title}</h2>
         </div>
@@ -1848,7 +1861,9 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
             <p className="whitespace-pre-wrap font-serif text-base leading-7">{displayValue(result.result["output"])}</p>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Badge variant="outline">{displayValue(result.result["model"])}</Badge>
+            {typeof result.result["model"] === "string" && result.result["model"] && (
+              <Badge variant="outline">Prepared with {friendlyModelName(result.result["model"])}</Badge>
+            )}
             <Button variant="outline" size="sm" className="h-10" onClick={() => void navigator.clipboard.writeText(displayValue(result.result["output"]))}><Copy /> Copy</Button>
           </div>
         </div>
@@ -1862,7 +1877,7 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
       ) : result.type === "time_entry" ? (
         <div className="space-y-4 p-4 sm:p-6">
           <div className="grid gap-3 sm:grid-cols-3">
-            <ResultMeta label="Hours"><p className="font-serif text-3xl font-semibold">{displayValue(result.result["duration_hours"])}</p></ResultMeta>
+            <ResultMeta label="Hours"><p className="font-serif text-3xl font-semibold">{formatBillableHours(result.result["duration_hours"])}</p></ResultMeta>
             <ResultMeta label="Matter"><p>{displayValue(result.result["matter_name"])}</p></ResultMeta>
             <ResultMeta label="Billable"><p>{displayValue(result.result["billable"] ?? true)}</p></ResultMeta>
           </div>
@@ -1873,13 +1888,22 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
         </div>
       ) : (
         <div className="space-y-4 p-4 sm:p-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Object.entries(result.result).filter(([key]) => !hiddenResultKeys.has(key)).map(([key, value]) => (
-              <ResultMeta key={key} label={key.replaceAll("_", " ")}>
-                <p className="whitespace-pre-wrap">{displayValue(value)}</p>
-              </ResultMeta>
-            ))}
-          </div>
+          {!!visibleMeta.length && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {visibleMeta.map(([key, value]) => (
+                <ResultMeta key={key} label={humanizeFieldLabel(key)}>
+                  <p className="whitespace-pre-wrap">
+                    {key === "duration_hours" ? formatBillableHours(value) : displayValue(value)}
+                  </p>
+                </ResultMeta>
+              ))}
+            </div>
+          )}
+          {statusNote && (
+            <p className="rounded-xl border border-border/70 bg-background/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
+              {statusNote}
+            </p>
+          )}
           {longText && result.type === "calendar_event" && (
             <div className="rounded-2xl border border-border bg-background/80 p-4 sm:p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Description</p>
@@ -1887,7 +1911,7 @@ function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; se
             </div>
           )}
           <ResultActions>
-            {calendarHref && <Button asChild variant="outline" className="h-10 shrink-0"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
+            {calendarHref && <Button asChild variant="outline" className="h-10 shrink-0"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download calendar file</a></Button>}
             {calendarProvider.data && (
               <Button
                 variant="outline"

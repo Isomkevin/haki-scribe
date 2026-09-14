@@ -558,12 +558,188 @@ export function formatDuration(milliseconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LONG_HEX_PATTERN = /^[0-9a-f]{16,}$/i;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/** Opaque system IDs lawyers should never have to read. */
+export function looksLikeTechnicalId(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const text = value.trim();
+  if (!text || text.includes(" ")) return false;
+  if (UUID_PATTERN.test(text)) return true;
+  if (LONG_HEX_PATTERN.test(text)) return true;
+  // Long opaque tokens (provider ids, deal ids, etc.)
+  if (text.length >= 22 && /^[A-Za-z0-9_\-:.]+$/.test(text) && /\d/.test(text) && /[a-z]/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+const TECHNICAL_FIELD_KEYS = new Set([
+  "action_id",
+  "session_id",
+  "source_segment_id",
+  "existing_matter_id",
+  "matter_id",
+  "contact_id",
+  "document_id",
+  "calendar_id",
+  "ambiguous_document_id",
+  "ambiguous_event_id",
+  "ambiguous_deal_id",
+  "ambiguous_contact_id",
+  "exports",
+  "ics",
+  "whatsapp_share_url",
+  "whatsapp_share_text",
+  "workspace_url",
+  "ambiguous_document_url",
+  "detection_mode",
+  "background_info",
+  "document_text",
+  "note_text",
+  "narrative",
+  "description",
+  "activity_description",
+]);
+
+export function isTechnicalFieldKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  if (TECHNICAL_FIELD_KEYS.has(normalized)) return true;
+  if (normalized.endsWith("_id") || normalized.endsWith("_ids")) return true;
+  if (normalized.endsWith("_url") && normalized !== "url") return true;
+  if (normalized.includes("whatsapp_share")) return true;
+  if (normalized.startsWith("ambiguous_")) return true;
+  return false;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  duration_hours: "Hours",
+  matter_name: "Matter",
+  client_name: "Client",
+  contact_name: "Contact",
+  document_kind: "Document type",
+  activity_description: "Activity",
+  billable: "Billable",
+  attendees: "Attendees",
+  location: "Location",
+  start: "Starts",
+  end: "Ends",
+  title: "Title",
+  note: "Status",
+  updates: "Notes",
+  question: "Question",
+  answer: "Answer",
+  instruction: "Instruction",
+  output: "Response",
+  model: "Prepared with",
+  source: "Source",
+  workspace_error: "Workspace note",
+};
+
+export function humanizeFieldLabel(key: string): string {
+  const normalized = key.trim().toLowerCase();
+  if (FIELD_LABELS[normalized]) return FIELD_LABELS[normalized];
+  return key
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
+function formatDateTimeForProfessionals(value: string): string | null {
+  if (!ISO_DATE_PATTERN.test(value.trim())) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const hasTime = /T|\d{2}:\d{2}/.test(value);
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    ...(hasTime
+      ? { hour: "numeric", minute: "2-digit" }
+      : {}),
+  }).format(date);
+}
+
+function formatHours(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} ${rounded === 1 ? "hour" : "hours"}`;
+}
+
+export function formatBillableHours(value: unknown): string {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return displayValue(value);
+  return formatHours(numeric);
+}
+
+export function friendlyModelName(model: string): string {
+  const bare = model.includes(":") ? model.split(":").slice(1).join(":") : model;
+  return bare
+    .replaceAll("-", " ")
+    .replaceAll("_", " ")
+    .replace(/\bclaude\b/gi, "Claude")
+    .replace(/\bgpt\b/gi, "GPT")
+    .replace(/\b(\d) (\d)\b/g, "$1.$2")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/** Soften internal persistence notes for the review desk. */
+export function friendlyStatusNote(note: unknown): string | null {
+  if (typeof note !== "string" || !note.trim()) return null;
+  const text = note.trim().toLowerCase();
+  if (text.includes("linked")) return "Linked to an existing matter in your library";
+  if (text.includes("new matter") || text.includes("persisted via")) return "Saved to your Session Library";
+  if (text.includes("ambiguous")) return "Also mirrored to Ambiguous";
+  if (text.includes("created in")) return "Saved to your connected CRM";
+  if (text.includes("session library")) return "Saved to your Session Library";
+  if (text.includes("/") || text.includes("_id") || UUID_PATTERN.test(note)) {
+    return "Saved for this session";
+  }
+  return note;
+}
+
 export function displayValue(value: unknown): string {
-  if (Array.isArray(value)) return value.map(displayValue).join(", ");
-  if (value && typeof value === "object") return JSON.stringify(value, null, 2);
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => displayValue(item))
+      .filter((item) => item && item !== "—");
+    return parts.length ? parts.join(", ") : "—";
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([key, entry]) => !isTechnicalFieldKey(key) && !looksLikeTechnicalId(entry))
+      .map(([key, entry]) => `${humanizeFieldLabel(key)}: ${displayValue(entry)}`);
+    return entries.length ? entries.join(" · ") : "—";
+  }
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  return String(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
+    return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+  }
+  const text = String(value).trim();
+  if (!text) return "—";
+  if (looksLikeTechnicalId(text)) return "—";
+  const asDate = formatDateTimeForProfessionals(text);
+  if (asDate) return asDate;
+  return text;
+}
+
+/** Values safe to show on the Results review desk (no hashes, urls-as-ids, dumps). */
+export function shouldShowResultField(key: string, value: unknown): boolean {
+  if (isTechnicalFieldKey(key)) return false;
+  if (value === null || value === undefined || value === "") return false;
+  if (looksLikeTechnicalId(value)) return false;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const visible = Object.entries(value as Record<string, unknown>).filter(
+      ([entryKey, entryValue]) => shouldShowResultField(entryKey, entryValue),
+    );
+    return visible.length > 0;
+  }
+  if (Array.isArray(value) && value.length === 0) return false;
+  return true;
 }
 
 export interface BackgroundSource {
