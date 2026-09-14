@@ -101,10 +101,12 @@ export function ConnectorsSection() {
 
   const connectedCount = (integrations.data ?? []).filter((item) => item.connected).length;
 
-  async function beginOAuth(provider: Integration) {
+  async function beginOAuth(provider: Integration, params?: Record<string, string>) {
     setOauthPending(provider.provider_id);
+    setDialogProvider(null);
+    setDialogValues({});
     try {
-      const outcome = await startIntegrationOAuth(provider.provider_id);
+      const outcome = await startIntegrationOAuth(provider.provider_id, params);
       if (outcome === "connected") {
         toast.success(`${provider.name} connected`);
       } else {
@@ -121,6 +123,13 @@ export function ConnectorsSection() {
 
   function openConnect(provider: Integration) {
     if (provider.oauth && provider.oauth_configured) {
+      // Some sign-ins need a detail first (e.g. the Google Cloud project for Gemini).
+      if ((provider.fields ?? []).length > 0) {
+        setDialogProvider(provider);
+        setDialogValues({});
+        setDialogError(null);
+        return;
+      }
       void beginOAuth(provider);
       return;
     }
