@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -7,13 +7,22 @@ import {
   LockKeyhole,
   Loader2,
   Mic,
+  RefreshCw,
   Scale,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { friendlyErrorMessage, hakiApi } from "@/lib/hakiscribe";
+import {
+  DEMO_CREDENTIALS_QUERY_KEY,
+  FALLBACK_DEMO_CREDENTIALS,
+  friendlyErrorMessage,
+  hakiApi,
+  hasApiConfiguration,
+  type DemoCredentials,
+  warmWorkspace,
+} from "@/lib/hakiscribe";
 import { signIn } from "@/lib/auth";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { Brand, TrustLine } from "./brand";
@@ -24,16 +33,42 @@ const trustPoints = [
   "Not used to train models · GDPR-aligned",
 ];
 
+const SLOW_WAKE_MS = 2500;
+
+function resolveDemoCredentials(data: DemoCredentials | undefined): DemoCredentials | null {
+  if (data?.enabled && data.email && data.password) return data;
+  if (hasApiConfiguration) return FALLBACK_DEMO_CREDENTIALS;
+  return null;
+}
+
 export function LoginPage({ next }: { next?: string | undefined }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [slowWake, setSlowWake] = useState(false);
 
   const demo = useQuery({
-    queryKey: ["demo-credentials"],
+    queryKey: DEMO_CREDENTIALS_QUERY_KEY,
     queryFn: hakiApi.demoCredentials,
-    retry: false,
+    enabled: hasApiConfiguration,
+    retry: 4,
+    retryDelay: (attempt) => Math.min(1500 * 2 ** attempt, 12_000),
+    staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    if (!hasApiConfiguration) return;
+    void warmWorkspace();
+  }, []);
+
+  useEffect(() => {
+    if (!demo.isLoading && !demo.isFetching) {
+      setSlowWake(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlowWake(true), SLOW_WAKE_MS);
+    return () => window.clearTimeout(timer);
+  }, [demo.isLoading, demo.isFetching]);
 
   const login = useMutation({
     mutationFn: (body: { email: string; password: string }) => hakiApi.login(body),
@@ -43,7 +78,14 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       window.location.assign(target);
     },
     onError: (err: Error) => {
-      setError(friendlyErrorMessage(err, "That email and password did not match an account."));
+      const message = friendlyErrorMessage(err, "That email and password did not match an account.");
+      const waking =
+        /couldn’t connect|could not connect|unreachable|timed out|timeout|failed to fetch/i.test(message);
+      setError(
+        waking
+          ? `${message} If this is your first visit, the workspace may still be waking up — wait a moment and try again.`
+          : message,
+      );
     },
   });
 
@@ -54,13 +96,19 @@ export function LoginPage({ next }: { next?: string | undefined }) {
   }
 
   function useDemo() {
-    const creds = demo.data;
-    if (!creds?.enabled || !creds.email || !creds.password) return;
+    const creds = resolveDemoCredentials(demo.data);
+    if (!creds?.email || !creds.password) return;
     setEmail(creds.email);
     setPassword(creds.password);
     setError(null);
     login.mutate({ email: creds.email, password: creds.password });
   }
+
+  const demoDisabledByServer = demo.isSuccess && demo.data?.enabled === false;
+  const showDemoPanel = hasApiConfiguration && !demoDisabledByServer;
+  const demoReady = Boolean(resolveDemoCredentials(demo.data));
+  const demoWaking = showDemoPanel && (demo.isLoading || demo.isFetching || demo.isError || slowWake);
+  const demoCanSubmit = demoReady && !login.isPending;
 
   return (
     <div className="relative min-h-svh overflow-x-hidden bg-background paper-grain">
@@ -239,22 +287,54 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                   )}
                 </Button>
 
-                {demo.data?.enabled ? (
+                {showDemoPanel ? (
                   <div className="rounded-xl border border-dashed border-border bg-muted/35 p-4">
                     <p className="text-xs leading-5 text-muted-foreground">
                       <span className="font-semibold text-foreground">Temporary demo access.</span>{" "}
                       Shared for judging — remove before real client work.
                     </p>
+
+                    {demoWaking && !demo.isSuccess ? (
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground" role="status">
+                        {slowWake || demo.isError
+                          ? "The workspace is waking up — first visit can take up to a minute. You can still use demo credentials; sign-in will wait for the service."
+                          : "Connecting to the workspace…"}
+                      </p>
+                    ) : null}
+
                     <Button
                       type="button"
                       variant="outline"
                       className="mt-3 h-11 w-full"
                       onClick={useDemo}
-                      disabled={login.isPending}
+                      disabled={!demoCanSubmit}
                     >
-                      <ShieldCheck className="size-4" aria-hidden />
-                      Use demo credentials
+                      {login.isPending ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                          Signing in…
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="size-4" aria-hidden />
+                          Use demo credentials
+                        </>
+                      )}
                     </Button>
+
+                    {(demo.isError || (slowWake && !demo.isSuccess)) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 h-9 w-full text-xs"
+                        onClick={() => void demo.refetch()}
+                        disabled={demo.isFetching}
+                      >
+                        <RefreshCw className={demo.isFetching ? "size-3.5 animate-spin" : "size-3.5"} aria-hidden />
+                        Retry connection
+                      </Button>
+                    )}
                   </div>
                 ) : null}
               </div>

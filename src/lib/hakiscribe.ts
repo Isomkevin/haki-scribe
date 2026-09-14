@@ -391,6 +391,16 @@ export interface DemoCredentials {
   name?: string;
 }
 
+/** Matches backend defaults in auth.py — used so the login demo CTA is never blank during cold starts. */
+export const FALLBACK_DEMO_CREDENTIALS: DemoCredentials = {
+  enabled: true,
+  email: "demo@hakiscribe.app",
+  password: "hakiscribe-demo",
+  name: "Demo Advocate",
+};
+
+export const DEMO_CREDENTIALS_QUERY_KEY = ["demo-credentials"] as const;
+
 export const hakiApi = {
   login: (body: { email: string; password: string }) =>
     request<{ token: string; user: AuthUser }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
@@ -475,6 +485,12 @@ export const hakiApi = {
     );
   },
 };
+
+/** Ping health + demo credentials so a sleeping Render instance starts before sign-in. */
+export async function warmWorkspace(): Promise<void> {
+  if (!hasApiConfiguration) return;
+  await Promise.allSettled([hakiApi.health(), hakiApi.demoCredentials()]);
+}
 
 /** URL the connect popup opens; the server bounces it to the provider's consent screen. */
 export function integrationOAuthUrl(providerId: string, params?: Record<string, string>) {

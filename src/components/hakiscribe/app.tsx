@@ -63,6 +63,7 @@ import {
   type SessionDetail,
   type SessionSource,
   type TranscriptSegment,
+  DEMO_CREDENTIALS_QUERY_KEY,
   displayValue,
   downloadTextFile,
   formatBillableHours,
@@ -80,6 +81,7 @@ import {
   shouldShowReferenceField,
   shouldShowResultField,
   sourceHostname,
+  warmWorkspace,
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
@@ -310,6 +312,7 @@ function PersonasCarousel() {
 }
 
 export function LandingPage() {
+  const queryClient = useQueryClient();
   const featureGroups = [
     { icon: Mic, title: "Capture without disruption", copy: "Record by microphone or Omi while hands-free flags preserve dates, admissions, and commitments in the moment." },
     { icon: LockKeyhole, title: "Privilege before processing", copy: "Relabel speakers and lock privileged or off-record lines before detection. Hidden lines stay reversible and outside model context." },
@@ -318,6 +321,16 @@ export function LandingPage() {
     { icon: Sparkles, title: "Your choice of intelligence", copy: "Use the built-in model or a connected provider for transcript-grounded tasks, with legal research and web context kept distinct from evidence." },
     { icon: Cloud, title: "Connect the tools you use", copy: "Send approved work to document, calendar, storage, and practice systems through durable, server-side automations." },
   ];
+
+  useEffect(() => {
+    if (!hasApiConfiguration) return;
+    void queryClient.prefetchQuery({
+      queryKey: DEMO_CREDENTIALS_QUERY_KEY,
+      queryFn: hakiApi.demoCredentials,
+      staleTime: 5 * 60_000,
+    });
+    void warmWorkspace();
+  }, [queryClient]);
 
   return (
     <PageShell>
