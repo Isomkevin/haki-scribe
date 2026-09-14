@@ -378,7 +378,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface AuthUser {
+  email: string;
+  name: string;
+  demo?: boolean;
+}
+
+export interface DemoCredentials {
+  enabled: boolean;
+  email?: string;
+  password?: string;
+  name?: string;
+}
+
 export const hakiApi = {
+  login: (body: { email: string; password: string }) =>
+    request<{ token: string; user: AuthUser }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  demoCredentials: () => request<DemoCredentials>("/auth/demo"),
   listSessions: () => request<Session[]>("/sessions"),
   getSession: (id: string) => request<SessionDetail>(`/sessions/${id}`),
   createSession: (body: { title: string; source: SessionSource; language_hint?: string }) =>
