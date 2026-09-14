@@ -1,10 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  Brain,
   CheckCircle2,
-  Cloud,
-  ExternalLink,
   Link2,
   Loader2,
   LockKeyhole,
@@ -22,8 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { hakiApi, type Integration, type IntegrationField } from "@/lib/hakiscribe";
-import { PageShell, SectionHeading, WorkspaceFooter } from "./shell";
-import { TrustLine } from "./brand";
+import { SectionHeading } from "./shell";
 
 const GROUP_LABELS: Record<string, string> = {
   ai: "AI assistants",
@@ -31,13 +27,7 @@ const GROUP_LABELS: Record<string, string> = {
   practice: "Practice suite",
 };
 
-const GROUP_ICONS: Record<string, React.ReactNode> = {
-  ai: <Brain className="size-4" />,
-  storage: <Cloud className="size-4" />,
-  practice: <Plug className="size-4" />,
-};
-
-export function ConnectorsPage() {
+export function ConnectorsSection() {
   const queryClient = useQueryClient();
   const integrations = useQuery({
     queryKey: ["integrations"],
@@ -93,24 +83,24 @@ export function ConnectorsPage() {
   }
 
   return (
-    <PageShell back>
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-        <header className="mb-7 border-b border-border pb-7 sm:mb-8 sm:pb-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Connectors</p>
-          <h1 className="mt-2 max-w-3xl font-serif text-3xl font-semibold leading-tight sm:text-4xl">
-            Link HakiScribe to the tools your practice already uses
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Connect your own AI keys, cloud storage and practice suite so drafted documents, research and calendar
-            events flow to where your work lives. Credentials are stored on the server — never in the browser.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+    <div id="connectors">
+        <header className="mb-7">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Connectors</p>
+              <h2 className="mt-2 max-w-3xl font-serif text-2xl font-semibold leading-tight sm:text-3xl">
+                Link HakiScribe to the tools your practice already uses
+              </h2>
+            </div>
             <Badge variant="outline" className="gap-1.5">
               <Plug className="size-3" />
               {connectedCount} connected
             </Badge>
-            <TrustLine />
           </div>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Connect your own AI keys, cloud storage and practice suite so drafted documents, research and calendar
+            events flow to where your work lives. Credentials are stored on the server — never in the browser.
+          </p>
         </header>
 
         {integrations.isError ? (
@@ -158,8 +148,6 @@ export function ConnectorsPage() {
             </div>
           </div>
         </section>
-      </main>
-      <WorkspaceFooter />
 
       <Dialog open={dialogProvider !== null} onOpenChange={(open) => !open && setDialogProvider(null)}>
         <DialogContent className="max-w-md">
@@ -202,7 +190,7 @@ export function ConnectorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </div>
   );
 }
 

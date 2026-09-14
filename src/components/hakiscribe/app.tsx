@@ -152,7 +152,7 @@ export function LandingPage() {
                   <Link to="/new"><Mic /> Start a private session</Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="h-13 border-intelligence-border bg-intelligence/60 px-6 text-intelligence-foreground hover:bg-intelligence-panel hover:text-intelligence-foreground">
-                  <Link to="/connectors"><Cloud /> Explore connectors</Link>
+                  <a href="#how-it-works">How it works</a>
                 </Button>
               </div>
               <TrustLine className="mt-7 max-w-xl text-left text-intelligence-muted" />
@@ -160,7 +160,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="border-b border-border bg-background">
+        <section id="how-it-works" className="border-b border-border bg-background">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
             <SectionEyebrow>From spoken record to reviewed action</SectionEyebrow>
             <div className="mt-3 grid gap-8 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:gap-16">
@@ -322,7 +322,7 @@ export function NewSessionPage() {
             {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
             <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Refresh the library" disabled={syncLibrary.isPending || !hasApiConfiguration} onClick={() => syncLibrary.mutate()}><RefreshCw className={syncLibrary.isPending ? "animate-spin" : undefined} /></Button></TooltipTrigger><TooltipContent>Refresh the library</TooltipContent></Tooltip></TooltipProvider>
             <Button asChild variant="outline" size="sm"><Link to="/tracker">Case tracker</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link to="/connectors">Connectors</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link to="/settings">Settings</Link></Button>
           </div>} />
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
           {sessions.error && <ConnectionError message={sessions.error.message} retry={() => void sessions.refetch()} />}
@@ -1043,7 +1043,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
         </Button>
       </div>
       {catalogue.data?.configured === false && (
-        <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing. Add OPENROUTER_API_KEY or connect OpenRouter under Connectors.</p>
+        <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing. Add OPENROUTER_API_KEY or connect OpenRouter in <Link to="/settings" className="font-medium text-foreground underline-offset-4 hover:underline">Settings</Link>.</p>
       )}
       {ask.error && <p className="mt-3 text-sm text-destructive">{ask.error.message}</p>}
     </section>

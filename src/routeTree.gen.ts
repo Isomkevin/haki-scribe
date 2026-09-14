@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as ResearchRouteImport } from './routes/research'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
 
@@ -36,6 +37,11 @@ const ResearchRoute = ResearchRouteImport.update({
   path: '/research',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrackerRoute = TrackerRouteImport.update({
   id: '/tracker',
   path: '/tracker',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/connectors': typeof ConnectorsRoute
   '/new': typeof NewRoute
   '/research': typeof ResearchRoute
+  '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof ConnectorsRoute
   '/new': typeof NewRoute
   '/research': typeof ResearchRoute
+  '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/connectors': typeof ConnectorsRoute
   '/new': typeof NewRoute
   '/research': typeof ResearchRoute
+  '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/new'
     | '/research'
+    | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/new'
     | '/research'
+    | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/new'
     | '/research'
+    | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   ConnectorsRoute: typeof ConnectorsRoute
   NewRoute: typeof NewRoute
   ResearchRoute: typeof ResearchRoute
+  SettingsRoute: typeof SettingsRoute
   TrackerRoute: typeof TrackerRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
 }
@@ -138,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tracker': {
       id: '/tracker'
       path: '/tracker'
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorsRoute: ConnectorsRoute,
   NewRoute: NewRoute,
   ResearchRoute: ResearchRoute,
+  SettingsRoute: SettingsRoute,
   TrackerRoute: TrackerRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
 }

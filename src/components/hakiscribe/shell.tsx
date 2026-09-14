@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Headphones, Mic, Scale } from "lucide-react";
+import { ArrowLeft, Headphones, Mic, Scale, Settings2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SessionStatus } from "@/lib/hakiscribe";
 import { Brand, SecureBadge } from "./brand";
@@ -10,7 +11,7 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background paper-grain">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto grid h-[4.25rem] max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 sm:flex sm:justify-between sm:px-6">
+        <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           {back ? (
             <Link
               to="/"
@@ -25,7 +26,21 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
             <Brand />
           )}
           {back && <Brand compact />}
-          <SecureBadge />
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {back && (
+              <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+                <Link
+                  to="/settings"
+                  activeProps={{ className: "bg-accent text-foreground" }}
+                  aria-label="Settings"
+                >
+                  <Settings2 />
+                  <span className="hidden sm:inline">Settings</span>
+                </Link>
+              </Button>
+            )}
+            <SecureBadge />
+          </div>
         </div>
         <div className="gold-rule" />
       </header>
