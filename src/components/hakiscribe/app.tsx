@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  ApiError,
   type ActionResult,
   type ActionType,
   type Contact,
@@ -62,6 +63,7 @@ import {
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { TrustLine } from "./brand";
 import {
   FlowProgress,
@@ -156,6 +158,33 @@ export function HomePage() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const syncLibrary = useMutation({
+    mutationFn: hakiApi.syncDemoLibrary,
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["matters"] });
+      void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      if (result.created > 0) {
+        toast.success(result.completing ? "Library restored. Finishing the trays." : "Library restored.");
+      }
+      if (result.completing) {
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          void queryClient.invalidateQueries({ queryKey: ["matters"] });
+        }, 12000);
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 404) return;
+      toast.error(error.message);
+    },
+  });
+  const didSync = useRef(false);
+  useEffect(() => {
+    if (didSync.current || !hasApiConfiguration || sessions.isLoading || sessions.isError) return;
+    didSync.current = true;
+    syncLibrary.mutate();
+  }, [sessions.isError, sessions.isLoading, syncLibrary.mutate]);
   const health = useQuery({
     queryKey: ["health"],
     queryFn: hakiApi.health,
@@ -283,6 +312,24 @@ export function HomePage() {
             action={
               <div className="flex items-center gap-2">
                 {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label="Refresh the library"
+                        disabled={syncLibrary.isPending || !hasApiConfiguration}
+                        onClick={() => syncLibrary.mutate()}
+                      >
+                        <RefreshCw className={syncLibrary.isPending ? "animate-spin" : undefined} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Refresh the library</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button asChild variant="outline" size="sm">
                   <Link to="/tracker">Case tracker</Link>
                 </Button>
@@ -295,7 +342,13 @@ export function HomePage() {
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
           {sessions.error && <ConnectionError message={sessions.error.message} retry={() => void sessions.refetch()} />}
           {sessions.isLoading && <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-card" />)}</div>}
-          {sessions.data?.length === 0 && (
+          {sessions.data?.length === 0 && syncLibrary.isPending && (
+            <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center">
+              <p className="font-serif text-xl">Restoring the desk</p>
+              <p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p>
+            </div>
+          )}
+          {sessions.data?.length === 0 && !syncLibrary.isPending && (
             <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center">
               <p className="font-serif text-xl">The library is empty</p>
               <p className="mt-2 text-sm text-muted-foreground">Open the completed Wanjiru client meeting, or start listening.</p>

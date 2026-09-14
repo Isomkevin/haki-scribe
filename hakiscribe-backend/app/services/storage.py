@@ -255,6 +255,7 @@ def link_matter_to_session(session_id: uuid.UUID, matter_id: uuid.UUID) -> None:
     matter = _matters.get(matter_id)
     if matter is not None and session_id not in matter.session_ids:
         matter.session_ids.append(session_id)
+    _persist()
 
 
 def create_contact(contact: Contact) -> Contact:

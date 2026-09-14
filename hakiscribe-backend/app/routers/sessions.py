@@ -14,7 +14,7 @@ from app.models.schemas import (
     SpeakerRelabelRequest,
     TranscriptSegment,
 )
-from app.services import storage
+from app.services import demo_library, storage
 
 router = APIRouter()
 
@@ -26,7 +26,8 @@ def create_session(payload: SessionCreate):
 
 
 @router.get("", response_model=list[SessionLibraryItem])
-def list_sessions():
+async def list_sessions():
+    await demo_library.sync_demo_library()
     return storage.list_library_sessions()
 
 

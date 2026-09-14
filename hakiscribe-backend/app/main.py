@@ -1,4 +1,6 @@
+import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -29,8 +31,23 @@ _load_env_files()
 
 from app.integrations import llm_client
 from app.routers import actions, demo, integrations, internal, matters, news, sessions, omi_webhook, stream
+from app.services import demo_library
 
-app = FastAPI(title="HakiScribe", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = asyncio.create_task(demo_library.bootstrap_demo_library())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="HakiScribe", version="0.1.0", lifespan=lifespan)
 
 # Lovable frontend will hit this from a different origin during dev.
 app.add_middleware(

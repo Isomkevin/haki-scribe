@@ -300,6 +300,10 @@ export const hakiApi = {
       { method: "POST", body: JSON.stringify({ provider }) },
     ),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
+  syncDemoLibrary: () =>
+    request<{ created: number; reused: number; completing: boolean; sessions: Session[] }>("/demo/sync", {
+      method: "POST",
+    }),
   searchLegalIntel: (body: { session_id?: string | undefined; matter_id?: string | undefined; query?: string }) =>
     request<LegalIntelResult>("/news/search", { method: "POST", body: JSON.stringify(body) }),
   watchLegalIntel: (body: { session_id?: string | undefined; matter_id?: string | undefined }) =>
