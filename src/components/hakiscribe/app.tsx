@@ -64,6 +64,7 @@ import {
   websocketUrl,
 } from "@/lib/hakiscribe";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
 import {
   FlowProgress,
@@ -115,37 +116,129 @@ function ConnectionError({ message, retry }: { message: string; retry?: () => vo
   );
 }
 
-export function HomePage() {
+export function LandingPage() {
+  const featureGroups = [
+    { icon: Mic, title: "Capture without disruption", copy: "Record by microphone or Omi while hands-free flags preserve dates, admissions, and commitments in the moment." },
+    { icon: LockKeyhole, title: "Privilege before processing", copy: "Relabel speakers and lock privileged or off-record lines before detection. Hidden lines stay reversible and outside model context." },
+    { icon: FileText, title: "Work, not a transcript dump", copy: "Choose only the letters, notes, calendar entries, matters, contacts, time records, and research the conversation supports." },
+    { icon: ShieldCheck, title: "Every claim traceable", copy: "Each proposed action points back to its source line, so a reviewer can verify the record before anything leaves the workspace." },
+    { icon: Sparkles, title: "Your choice of intelligence", copy: "Use the built-in model or a connected provider for transcript-grounded tasks, with legal research and web context kept distinct from evidence." },
+    { icon: Cloud, title: "Connect the tools you use", copy: "Send approved work to document, calendar, storage, and practice systems through durable, server-side automations." },
+  ];
+
+  return (
+    <PageShell>
+      <main>
+        <section className="relative isolate min-h-[calc(100svh-4.25rem)] overflow-hidden border-b border-border bg-intelligence text-intelligence-foreground">
+          <img
+            src={legalRoomImage}
+            alt="Kenyan legal professionals reviewing case papers around a conference table"
+            width={1600}
+            height={900}
+            className="absolute inset-0 size-full object-cover object-[62%_center]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-intelligence via-intelligence/95 to-intelligence/20" />
+          <div className="relative mx-auto flex min-h-[calc(100svh-4.25rem)] max-w-6xl items-end px-4 pb-14 pt-20 sm:px-6 sm:pb-20 lg:items-center lg:pb-24">
+            <div className="max-w-3xl animate-ink-rise">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-intelligence-accent">Conversation to legal work</p>
+              <h1 className="mt-4 max-w-3xl font-serif text-4xl font-semibold leading-[1.08] sm:text-6xl lg:text-7xl">
+                Capture what matters. <em className="italic text-intelligence-accent">Leave with work ready.</em>
+              </h1>
+              <p className="mt-6 max-w-2xl text-base leading-7 text-intelligence-muted sm:text-lg">
+                HakiScribe is the private listening companion for legal rooms. Verify the record, protect privilege, then choose the source-traceable work it prepares.
+              </p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button asChild variant="warm" size="lg" className="h-13 px-6 text-base">
+                  <Link to="/new"><Mic /> Start a private session</Link>
+                </Button>
+                <Button asChild size="lg" variant="outline" className="h-13 border-intelligence-border bg-intelligence/60 px-6 text-intelligence-foreground hover:bg-intelligence-panel hover:text-intelligence-foreground">
+                  <Link to="/connectors"><Cloud /> Explore connectors</Link>
+                </Button>
+              </div>
+              <TrustLine className="mt-7 max-w-xl text-left text-intelligence-muted" />
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-border bg-background">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <SectionEyebrow>From spoken record to reviewed action</SectionEyebrow>
+            <div className="mt-3 grid gap-8 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:gap-16">
+              <h2 className="font-serif text-3xl font-semibold leading-tight sm:text-5xl">A disciplined path from the room to the work.</h2>
+              <ol className="divide-y divide-border border-y border-border">
+                {practiceSteps.map((step) => (
+                  <li key={step.n} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-4 py-5 sm:grid-cols-[3.5rem_minmax(0,1fr)] sm:py-6">
+                    <span className="font-serif text-lg text-action">{step.n}</span>
+                    <div><h3 className="font-semibold">{step.title}</h3><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.copy}</p></div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-card">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <SectionHeading eyebrow="Built for legal practice" title="The record stays central. The work moves forward." />
+            <div className="grid border-l border-t border-border sm:grid-cols-2 lg:grid-cols-3">
+              {featureGroups.map(({ icon: Icon, title, copy }) => (
+                <article key={title} className="border-b border-r border-border p-5 sm:p-7">
+                  <span className="grid size-10 place-items-center rounded-md bg-secondary text-primary"><Icon className="size-5" /></span>
+                  <h3 className="mt-5 font-serif text-xl font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-y border-intelligence-border bg-intelligence text-intelligence-foreground">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-intelligence-accent">Where HakiScribe works</p>
+            <div className="mt-8 grid gap-px overflow-hidden rounded-lg border border-intelligence-border bg-intelligence-border md:grid-cols-3">
+              {environments.map((item) => (
+                <article key={item.place} className="bg-intelligence p-6 sm:p-8">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-intelligence-accent">{item.place}</p>
+                  <h3 className="mt-3 font-serif text-2xl font-semibold">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-intelligence-muted">{item.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-background">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.75fr)] lg:items-center">
+            <div>
+              <SectionEyebrow>Private by design</SectionEyebrow>
+              <h2 className="mt-3 max-w-2xl font-serif text-3xl font-semibold leading-tight sm:text-5xl">Your public introduction ends before client work begins.</h2>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">Session setup, past matters, recordings, transcripts, speaker review, privilege controls, analysis, and generated work all live in a separate workspace. Nothing from a case is displayed on this public page.</p>
+            </div>
+            <div className="border-l-2 border-action pl-6 sm:pl-8">
+              <LockKeyhole className="size-8 text-action" />
+              <p className="mt-5 font-serif text-2xl font-semibold">Privilege stays in the room.</p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">Only verified, non-redacted transcript lines can reach analysis. Connected tools receive the minimum approved artifact they need.</p>
+              <Button asChild className="mt-6"><Link to="/new">Enter private workspace</Link></Button>
+            </div>
+          </div>
+        </section>
+      </main>
+      <WorkspaceFooter />
+    </PageShell>
+  );
+}
+
+export function NewSessionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [source, setSource] = useState<SessionSource>("mic");
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("code-switch");
-  const sessions = useQuery({
-    queryKey: ["sessions"],
-    queryFn: hakiApi.listSessions,
-    enabled: hasApiConfiguration,
-    retry: false,
-  });
-  const matters = useQuery({
-    queryKey: ["matters"],
-    queryFn: hakiApi.listMatters,
-    enabled: hasApiConfiguration,
-    retry: false,
-  });
-  const contacts = useQuery({
-    queryKey: ["contacts"],
-    queryFn: hakiApi.listContacts,
-    enabled: hasApiConfiguration,
-    retry: false,
-  });
+  const sessions = useQuery({ queryKey: ["sessions"], queryFn: hakiApi.listSessions, enabled: hasApiConfiguration, retry: false });
+  const matters = useQuery({ queryKey: ["matters"], queryFn: hakiApi.listMatters, enabled: hasApiConfiguration, retry: false });
+  const contacts = useQuery({ queryKey: ["contacts"], queryFn: hakiApi.listContacts, enabled: hasApiConfiguration, retry: false });
   const create = useMutation({
-    mutationFn: () =>
-      hakiApi.createSession({
-        title: title.trim() || `New ${source === "mic" ? "recording" : "Omi session"}`,
-        source,
-        ...(language ? { language_hint: language } : {}),
-      }),
+    mutationFn: () => hakiApi.createSession({ title: title.trim() || `New ${source === "mic" ? "recording" : "Omi session"}`, source, ...(language ? { language_hint: language } : {}) }),
     onSuccess: (session) => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id }, search: { fresh: true } }),
   });
   const showcase = useMutation({
@@ -164,20 +257,10 @@ export function HomePage() {
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       void queryClient.invalidateQueries({ queryKey: ["matters"] });
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      if (result.created > 0) {
-        toast.success(result.completing ? "Library restored. Finishing the trays." : "Library restored.");
-      }
-      if (result.completing) {
-        window.setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-          void queryClient.invalidateQueries({ queryKey: ["matters"] });
-        }, 12000);
-      }
+      if (result.created > 0) toast.success(result.completing ? "Library restored. Finishing the trays." : "Library restored.");
+      if (result.completing) window.setTimeout(() => { void queryClient.invalidateQueries({ queryKey: ["sessions"] }); void queryClient.invalidateQueries({ queryKey: ["matters"] }); }, 12000);
     },
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 404) return;
-      toast.error(error.message);
-    },
+    onError: (error) => { if (!(error instanceof ApiError && error.status === 404)) toast.error(error.message); },
   });
   const didSync = useRef(false);
   useEffect(() => {
@@ -185,197 +268,73 @@ export function HomePage() {
     didSync.current = true;
     syncLibrary.mutate();
   }, [sessions.isError, sessions.isLoading, syncLibrary.mutate]);
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: hakiApi.health,
-    enabled: hasApiConfiguration,
-    retry: false,
-  });
-
+  const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
   const sessionCount = sessions.data?.length ?? 0;
   const matterCount = matters.data?.length ?? 0;
   const readyCount = sessions.data?.filter((session) => session.status === "ready" || session.status === "exported").length ?? 0;
 
   return (
-    <PageShell>
+    <PageShell back>
       <main>
-        <section className="relative border-b border-border/80">
-          <div className="mx-auto grid max-w-6xl items-start gap-8 px-4 py-7 sm:px-6 sm:py-10 lg:grid-cols-[minmax(0,1fr)_24.5rem] lg:gap-14 lg:py-16">
-            <div className="order-2 max-w-2xl animate-ink-rise lg:order-1">
-              <SectionEyebrow>Conversation to legal work</SectionEyebrow>
-              <h1 className="mt-3 font-serif text-4xl font-semibold leading-[1.12] text-foreground sm:mt-4 sm:text-6xl">
-                Capture what matters.{" "}
-                <em className="italic text-primary">Leave with work ready.</em>
-              </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-                An agent for the rooms where justice is spoken — not another chatbot. Record a meeting or proceeding, verify the record, then choose the work it prepares.
-              </p>
-              <ol className="mt-7 grid gap-3 sm:grid-cols-3">
-                {practiceSteps.map((step) => (
-                  <li key={step.n} className="rounded-xl border border-border/80 bg-card/80 p-4">
-                    <p className="font-serif text-sm text-action">{step.n}</p>
-                    <p className="mt-2 text-sm font-semibold text-foreground">{step.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.copy}</p>
-                  </li>
-                ))}
-              </ol>
-              <div className="mt-6 hidden gap-3 sm:grid sm:grid-cols-3">
-                {environments.map((item) => (
-                  <div key={item.place} className="rounded-xl border border-border/70 bg-background/70 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{item.place}</p>
-                    <p className="mt-1.5 text-sm font-semibold text-foreground">{item.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.copy}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 flex flex-col items-start gap-2 sm:mt-7 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                <TrustLine className="max-w-full rounded-md border border-border bg-card/80 px-3 py-2 text-left sm:rounded-full sm:py-1.5" />
-                <span className="rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground">
-                  English + Kiswahili
-                </span>
-              </div>
-            </div>
-
-            <div className="desk-card relative order-1 overflow-hidden rounded-lg border border-border p-4 sm:p-6 lg:order-2">
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-action to-primary" />
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-serif text-2xl font-semibold">Start a session</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">No document choice needed. HakiScribe listens first.</p>
+        <section className="border-b border-border bg-card/50">
+          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+            <SectionEyebrow>Private workspace</SectionEyebrow>
+            <div className="mt-3 grid gap-7 lg:grid-cols-[minmax(0,1fr)_24.5rem] lg:items-start lg:gap-14">
+              <div className="max-w-2xl">
+                <h1 className="font-serif text-4xl font-semibold leading-tight sm:text-5xl">Open a secure session.</h1>
+                <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground">Start listening or return to work already in progress. Session titles, transcripts, and results remain within this workspace.</p>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <Badge variant="outline"><LockKeyhole /> Private record</Badge>
+                  <Badge variant="outline"><ShieldCheck /> Source traceable</Badge>
+                  <Badge variant="outline">English + Kiswahili</Badge>
                 </div>
-                <span className="grid size-10 place-items-center rounded-full bg-action/12 text-action">
-                  {source === "mic" ? <Mic className="size-4" /> : <Headphones className="size-4" />}
-                </span>
               </div>
-              <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="session-title">Session title</label>
-              <Input id="session-title" className="mt-2 h-11 bg-background" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Wanjiku client meeting" />
-              <div className="mt-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="Recording source">
-                {(["mic", "omi"] as const).map((item) => {
-                  const Icon = item === "mic" ? Mic : Headphones;
-                  return (
-                    <Button key={item} type="button" variant={source === item ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none sm:px-4" onClick={() => setSource(item)}>
-                      <Icon className="shrink-0" /><span className="truncate">{item === "mic" ? "Microphone" : "Omi wearable"}</span>
-                    </Button>
-                  );
-                })}
+              <div className="desk-card relative overflow-hidden rounded-lg border border-border p-4 sm:p-6">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-action to-primary" />
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                  <div><h2 className="font-serif text-2xl font-semibold">Start a session</h2><p className="mt-1 text-sm text-muted-foreground">Listen first. Choose the work later.</p></div>
+                  <span className="grid size-10 place-items-center rounded-full bg-action/12 text-action">{source === "mic" ? <Mic className="size-4" /> : <Headphones className="size-4" />}</span>
+                </div>
+                <label className="mt-6 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="session-title">Session title</label>
+                <Input id="session-title" className="mt-2 h-11 bg-background" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Wanjiku client meeting" />
+                <div className="mt-5 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="Recording source">
+                  {(["mic", "omi"] as const).map((item) => { const Icon = item === "mic" ? Mic : Headphones; return <Button key={item} type="button" variant={source === item ? "default" : "ghost"} className="h-11 min-w-0 px-2 shadow-none sm:px-4" onClick={() => setSource(item)}><Icon className="shrink-0" /><span className="truncate">{item === "mic" ? "Microphone" : "Omi wearable"}</span></Button>; })}
+                </div>
+                <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
+                <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"><option value="code-switch">English + Kiswahili</option><option value="en">English</option><option value="sw">Kiswahili</option></select>
+                {source === "omi" && <p className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">Pair the wearable after the session opens. Omi posts transcript segments to <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>.</p>}
+                <Button variant="warm" size="lg" className="mt-6 h-14 w-full text-base" onClick={() => create.mutate()} disabled={create.isPending || !hasApiConfiguration}><span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />{create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}</Button>
+                <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
+                {create.error && <p className="mt-3 text-sm text-destructive">{create.error.message}</p>}
+                {showcase.error && <p className="mt-3 text-sm text-destructive">{showcase.error.message}</p>}
               </div>
-              <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
-              <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring">
-                <option value="code-switch">English + Kiswahili</option>
-                <option value="en">English</option>
-                <option value="sw">Kiswahili</option>
-              </select>
-              {source === "omi" && (
-                <p className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-                  Pair the wearable after the session opens. Omi posts transcript segments to
-                  {" "}
-                  <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>
-                  . No need to look at the phone while you listen.
-                </p>
-              )}
-              <Button variant="warm" size="lg" className="mt-6 h-14 w-full text-base" onClick={() => create.mutate()} disabled={create.isPending || !hasApiConfiguration}>
-                <span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />
-                {create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}
-              </Button>
-              <Button
-                variant="outline"
-                className="mt-2 h-11 w-full"
-                onClick={() => showcase.mutate()}
-                disabled={showcase.isPending || !hasApiConfiguration}
-              >
-                {showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}
-              </Button>
-              {create.error && <p className="mt-3 text-sm text-destructive">{create.error.message}</p>}
-              {showcase.error && <p className="mt-3 text-sm text-destructive">{showcase.error.message}</p>}
             </div>
           </div>
         </section>
 
         <section className="mx-auto max-w-6xl px-4 py-9 sm:px-6 sm:py-12">
-          {hasApiConfiguration && !sessions.error && (
-            <div className="mb-10 grid gap-3 sm:grid-cols-3">
-              {[
-                { label: "Sessions in the library", value: sessions.isLoading ? "—" : String(sessionCount) },
-                { label: "Matters on the desk", value: matters.isLoading ? "—" : String(matterCount) },
-                { label: "Ready to reopen", value: sessions.isLoading ? "—" : String(readyCount) },
-              ].map((stat) => (
-                <div key={stat.label} className="chamber-card rounded-xl border border-border px-5 py-4">
-                  <p className="font-serif text-3xl font-semibold tabular-nums">{stat.value}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <SectionHeading
-            eyebrow="Session library"
-            title="Past sessions"
-            action={
-              <div className="flex items-center gap-2">
-                {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Refresh the library"
-                        disabled={syncLibrary.isPending || !hasApiConfiguration}
-                        onClick={() => syncLibrary.mutate()}
-                      >
-                        <RefreshCw className={syncLibrary.isPending ? "animate-spin" : undefined} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Refresh the library</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/tracker">Case tracker</Link>
-                </Button>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/connectors">Connectors</Link>
-                </Button>
-              </div>
-            }
-          />
+          {hasApiConfiguration && !sessions.error && <div className="mb-10 grid gap-3 sm:grid-cols-3">{[
+            { label: "Sessions in the library", value: sessions.isLoading ? "—" : String(sessionCount) },
+            { label: "Matters on the desk", value: matters.isLoading ? "—" : String(matterCount) },
+            { label: "Ready to reopen", value: sessions.isLoading ? "—" : String(readyCount) },
+          ].map((stat) => <div key={stat.label} className="chamber-card rounded-xl border border-border px-5 py-4"><p className="font-serif text-3xl font-semibold tabular-nums">{stat.value}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">{stat.label}</p></div>)}</div>}
+          <SectionHeading eyebrow="Session library" title="Past sessions" action={<div className="flex flex-wrap items-center justify-end gap-2">
+            {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
+            <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Refresh the library" disabled={syncLibrary.isPending || !hasApiConfiguration} onClick={() => syncLibrary.mutate()}><RefreshCw className={syncLibrary.isPending ? "animate-spin" : undefined} /></Button></TooltipTrigger><TooltipContent>Refresh the library</TooltipContent></Tooltip></TooltipProvider>
+            <Button asChild variant="outline" size="sm"><Link to="/tracker">Case tracker</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link to="/connectors">Connectors</Link></Button>
+          </div>} />
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
           {sessions.error && <ConnectionError message={sessions.error.message} retry={() => void sessions.refetch()} />}
           {sessions.isLoading && <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-card" />)}</div>}
-          {sessions.data?.length === 0 && syncLibrary.isPending && (
-            <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center">
-              <p className="font-serif text-xl">Restoring the desk</p>
-              <p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p>
-            </div>
-          )}
-          {sessions.data?.length === 0 && !syncLibrary.isPending && (
-            <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center">
-              <p className="font-serif text-xl">The library is empty</p>
-              <p className="mt-2 text-sm text-muted-foreground">Open the completed Wanjiru client meeting, or start listening.</p>
-              <Button className="mt-5" variant="outline" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>
-                {showcase.isPending ? "Building showcase…" : "Load judge demo"}
-              </Button>
-            </div>
-          )}
-          <div className="grid gap-3">
-            {sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}
-          </div>
+          {sessions.data?.length === 0 && syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">Restoring the desk</p><p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p></div>}
+          {sessions.data?.length === 0 && !syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">The library is empty</p><p className="mt-2 text-sm text-muted-foreground">Open the completed Wanjiru client meeting, or start listening.</p><Button className="mt-5" variant="outline" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building showcase…" : "Load judge demo"}</Button></div>}
+          <div className="grid gap-3">{sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}</div>
           <LegalIntelligence matters={matters.data ?? []} />
           <LibraryMatters matters={matters.data ?? []} contacts={contacts.data ?? []} />
         </section>
       </main>
-      {health.data?.integrations && (
-        <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-            Live integrations
-            {": "}
-            {Object.entries(health.data.integrations)
-              .filter(([, on]) => on)
-              .map(([name]) => name)
-              .join(" · ") || "local-only fallbacks"}
-          </p>
-        </div>
-      )}
+      {health.data?.integrations && <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6"><p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Live integrations: {Object.entries(health.data.integrations).filter(([, on]) => on).map(([name]) => name).join(" · ") || "local-only fallbacks"}</p></div>}
       <WorkspaceFooter />
     </PageShell>
   );
