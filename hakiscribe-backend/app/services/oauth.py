@@ -172,18 +172,24 @@ def _prune_states() -> None:
         _STATES.pop(key, None)
 
 
-def _issue_state(provider_id: str) -> str:
+def _issue_state(provider_id: str, extras: Optional[dict[str, str]] = None) -> str:
     _prune_states()
     state = secrets.token_urlsafe(24)
-    _STATES[state] = {"provider_id": provider_id, "created_at": time.time()}
+    _STATES[state] = {
+        "provider_id": provider_id,
+        "created_at": time.time(),
+        "extras": dict(extras or {}),
+    }
     return state
 
 
-def _consume_state(state: str, provider_id: str) -> None:
+def _consume_state(state: str, provider_id: str) -> dict[str, str]:
+    """Returns the extras stashed when the sign-in started (e.g. project id)."""
     _prune_states()
     entry = _STATES.pop(state, None)
     if entry is None or entry["provider_id"] != provider_id:
         raise OAuthError("This sign-in link has expired. Start the connection again.", 400)
+    return dict(entry.get("extras") or {})
 
 
 # ---------------------------------------------------------------------------
