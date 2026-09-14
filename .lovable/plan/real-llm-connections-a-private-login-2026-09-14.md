@@ -27,8 +27,8 @@ So: Gemini gets a genuine "Sign in with Google" flow. Claude and OpenAI get a pr
 Append to `docs/CONNECTOR_OAUTH_SETUP.md`:
 
 - Google Cloud: create the project, enable Vertex AI, create the OAuth client, add the callback URL, publish the consent screen, copy client ID/secret.
-- Anthropic Console: workspace, billing, create key, restrict it, where to paste it in HakiScribe — with the note that Anthropic publishes no OAuth for API access.
-- OpenAI Platform: project, billing, create key, restrict it, where to paste it — with the same note.
+- Anthropic Console: workspace, billing, create key, restrict it, where to paste it in HakiScribe with the note that Anthropic publishes no OAuth for API access.
+- OpenAI Platform: project, billing, create key, restrict it, where to paste it with the same note.
 - A short table of every environment variable the backend reads for these.
 
 ## Part 4 — Login page
@@ -40,7 +40,7 @@ Append to `docs/CONNECTOR_OAUTH_SETUP.md`:
 
 ### Scope note
 
-This makes the private side invisible without signing in. It does not yet split the case library into separate per-lawyer vaults — every signed-in user sees the same workspace. Say the word and that's the next piece.
+This makes the private side invisible without signing in. It does not yet split the case library into separate per-lawyer vaults every signed-in user sees the same workspace. Say the word and that's the next piece.
 
 ## Technical notes
 
