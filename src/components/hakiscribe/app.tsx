@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
   BriefcaseBusiness,
   CalendarDays,
   Check,
@@ -36,6 +38,12 @@ import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  type CarouselApi,
+} from "@/components/ui/carousel";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -103,8 +111,41 @@ const practiceSteps = [
 
 const environments = [
   { place: "In the room", title: "Mic or Omi wearable", copy: "The agent listens where the conversation happens. Flag a date or admission without breaking eye contact." },
-  { place: "In the pocket", title: "WhatsApp handoff", copy: "Kenyan practice already lives in WhatsApp. Share an editable draft for review — never auto-sent as legal advice." },
+  { place: "In the pocket", title: "WhatsApp handoff", copy: "Kenyan practice already lives in WhatsApp. Share an editable draft for review never auto-sent as legal advice." },
   { place: "At the desk", title: "Docs, calendar, legal intelligence", copy: "Chosen work lands in Ambiguous. Exa retrieves authorities only when they connect to the matter or the verified transcript." },
+];
+
+const lawyerPersonas = [
+  {
+    icon: BriefcaseBusiness,
+    role: "Advocates",
+    title: "Leave the client meeting with the next document begun",
+    copy: "Capture intakes and strategy calls in English, Kiswahili, or both. Flag dates and admissions, lock privilege, then choose letters, matters, contacts, and billable time from the Action Tray.",
+  },
+  {
+    icon: Scale,
+    role: "Judges",
+    title: "Turn spoken proceedings into a usable record",
+    copy: "Record mentions and hearings without rewriting every line by hand. Verify speakers, protect off-record moments, and leave with structured notes ready for chambers review.",
+  },
+  {
+    icon: NotebookPen,
+    role: "Legal clerks",
+    title: "Keep follow-ups, filings, and diaries current",
+    copy: "After a meeting or court day, generate calendar events, private notes, and matter updates grounded in the transcript — so nothing important waits on memory alone.",
+  },
+  {
+    icon: ContactRound,
+    role: "Pupils",
+    title: "Learn from the room without losing the detail",
+    copy: "Sit in with seniors and leave with speaker-named notes, research prompts, and source-traced drafts you can edit — a cleaner path from observation to usable work product.",
+  },
+  {
+    icon: Clock3,
+    role: "Practice managers",
+    title: "See work leave the room, not just the recording",
+    copy: "Matters, CRM updates, and time entries stay linked to verified conversations. The firm gets a clearer trail from spoken work to desk work, without exposing cases on a public page.",
+  },
 ];
 
 function ConnectionError({ message, retry }: { message: string; retry?: () => void }) {
@@ -117,6 +158,145 @@ function ConnectionError({ message, retry }: { message: string; retry?: () => vo
         {retry && <Button variant="outline" size="sm" onClick={retry}><RefreshCw /> Try again</Button>}
       </AlertDescription>
     </Alert>
+  );
+}
+
+function PersonasCarousel() {
+  const [api, setApi] = useState<CarouselApi>();
+  const [selected, setSelected] = useState(0);
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+
+  useEffect(() => {
+    if (!api) return;
+    const onSelect = () => {
+      setSelected(api.selectedScrollSnap());
+      setCanScrollPrev(api.canScrollPrev());
+      setCanScrollNext(api.canScrollNext());
+    };
+    onSelect();
+    api.on("select", onSelect);
+    api.on("reInit", onSelect);
+    return () => {
+      api.off("select", onSelect);
+      api.off("reInit", onSelect);
+    };
+  }, [api]);
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Legal roles">
+          {lawyerPersonas.map((persona, index) => {
+            const active = selected === index;
+            return (
+              <button
+                key={persona.role}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={cn(
+                  "min-h-10 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
+                onClick={() => api?.scrollTo(index)}
+              >
+                {persona.role}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-10 rounded-full"
+            aria-label="Previous role"
+            disabled={!canScrollPrev}
+            onClick={() => api?.scrollPrev()}
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-10 rounded-full"
+            aria-label="Next role"
+            disabled={!canScrollNext}
+            onClick={() => api?.scrollNext()}
+          >
+            <ArrowRight className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      <Carousel
+        setApi={setApi}
+        opts={{ align: "start", loop: false, skipSnaps: false, dragFree: false }}
+        className="w-full"
+      >
+        <CarouselContent className="-ml-3 sm:-ml-4">
+          {lawyerPersonas.map(({ icon: Icon, role, title, copy }, index) => (
+            <CarouselItem
+              key={role}
+              className="basis-[88%] pl-3 sm:basis-[70%] sm:pl-4 md:basis-[48%] lg:basis-[42%]"
+            >
+              <article
+                className={cn(
+                  "chamber-card flex h-full min-h-[18.5rem] flex-col rounded-2xl border p-6 transition-colors sm:min-h-[20rem] sm:p-7",
+                  selected === index ? "border-primary bg-secondary/25" : "border-border bg-card",
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-11 place-items-center rounded-xl bg-secondary text-primary">
+                      <Icon className="size-5" />
+                    </span>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{role}</p>
+                  </div>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {String(index + 1).padStart(2, "0")} / {String(lawyerPersonas.length).padStart(2, "0")}
+                  </span>
+                </div>
+                <h3 className="mt-6 font-serif text-2xl font-semibold leading-snug tracking-tight">{title}</h3>
+                <p className="mt-4 flex-1 text-sm leading-7 text-muted-foreground">{copy}</p>
+              </article>
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+      </Carousel>
+
+      <div className="mt-5 flex items-center justify-center gap-2" aria-hidden>
+        {lawyerPersonas.map((persona, index) => (
+          <button
+            key={persona.role}
+            type="button"
+            aria-label={`Show ${persona.role}`}
+            className={cn(
+              "h-1.5 rounded-full transition-all",
+              selected === index ? "w-7 bg-primary" : "w-1.5 bg-border hover:bg-muted-foreground/40",
+            )}
+            onClick={() => api?.scrollTo(index)}
+          />
+        ))}
+      </div>
+
+      <div className="mt-10 flex flex-col gap-4 rounded-2xl border border-border bg-card/70 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="min-w-0">
+          <p className="font-serif text-xl font-semibold">Start where the conversation already is.</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Open a private workspace to record, verify privilege, and choose the work.
+          </p>
+        </div>
+        <Button asChild className="w-full shrink-0 sm:w-auto">
+          <Link to="/new">Enter private workspace</Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -212,18 +392,15 @@ export function LandingPage() {
         </section>
 
         <section className="bg-background">
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.75fr)] lg:items-center">
-            <div>
-              <SectionEyebrow>Private by design</SectionEyebrow>
-              <h2 className="mt-3 max-w-2xl font-serif text-3xl font-semibold leading-tight sm:text-5xl">Your public introduction ends before client work begins.</h2>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">Session setup, past matters, recordings, transcripts, speaker review, privilege controls, analysis, and generated work all live in a separate workspace. Nothing from a case is displayed on this public page.</p>
-            </div>
-            <div className="border-l-2 border-action pl-6 sm:pl-8">
-              <LockKeyhole className="size-8 text-action" />
-              <p className="mt-5 font-serif text-2xl font-semibold">Privilege stays in the room.</p>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">Only verified, non-redacted transcript lines can reach analysis. Connected tools receive the minimum approved artifact they need.</p>
-              <Button asChild className="mt-6"><Link to="/new">Enter private workspace</Link></Button>
-            </div>
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <SectionHeading
+              eyebrow="Who it helps"
+              title="Built for the legal professionals who carry the record."
+            />
+            <p className="mb-8 max-w-2xl text-base leading-7 text-muted-foreground sm:mb-10">
+              HakiScribe serves Kenyan legal rooms — advocates, benches, clerks, pupils, and practice desks — wherever spoken work still outruns paperwork.
+            </p>
+            <PersonasCarousel />
           </div>
         </section>
       </main>
