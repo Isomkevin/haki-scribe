@@ -1098,65 +1098,109 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
         </>
       ) : (
         <>
-          <div className="my-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <p className="text-sm text-muted-foreground">Review, edit, then choose what HakiScribe should produce.</p>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-              <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setShowDismissed((current) => !current)}>
-                {showDismissed ? "Hide dismissed" : "Show dismissed"}
-              </Button>
-              <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setSelected(new Set(visibleActions.filter((action) => action.pre_checked).map((action) => action.id)))}>
-                <Check className="shrink-0" /> <span className="truncate">Select likely</span>
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {visibleActions.map((action) => (
-              <ActionCard
-                key={action.id}
-                action={action}
-                transcript={session.transcript}
-                flags={session.flagged_moments}
-                checked={selected.has(action.id)}
-                onChecked={(checked) => select(action.id, checked)}
-                onDismiss={() => void dismiss(action.id)}
-                onFields={(fields) => setActions((current) => current.map((item) => item.id === action.id ? { ...item, extracted_fields: fields } : item))}
-              />
-            ))}
-          </div>
-          {!visibleActions.length && (
-            <div className="chamber-card rounded-xl border border-dashed border-border py-12 text-center">
-              <h2 className="font-serif text-2xl">No actions detected</h2>
-              <p className="mt-2 text-muted-foreground">The verified transcript did not contain enough information to propose legal work.</p>
-            </div>
-          )}
-          <article className="chamber-card mt-3 rounded-xl border border-border bg-card">
-            <div className="grid grid-cols-[auto_1fr] gap-3 p-4 sm:p-5">
-              <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Scale className="size-5" /></span>
-              <div className="min-w-0">
-                <h2 className="font-semibold text-foreground">Kenyan legal research on this matter</h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Case law, statutes and precedent for the issues raised on this record, each with a citation you can open.
-                </p>
-                <Button asChild variant="outline" size="sm" className="mt-3">
-                  <Link to="/research" search={{ session: session.id }}>Open research</Link>
+          <div className="pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
+            <div className="my-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <p className="text-sm text-muted-foreground">Review, edit, then choose what HakiScribe should produce.</p>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setShowDismissed((current) => !current)}>
+                  {showDismissed ? "Hide dismissed" : "Show dismissed"}
+                </Button>
+                <Button variant="outline" size="sm" className="min-w-0 px-2" onClick={() => setSelected(new Set(visibleActions.filter((action) => action.pre_checked).map((action) => action.id)))}>
+                  <Check className="shrink-0" /> <span className="truncate">Select likely</span>
                 </Button>
               </div>
             </div>
-          </article>
-          <AskComposer
-            sessionId={session.id}
-            onResult={(result) => {
-              setResults((current) => [result, ...current.filter((item) => item.action_id !== result.action_id)]);
-              void queryClient.invalidateQueries({ queryKey: ["session", session.id] });
-              onResults();
-            }}
-          />
-          <LegalIntelligence sessionId={session.id} matterId={session.matters?.[0]?.id} />
-          {generate.error && <div className="mt-5"><ConnectionError message={friendlyErrorMessage(generate.error)} /></div>}
-          <div className="safe-bottom sticky bottom-0 z-20 mt-8 border-t border-border bg-background/95 py-3 backdrop-blur-md sm:py-4">
-            <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate(Array.from(selected))}>
-              {generate.isPending ? "Generating selected work…" : `Generate selected (${selected.size})`}
-            </Button>
+            <div className="space-y-3">
+              {visibleActions.map((action) => (
+                <ActionCard
+                  key={action.id}
+                  action={action}
+                  transcript={session.transcript}
+                  flags={session.flagged_moments}
+                  checked={selected.has(action.id)}
+                  onChecked={(checked) => select(action.id, checked)}
+                  onDismiss={() => void dismiss(action.id)}
+                  onFields={(fields) => setActions((current) => current.map((item) => item.id === action.id ? { ...item, extracted_fields: fields } : item))}
+                />
+              ))}
+            </div>
+            {!visibleActions.length && (
+              <div className="chamber-card rounded-xl border border-dashed border-border py-12 text-center">
+                <h2 className="font-serif text-2xl">No actions detected</h2>
+                <p className="mt-2 text-muted-foreground">The verified transcript did not contain enough information to propose legal work.</p>
+              </div>
+            )}
+            {generate.error && <div className="mt-5"><ConnectionError message={friendlyErrorMessage(generate.error)} /></div>}
+
+            {/* Desktop / large screens: in-flow CTA under the list */}
+            <div className="mt-6 hidden border-t border-border pt-4 sm:block">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {selected.size
+                    ? `${selected.size} action${selected.size === 1 ? "" : "s"} ready to generate`
+                    : "Select at least one action to generate"}
+                </p>
+                <Button
+                  variant="warm"
+                  size="lg"
+                  className="h-12 min-w-56"
+                  disabled={!selected.size || generate.isPending}
+                  onClick={() => generate.mutate(Array.from(selected))}
+                >
+                  {generate.isPending ? "Generating selected work…" : `Generate selected (${selected.size})`}
+                </Button>
+              </div>
+            </div>
+
+            <section className="mt-10 space-y-3 border-t border-border pt-8" aria-label="More tools">
+              <div className="mb-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">More tools</p>
+                <p className="mt-1 text-sm text-muted-foreground">Optional after you generate the selected tray work.</p>
+              </div>
+              <article className="chamber-card rounded-xl border border-border bg-card">
+                <div className="grid grid-cols-[auto_1fr] gap-3 p-4 sm:p-5">
+                  <span className="grid size-11 place-items-center rounded-xl bg-secondary text-secondary-foreground"><Scale className="size-5" /></span>
+                  <div className="min-w-0">
+                    <h2 className="font-semibold text-foreground">Kenyan legal research on this matter</h2>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      Case law, statutes and precedent for the issues raised on this record, each with a citation you can open.
+                    </p>
+                    <Button asChild variant="outline" size="sm" className="mt-3">
+                      <Link to="/research" search={{ session: session.id }}>Open research</Link>
+                    </Button>
+                  </div>
+                </div>
+              </article>
+              <AskComposer
+                sessionId={session.id}
+                onResult={(result) => {
+                  setResults((current) => [result, ...current.filter((item) => item.action_id !== result.action_id)]);
+                  void queryClient.invalidateQueries({ queryKey: ["session", session.id] });
+                  onResults();
+                }}
+              />
+              <LegalIntelligence sessionId={session.id} matterId={session.matters?.[0]?.id} />
+            </section>
+          </div>
+
+          {/* Mobile: fixed dock always within thumb reach while reviewing the tray */}
+          <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 shadow-[0_-8px_24px_oklch(0.25_0.02_150/0.08)] backdrop-blur-md sm:hidden">
+            <div className="mx-auto flex max-w-6xl flex-col gap-2">
+              <p className="text-center text-xs text-muted-foreground">
+                {selected.size
+                  ? `${selected.size} selected · ready to generate`
+                  : "Select actions above to generate"}
+              </p>
+              <Button
+                variant="warm"
+                size="lg"
+                className="h-12 w-full"
+                disabled={!selected.size || generate.isPending}
+                onClick={() => generate.mutate(Array.from(selected))}
+              >
+                {generate.isPending ? "Generating selected work…" : `Generate selected (${selected.size})`}
+              </Button>
+            </div>
           </div>
         </>
       )}
