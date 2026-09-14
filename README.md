@@ -6,7 +6,7 @@ A legal work agent for the rooms where justice is spoken — client meetings, ch
 
 Built for [AI Tinkerers Nairobi — Agents, Everywhere](https://nairobi.aitinkerers.org/). Built for lawyers, judges, and clerks. Built as the listening instrument of [HakiChain](https://hakichain.com).
 
-[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Judge submission](./SUBMISSION.md)
+[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Roadmap](./roadmap.md)
 
 ---
 
@@ -119,18 +119,37 @@ Two LLM passes after transcription, not one:
 
 ---
 
+## App surface
+
+| Route | Access | Purpose |
+|---|---|---|
+| `/` | Public | Product landing — no sessions, transcripts, or client work |
+| `/login` | Public | Workspace sign-in (email/password + temporary demo account) |
+| `/new` | Private | Start a session, open the judge demo, past-session library |
+| `/sessions/$sessionId` | Private | Record → speakers → privilege → Action Tray → generate |
+| `/tracker` | Private | Case / matter tracker |
+| `/research` | Private | Exa-backed legal research and news desk |
+| `/settings` | Private | Profile, workspace defaults, security, connectors, about |
+| `/connectors` | Private | Redirects to `/settings?section=connectors` |
+
+Private routes use `RequireAuth`. Signed-out visits go to `/login?next=…` and return after sign-in. Accounts come from server `HAKISCRIBE_USERS` plus an optional demo account (`DEMO_LOGIN_ENABLED`). Everyone signed in currently shares one workspace; per-lawyer vaults are not built yet.
+
+---
+
 ## Stack
 
 | Layer | What we use |
 |---|---|
 | Frontend | React 19, TanStack Start, Vite, Tailwind CSS — mobile-first, built in Lovable |
-| Backend | FastAPI, WebSockets, in-memory session store (swap-ready for Supabase) |
-| Capture | Browser MediaRecorder → `/sessions/{id}/stream`, or Omi webhook |
+| Backend | FastAPI, WebSockets; in-memory by default, optional `DATABASE_URL` (Postgres) |
+| Capture | Browser MediaRecorder → `/sessions/{id}/stream`, or Omi Miniapp / legacy webhook |
 | Speech | OpenRouter speech-to-text (`openai/whisper-large-v3`); optional OpenAI or Groq Whisper |
 | Agent | OpenRouter → OpenAI GPT-4o for detection and drafting |
-| Durability | Trigger.dev tasks `detect-actions` and `generate-actions` |
-| Enrichment | Exa company search on named counterparties — context only, never drafted as fact |
-| Delivery | Ambiguous AI Docs, Calendar, CRM, and Chat review notifications |
+| Durability | Trigger.dev at repo root (`src/trigger/`) — `detect-actions`, `generate-actions`, `research-actions` |
+| Enrichment | Exa company search, citation crawl, and news monitors — context only, never drafted as fact |
+| Connectors | Google Drive / Calendar, Dropbox, OneDrive (OAuth); Gemini (Vertex OAuth); Anthropic / OpenAI (verified keys) |
+| Delivery | Ambiguous AI Docs, Calendar, CRM, and Chat review notifications; WhatsApp handoff for review |
+| Auth | Server accounts + signed browser token (`POST /auth/login`) |
 | Deploy | Render Blueprint (`render.yaml`) — binds `0.0.0.0:$PORT` |
 
 ---
@@ -143,9 +162,10 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 |---|---|
 | **OpenAI** | GPT-4o for detection and drafting (via OpenRouter). Whisper when `ASR_PROVIDER=openai`. |
 | **OpenRouter** | Single routing layer for live captions, `/detect`, and `/generate`. |
-| **Trigger.dev** | Durable, retried background execution of detect and generate. Falls back in-process. |
-| **Exa** | Counterparty / company lookup attached as `background_info` on Action Tray cards. |
+| **Trigger.dev** | Durable, retried background execution of detect, generate, and research. Falls back in-process. |
+| **Exa** | Counterparty lookup on Action Tray cards; research / citation crawl; news monitors. |
 | **Ambiguous AI** | Real Docs, Calendar events, CRM deals/contacts, and a Chat ping when a draft is ready for a human — never auto-sent. |
+| **Omi** | Wearable Miniapp (uid pairing) or legacy per-session webhook. |
 | **AI Tinkerers** | Built for the Nairobi *Agents, Everywhere* brief: agents that show up where people already work. |
 
 ---
@@ -162,7 +182,12 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 
 The written description, demo path, and rubric mapping live in [`SUBMISSION.md`](./SUBMISSION.md).
 
-On the live app, click **Open a completed judge demo** for a finished Wanjiru Holdings client meeting (code-switched English/Kiswahili, privilege locked, Action Tray + generated letter). Pair an Omi wearable with `/webhooks/omi?session_id=<session UUID>`. Share drafts over WhatsApp; chosen work can land in Ambiguous Docs, Calendar, and CRM.
+1. Open [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) (public landing).
+2. **Sign in** → use **Use demo credentials** (temporary judging account), or email/password.
+3. On `/new`, click **Open a completed judge demo** — Wanjiru Holdings client meeting (English/Kiswahili), privilege locked, Action Tray + generated letter.
+4. Optional live path: start a mic or Omi session, flag a moment, name speakers, redact, detect, generate.
+
+Omi: preferred path is the private Miniapp under **Settings → Connectors → Omi**. Legacy demos still work with `/webhooks/omi?session_id=<HakiScribe UUID>`. Share drafts over WhatsApp; chosen work can land in Ambiguous Docs, Calendar, and CRM, or in connected Drive / Dropbox / OneDrive / Google Calendar.
 
 ---
 
@@ -173,19 +198,30 @@ On the live app, click **Open a completed judge demo** for a finished Wanjiru Ho
 ```bash
 cd hakiscribe-backend
 pip install -r requirements.txt
-cp .env.example .env        # at least OPENROUTER_API_KEY
+cp .env.example .env.local   # at least OPENROUTER_API_KEY
 uvicorn app.main:app --reload --port 8000
 ```
 
 **Frontend**
 
 ```bash
-cp .env.example .env.local  # VITE_API_BASE_URL=http://127.0.0.1:8000
+cp .env.example .env.local   # VITE_API_BASE_URL=http://127.0.0.1:8000
 npm install
 npm run dev
 ```
 
-Deploy the API with the repo-root [Render Blueprint](https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe). The published Lovable app at [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) reads `VITE_API_BASE_URL` from the repo-root `.env` (`https://hakiscribe-backend.onrender.com`). Republish after changing that value. Demo the HTTP path without a microphone via the steps in [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md). Architecture and API contract live in [`SPEC.md`](./SPEC.md).
+**Trigger.dev (optional — durable detect / generate / research)**
+
+```bash
+# Same .env.local as the frontend root; needs TRIGGER_SECRET_KEY + BACKEND_INTERNAL_*
+npm run trigger:dev
+```
+
+Do **not** put secrets in the committed `.env` — Lovable publishes that file. Use `.env.local` locally and Render / Lovable Cloud Secrets in production. See [`.env.example`](./.env.example) and [`hakiscribe-backend/.env.example`](./hakiscribe-backend/.env.example).
+
+Deploy the API with the repo-root [Render Blueprint](https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe). The published Lovable app at [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) reads `VITE_API_BASE_URL` from the repo-root `.env` (`https://hakiscribe-backend.onrender.com`). Republish after changing that value.
+
+Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md). Demo the HTTP path without a microphone via [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md). Architecture and API contract: [`SPEC.md`](./SPEC.md).
 
 ---
 

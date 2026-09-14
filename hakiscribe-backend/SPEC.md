@@ -1,5 +1,15 @@
 # HakiScribe — Build Spec
 
+> **Status (2026-09):** Core pipeline, Action Tray, Omi Miniapp, connectors,
+> research/news, and workspace sign-in are implemented. Public `/` is a
+> landing page; private work lives under `/login`, `/new`, `/sessions/…`,
+> `/tracker`, `/research`, and `/settings`. Trigger.dev tasks live at the
+> **repo root** (`src/trigger/`). For day-to-day setup see
+> [`../README.md`](../README.md), [`README.md`](./README.md),
+> and [`../docs/CONNECTOR_OAUTH_SETUP.md`](../docs/CONNECTOR_OAUTH_SETUP.md).
+> This file remains the architecture / API contract reference.
+> (Canonical copy also lives at repo-root `SPEC.md`.)
+
 **What it is:** An audio-capture legal work companion. It records legal
 conversations and court proceedings (via phone/laptop mic or the Omi
 wearable), transcribes them multilingually (English/Swahili and
@@ -198,6 +208,11 @@ DetectedAction
 | POST | `/sessions/{id}/generate` | Body `{"action_ids": [...]}`. Executes each selected action, returns `list[ActionResult]` |
 | GET | `/matters` | List known client/matter records (for the frontend to show "known clients", if useful) |
 | POST | `/matters` | Manually create a matter (e.g. to pre-seed existing clients) |
+| POST | `/auth/login` | Workspace sign-in → `{token, user}` |
+| GET | `/auth/demo` | Temporary judging credentials when demo login is enabled |
+| GET | `/auth/me` | Current user from Bearer token |
+| * | `/integrations/oauth/{provider}/…` | Connector OAuth (Drive, Calendar, Dropbox, OneDrive, Gemini) |
+| * | `/news/…`, `/webhooks/exa` | Exa research / news monitors |
 
 `/internal/detect` and `/internal/generate` also exist (see §8) but are
 called by the deployed Trigger.dev tasks, not the frontend — omitted
@@ -227,8 +242,9 @@ from this table since Lovable never calls them directly.
 
 - Production-grade speaker diarization (best-effort labels + manual
   relabel is the answer, not automatic voice-identity recognition).
-- Real auth flow beyond a shared secret / Supabase session token passthrough.
-- Multi-tenant session isolation beyond a `user_id` column.
+- Per-lawyer / multi-tenant vaults — workspace sign-in exists
+  (`HAKISCRIBE_USERS` + demo account), but all signed-in users still
+  share one case library.
 - Handling Omi's raw audio path (if your Omi app is configured for
   transcript webhooks, don't also build raw-audio ingestion for it).
 - Real CRM contact creation is best-effort against an unconfirmed
@@ -263,25 +279,30 @@ automatically as keys are added.
   set. The CRM contacts route follows the module's CRUD convention but
   wasn't explicitly listed in Ambiguous's public API reference — confirm
   the exact path against their live Scalar docs before relying on it.
-- **Trigger.dev** (`app/services/trigger_client.py` +
-  the sibling `trigger/` TypeScript project) — `/sessions/{id}/detect`
-  and `/generate` prefer running as Trigger.dev background tasks
-  (`detect-actions`, `generate-actions`) for retries and observability,
-  falling back to calling `action_detector.py`/`action_executor.py`
-  directly in-process if `TRIGGER_SECRET_KEY` isn't set. The Trigger.dev
-  tasks themselves are thin relays into this backend's `/internal/detect`
-  and `/internal/generate` endpoints (protected by
-  `BACKEND_INTERNAL_SECRET`) — all real logic stays in one place
-  (Python), never duplicated into TypeScript. **Requires
-  `BACKEND_INTERNAL_URL` to be a publicly reachable URL** when using
-  real Trigger.dev — `localhost` won't work since their cloud calls it.
-  See `trigger/README.md`.
+- **Trigger.dev** (`app/services/trigger_client.py` + repo-root
+  `src/trigger/`; legacy notes in `trigger/`) —
+  `/sessions/{id}/detect` and `/generate` prefer running as Trigger.dev
+  background tasks (`detect-actions`, `generate-actions`, plus
+  `research-actions`) for retries and observability, falling back to
+  calling `action_detector.py`/`action_executor.py` directly in-process
+  if `TRIGGER_SECRET_KEY` isn't set. The Trigger.dev tasks themselves
+  are thin relays into this backend's `/internal/detect` and
+  `/internal/generate` endpoints (protected by `BACKEND_INTERNAL_SECRET`)
+  — all real logic stays in one place (Python), never duplicated into
+  TypeScript. **Requires `BACKEND_INTERNAL_URL` to be a publicly
+  reachable URL** when using real Trigger.dev — `localhost` won't work
+  since their cloud calls it. See `trigger/README.md`
+  and repo-root `npm run trigger:dev`.
 - **Exa** (`app/integrations/exa_client.py`, orchestrated by
   `app/services/enrichment.py`) — after detection, looks up any named
   counterparty/company via Exa's company-search category and attaches
   the result as `extracted_fields.background_info` on the relevant card.
+  Also powers research / citation crawl and news monitors (`/news/…`).
   Purely a sanity-check reference for the user, never fed back into
   drafted legal text. No-ops if `EXA_API_KEY` isn't set.
+- **Connectors** — Google Drive / Calendar, Dropbox, OneDrive (OAuth);
+  Gemini via Vertex OAuth; Anthropic / OpenAI via verified API keys.
+  See `../docs/CONNECTOR_OAUTH_SETUP.md`.
 
 ## 9. Open decisions you'll need to make live
 

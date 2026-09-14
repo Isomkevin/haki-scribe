@@ -1,3 +1,9 @@
+> **Historical prompt.** Used to scaffold the Lovable frontend. The live
+> app now splits public `/` from private `/new`, `/sessions/$sessionId`,
+> `/tracker`, `/research`, `/settings`, and `/login`. Prefer
+> [`README.md`](../README.md) and [`src/routes/README.md`](../src/routes/README.md)
+> for current routes and behavior.
+
 Build a mobile-first web app called **HakiScribe** — a legal work
 companion that records conversations (client meetings, court
 proceedings) and turns them into a tray of ready-to-generate legal
@@ -38,6 +44,7 @@ they trust the tool at all, not decoration.
 ## Screens
 
 ### 1. Home / New Session
+
 - Minimal. A record button (large, unmistakable) and a source toggle:
   **Mic** or **Omi wearable**. No document-type picker — that's the
   whole point, don't add one.
@@ -45,6 +52,7 @@ they trust the tool at all, not decoration.
   so this doubles as the dashboard.
 
 ### 2. Recording
+
 - Full-screen, unambiguous "recording" state: elapsed time, a live
   waveform or pulse animation.
 - A large, thumb-reachable **"Flag this moment"** button — designed to
@@ -64,6 +72,7 @@ they trust the tool at all, not decoration.
 - A clear Stop button.
 
 ### 3. Speaker check (new, brief — appears right after Stop)
+
 - A short screen listing each distinct raw speaker label found in the
   transcript (e.g. "Speaker 1", "Speaker 2") with a text field next to
   each to type the real name. Pre-fill nothing — force a deliberate
@@ -73,6 +82,7 @@ they trust the tool at all, not decoration.
   `{"mapping": {"Speaker 1": "John Kamau", ...}}`.
 
 ### 4. Review & redact (new, brief — appears right after speaker check)
+
 - The full transcript as a simple scrollable list of speaker-labeled
   lines. Each line has a small toggle (e.g. a lock icon) to mark it
   privileged/off-record. Toggling calls
@@ -84,6 +94,7 @@ they trust the tool at all, not decoration.
   like a 10-second skim, not a chore — most sessions have zero redactions.
 
 ### 5. Analyzing (transition state)
+
 - Brief, calm loading state — "Reviewing what happened..." Not a
   generic spinner; something that feels like careful reading, not
   frantic processing.
@@ -91,6 +102,7 @@ they trust the tool at all, not decoration.
   in sequence, then transitions to the Action Tray.
 
 ### 6. Action Tray (the core screen)
+
 - A vertical list of cards, one per detected action. Each card shows:
   - An icon distinguishing the type (document / calendar / briefcase for
     matter / contact for CRM / clock for time entry / note)
@@ -118,6 +130,7 @@ they trust the tool at all, not decoration.
 - Calls `POST /sessions/{id}/generate` with the selected `action_ids`.
 
 ### 7. Results
+
 - Each generated action becomes a result card:
   - `draft_document` → shows the generated text in a document-styled
     reader (serif, generous line height, looks like a real legal doc,
@@ -140,6 +153,7 @@ they trust the tool at all, not decoration.
   error on that card only — never blocks the rest of the results.
 
 ### 8. Session Library / Session Detail
+
 - List view: each past session as a row/card showing title, date,
   source (mic/Omi icon), status, and small badges for what got
   generated from it (icons matching the action types that reached

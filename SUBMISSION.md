@@ -36,12 +36,13 @@ Liability stays with the human who was always going to carry it.
 
 ## How to demo (2 minutes)
 
-1. Open [hakiscribe.lovable.app](https://hakiscribe.lovable.app/).
-2. Click **Open a completed judge demo** — a Kilimani construction meeting (English + Kiswahili), speakers named, tax advice locked, Action Tray + demand letter + calendar already generated.
-3. Open **View source** on a card. Download the draft. Tap **WhatsApp review**.
-4. Optional live path: **Start recording**, speak for 20 seconds, flag a date, name speakers, redact one line, generate.
+1. Open [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) — public landing only.
+2. **Sign in** → **Use demo credentials** (temporary judging account).
+3. On `/new`, click **Open a completed judge demo** — a Kilimani construction meeting (English + Kiswahili), speakers named, tax advice locked, Action Tray + demand letter + calendar already generated.
+4. Open **View source** on a card. Download the draft. Tap **WhatsApp review**.
+5. Optional live path: **Start recording**, speak for 20 seconds, flag a date, name speakers, redact one line, generate.
 
-Omi pairing URL is copied from an Omi session screen:  
+Omi: preferred path is **Settings → Connectors → Omi** (private Miniapp). Legacy pairing still works:  
 `/webhooks/omi?session_id=<HakiScribe UUID>`
 
 ## Stack (sponsor tools, each load-bearing)
@@ -49,10 +50,10 @@ Omi pairing URL is copied from an Omi session screen:
 | Tool | Role |
 |---|---|
 | OpenRouter / OpenAI | Whisper captions + GPT-4o detect/draft |
-| Trigger.dev | Durable detect/generate, in-process fallback |
-| Exa | Counterparty background on tray cards — never drafted as fact |
+| Trigger.dev | Durable detect/generate/research, in-process fallback |
+| Exa | Counterparty background on tray cards; research / news — never drafted as fact |
 | Ambiguous AI | Docs, Calendar, CRM, Chat ping for human review |
-| Omi | Wearable transcript webhook |
+| Omi | Wearable Miniapp (uid) or legacy transcript webhook |
 
 Every integration degrades locally if its key is missing. The pipeline still completes.
 

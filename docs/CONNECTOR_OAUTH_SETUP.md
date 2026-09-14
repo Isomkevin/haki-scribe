@@ -225,8 +225,8 @@ After setting the variables, deploy the backend on Render (Render → Manual Dep
 
 ### 4.1 Check the Connectors page
 
-1. Open the published HakiScribe app.
-2. Go to **Connectors** (next to Case tracker on the home screen).
+1. Open the published HakiScribe app and **sign in** (private workspace).
+2. Go to **Settings → Connectors** (or open `/settings?section=connectors`; `/connectors` redirects there).
 3. Each card should now show a **Sign in with Google / Dropbox / Microsoft** button instead of the "not configured on this server" hint.
 
 ### 4.2 Sign in and test
@@ -294,7 +294,7 @@ AI accepts Google account tokens.
    `{BACKEND_INTERNAL_URL}/integrations/oauth/gemini_oauth/callback`
 3. In the same Google Cloud project, enable **Vertex AI API**.
 4. Give the signed-in account the **Vertex AI User** role on that project.
-5. On the Connectors page, choose *Google Gemini (sign in)*, enter the
+5. Under **Settings → Connectors**, choose *Google Gemini (sign in)*, enter the
    Google Cloud **project ID** (and optionally a region — default
    `us-central1`), then complete the Google consent screen.
 
@@ -313,13 +313,13 @@ stores server-side only, and shows masked on the card.
 1. Sign in at https://console.anthropic.com
 2. Settings → API keys → **Create key** (scoped to a workspace if you want
    a separate budget for HakiScribe).
-3. Copy the `sk-ant-…` key into the Connectors page → *Anthropic (Claude)*.
+3. Copy the `sk-ant-…` key into **Settings → Connectors** → *Anthropic (Claude)*.
 
 **OpenAI**
 1. Sign in at https://platform.openai.com
 2. **API keys** → *Create new secret key*; give it a project so usage is
    visible separately.
-3. Copy the `sk-…` key into the Connectors page → *OpenAI*.
+3. Copy the `sk-…` key into **Settings → Connectors** → *OpenAI*.
 
 A key that fails verification is never saved, so a typo is reported on the
 card instead of silently failing later during a session.
