@@ -27,5 +27,9 @@ export const Route = createFileRoute("/research")({
 
 function ResearchRoute() {
   const { session } = Route.useSearch();
-  return <ResearchPage {...(session ? { sessionId: session } : {})} />;
+  return (
+    <RequireAuth>
+      <ResearchPage {...(session ? { sessionId: session } : {})} />
+    </RequireAuth>
+  );
 }

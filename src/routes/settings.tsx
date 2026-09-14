@@ -30,5 +30,9 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsRoute() {
   const { section } = Route.useSearch();
-  return <SettingsPage section={section ?? "profile"} />;
+  return (
+    <RequireAuth>
+      <SettingsPage section={section ?? "profile"} />
+    </RequireAuth>
+  );
 }
