@@ -73,9 +73,11 @@ import {
   hakiApi,
   hasApiConfiguration,
   humanizeFieldLabel,
-  isTechnicalFieldKey,
+  isPayloadOnlyFieldKey,
+  isReferenceFieldKey,
   omiWebhookUrl,
   parseBackgroundInfo,
+  shouldShowReferenceField,
   shouldShowResultField,
   sourceHostname,
   whatsappShareUrl,
@@ -1236,7 +1238,7 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
       {open && (
         <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 sm:p-5">
           {Object.entries(action.extracted_fields)
-            .filter(([key, value]) => !hiddenFieldKeys.has(key) && !isTechnicalFieldKey(key) && shouldShowResultField(key, value))
+            .filter(([key, value]) => !hiddenFieldKeys.has(key) && !isPayloadOnlyFieldKey(key) && !isReferenceFieldKey(key) && shouldShowResultField(key, value))
             .map(([key, value]) => (
             <label key={key} className={cn("text-xs font-semibold text-muted-foreground", typeof value === "object" && "sm:col-span-2")}>
               {humanizeFieldLabel(key)}
@@ -1247,6 +1249,10 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
               )}
             </label>
           ))}
+          <ReferenceDetails
+            className="sm:col-span-2"
+            entries={Object.entries(action.extracted_fields).filter(([key, value]) => !hiddenFieldKeys.has(key) && shouldShowReferenceField(key, value))}
+          />
         </div>
       )}
     </article>
@@ -1679,6 +1685,52 @@ function ResultMeta({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+function ReferenceDetails({
+  entries,
+  className,
+}: {
+  entries: [string, unknown][];
+  className?: string;
+}) {
+  if (!entries.length) return null;
+  return (
+    <div className={cn("rounded-xl border border-dashed border-border/80 bg-muted/20 px-4 py-3", className)}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        System references
+      </p>
+      <ul className="mt-3 space-y-3">
+        {entries.map(([key, value]) => {
+          const full = String(value ?? "").trim();
+          return (
+            <li key={key} className="min-w-0 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-muted-foreground">{humanizeFieldLabel(key)}</p>
+                  <p className="mt-1 break-all text-sm leading-5 text-foreground/85">{full || "—"}</p>
+                </div>
+                {full && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(full);
+                      toast.success("Reference copied");
+                    }}
+                  >
+                    <Copy className="size-3.5" /> Copy
+                  </Button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function ResultActions({ children }: { children: ReactNode }) {
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:pb-0">
@@ -1752,6 +1804,9 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
     if (key === "note" && statusNote) return false;
     return shouldShowResultField(key, value);
   });
+  const referenceEntries = Object.entries(result.result).filter(([key, value]) =>
+    shouldShowReferenceField(key, value),
+  );
   const title = result.type === "workspace_matter"
     ? `${result.result["note"] ? String(result.result["note"]).startsWith("linked") ? "Linked matter" : "New matter" : "Matter"}: ${displayValue(result.result["matter_name"])}`
     : result.type === "crm_entry"
@@ -1941,6 +1996,11 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
           </Button>
         )}
       </footer>
+      {!!referenceEntries.length && (
+        <div className="border-t border-border px-4 py-3 sm:px-6">
+          <ReferenceDetails entries={referenceEntries} />
+        </div>
+      )}
     </article>
   );
 }

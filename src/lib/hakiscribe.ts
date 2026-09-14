@@ -562,7 +562,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const LONG_HEX_PATTERN = /^[0-9a-f]{16,}$/i;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 
-/** Opaque system IDs lawyers should never have to read. */
+/** Opaque system IDs — show quietly as references, not as primary content. */
 export function looksLikeTechnicalId(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const text = value.trim();
@@ -576,7 +576,26 @@ export function looksLikeTechnicalId(value: unknown): boolean {
   return false;
 }
 
-const TECHNICAL_FIELD_KEYS = new Set([
+/** Large bodies / handoff payloads rendered elsewhere — keep out of meta grids. */
+const PAYLOAD_ONLY_FIELD_KEYS = new Set([
+  "ics",
+  "whatsapp_share_url",
+  "whatsapp_share_text",
+  "document_text",
+  "note_text",
+  "narrative",
+  "description",
+  "activity_description",
+  "background_info",
+  "detection_mode",
+  "exports",
+  "answer",
+  "output",
+  "question",
+  "instruction",
+]);
+
+const REFERENCE_FIELD_KEYS = new Set([
   "action_id",
   "session_id",
   "source_segment_id",
@@ -589,29 +608,29 @@ const TECHNICAL_FIELD_KEYS = new Set([
   "ambiguous_event_id",
   "ambiguous_deal_id",
   "ambiguous_contact_id",
-  "exports",
-  "ics",
-  "whatsapp_share_url",
-  "whatsapp_share_text",
   "workspace_url",
   "ambiguous_document_url",
-  "detection_mode",
-  "background_info",
-  "document_text",
-  "note_text",
-  "narrative",
-  "description",
-  "activity_description",
 ]);
 
-export function isTechnicalFieldKey(key: string): boolean {
+export function isPayloadOnlyFieldKey(key: string): boolean {
   const normalized = key.trim().toLowerCase();
-  if (TECHNICAL_FIELD_KEYS.has(normalized)) return true;
+  if (PAYLOAD_ONLY_FIELD_KEYS.has(normalized)) return true;
+  if (normalized.includes("whatsapp_share")) return true;
+  return false;
+}
+
+export function isReferenceFieldKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  if (REFERENCE_FIELD_KEYS.has(normalized)) return true;
   if (normalized.endsWith("_id") || normalized.endsWith("_ids")) return true;
   if (normalized.endsWith("_url") && normalized !== "url") return true;
-  if (normalized.includes("whatsapp_share")) return true;
-  if (normalized.startsWith("ambiguous_")) return true;
+  if (normalized.startsWith("ambiguous_") && normalized.endsWith("_id")) return true;
   return false;
+}
+
+/** @deprecated Prefer isReferenceFieldKey / isPayloadOnlyFieldKey */
+export function isTechnicalFieldKey(key: string): boolean {
+  return isPayloadOnlyFieldKey(key) || isReferenceFieldKey(key);
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -636,6 +655,20 @@ const FIELD_LABELS: Record<string, string> = {
   model: "Prepared with",
   source: "Source",
   workspace_error: "Workspace note",
+  matter_id: "Matter reference",
+  contact_id: "Contact reference",
+  document_id: "Document reference",
+  calendar_id: "Calendar reference",
+  existing_matter_id: "Linked matter reference",
+  ambiguous_document_id: "Ambiguous document reference",
+  ambiguous_event_id: "Ambiguous event reference",
+  ambiguous_deal_id: "Ambiguous deal reference",
+  ambiguous_contact_id: "Ambiguous contact reference",
+  workspace_url: "Workspace link",
+  ambiguous_document_url: "Ambiguous document link",
+  action_id: "Action reference",
+  session_id: "Session reference",
+  source_segment_id: "Source line reference",
 };
 
 export function humanizeFieldLabel(key: string): string {
@@ -645,6 +678,30 @@ export function humanizeFieldLabel(key: string): string {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase())
     .trim();
+}
+
+/** Shorten opaque IDs for scanning; full value stays available for copy. */
+export function formatReferenceId(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  const text = String(value).trim();
+  if (!text) return "—";
+  if (UUID_PATTERN.test(text)) {
+    return `${text.slice(0, 8)}…${text.slice(-4)}`;
+  }
+  if (text.length > 28) {
+    return `${text.slice(0, 10)}…${text.slice(-6)}`;
+  }
+  return text;
+}
+
+export function referenceDisplayValue(key: string, value: unknown): string {
+  if (typeof value === "string" && (key.endsWith("_url") || value.startsWith("http"))) {
+    return sourceHostname(value) ?? formatReferenceId(value);
+  }
+  if (looksLikeTechnicalId(value) || isReferenceFieldKey(key)) {
+    return formatReferenceId(value);
+  }
+  return displayValue(value);
 }
 
 function formatDateTimeForProfessionals(value: string): string | null {
@@ -709,8 +766,13 @@ export function displayValue(value: unknown): string {
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([key, entry]) => !isTechnicalFieldKey(key) && !looksLikeTechnicalId(entry))
-      .map(([key, entry]) => `${humanizeFieldLabel(key)}: ${displayValue(entry)}`);
+      .filter(([key]) => !isPayloadOnlyFieldKey(key))
+      .map(([key, entry]) => {
+        const shown = isReferenceFieldKey(key) || looksLikeTechnicalId(entry)
+          ? referenceDisplayValue(key, entry)
+          : displayValue(entry);
+        return `${humanizeFieldLabel(key)}: ${shown}`;
+      });
     return entries.length ? entries.join(" · ") : "—";
   }
   if (value === null || value === undefined) return "—";
@@ -721,15 +783,15 @@ export function displayValue(value: unknown): string {
   }
   const text = String(value).trim();
   if (!text) return "—";
-  if (looksLikeTechnicalId(text)) return "—";
+  if (looksLikeTechnicalId(text)) return formatReferenceId(text);
   const asDate = formatDateTimeForProfessionals(text);
   if (asDate) return asDate;
   return text;
 }
 
-/** Values safe to show on the Results review desk (no hashes, urls-as-ids, dumps). */
+/** Primary practice fields for the review desk (names, times, notes — not system refs). */
 export function shouldShowResultField(key: string, value: unknown): boolean {
-  if (isTechnicalFieldKey(key)) return false;
+  if (isPayloadOnlyFieldKey(key) || isReferenceFieldKey(key)) return false;
   if (value === null || value === undefined || value === "") return false;
   if (looksLikeTechnicalId(value)) return false;
   if (typeof value === "object" && !Array.isArray(value)) {
@@ -740,6 +802,14 @@ export function shouldShowResultField(key: string, value: unknown): boolean {
   }
   if (Array.isArray(value) && value.length === 0) return false;
   return true;
+}
+
+/** System references (IDs / links) shown in a quieter secondary section. */
+export function shouldShowReferenceField(key: string, value: unknown): boolean {
+  if (isPayloadOnlyFieldKey(key)) return false;
+  if (value === null || value === undefined || value === "") return false;
+  if (isReferenceFieldKey(key)) return true;
+  return looksLikeTechnicalId(value);
 }
 
 export interface BackgroundSource {
