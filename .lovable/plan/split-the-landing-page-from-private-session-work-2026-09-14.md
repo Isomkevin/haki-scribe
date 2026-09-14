@@ -8,7 +8,7 @@ Turn `/` into a public landing page with information sections only. Move session
 
 ### Landing page (`/`)
 
-- Keep the hero ("Capture what matters. Leave with work ready."), the three practice steps, the environments strip, and the trust line as the landing content.
+- Keep the hero ("Capture what matters. Leave with your Legal work ready."), the three practice steps, the environments strip, and the trust line as the landing content.
 - Remove the "Start a session" card from the hero grid; the hero becomes single-column on all screens.
 - Add a primary "Start a session" button linking to `/new`. Keep the completed judge demo inside the private `/new` area rather than exposing a session workspace from the landing.
 - Do not show live library counts, client session titles, matters, documents, transcripts, or results on the landing. Use non-sensitive product information instead.

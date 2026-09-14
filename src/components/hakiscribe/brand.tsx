@@ -36,24 +36,40 @@ export function TrustLine({ className = "" }: { className?: string }) {
       <DialogTrigger asChild>
         <button
           type="button"
-          className={cn("inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground", className)}
+          className={cn(
+            "inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground",
+            className,
+          )}
         >
           <LockKeyhole className="size-3.5 text-primary" />
-          <span>Not used to train models · Kenya DPA-aligned</span>
+          <span>Not used to train models · GDPR compliant</span>
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-serif">How this record is treated</DialogTitle>
           <DialogDescription>
-            Privilege and the Kenya Data Protection Act decide what a model may see. You stay in control.
+            Privilege, GDPR and respective Juristiction Data protections laws decide what a model
+            may see. You stay in control.
           </DialogDescription>
         </DialogHeader>
         <ul className="space-y-3 text-sm leading-6 text-foreground">
-          <li>Live captions and analysis use your API keys. HakiScribe does not train foundation models on your sessions.</li>
-          <li>Redacted lines stay on the record for you, and are excluded from detection and generation.</li>
-          <li>External company research (Exa) is labelled and never treated as something said in the room.</li>
-          <li>Generated work stays local until you choose to send it to connected tools. Nothing is auto-filed or auto-sent.</li>
+          <li>
+            Live captions and analysis use your API keys. HakiScribe does not train foundation
+            models on your sessions.
+          </li>
+          <li>
+            Redacted lines stay on the record for you, and are excluded from detection and
+            generation.
+          </li>
+          <li>
+            External company research (Exa) is labelled and never treated as something said in the
+            room.
+          </li>
+          <li>
+            Generated work stays local until you choose to send it to connected tools. Nothing is
+            auto-filed or auto-sent.
+          </li>
         </ul>
       </DialogContent>
     </Dialog>

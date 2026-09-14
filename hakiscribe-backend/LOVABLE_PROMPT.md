@@ -31,7 +31,7 @@ sparingly for primary actions), a serif or high-legibility sans for
 document/transcript text (this is legal reading material), clean sans
 for UI chrome, generous whitespace, subtle borders over heavy shadows.
 Confidence and calm, not excitement. A small, persistent trust line
-("Not used to train models · Kenya DPA-aligned") should be visible during
+("Not used to train models · GDPR compliant") should be visible during
 recording and on the action tray — for this audience, that line is why
 they trust the tool at all, not decoration.
 

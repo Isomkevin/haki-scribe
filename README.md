@@ -72,7 +72,7 @@ This is privileged speech. The interface is calm on purpose: deep ink, restraine
 
 A line stays visible while you record and while you choose:
 
-**Not used to train models · Kenya DPA-aligned**
+**Not used to train models · GDPR compliant**
 
 For this audience, that line is not decoration. It is why the tool is allowed in the room.
 
@@ -154,7 +154,7 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 
 **Kevin Isom** — Lead. Architecture, FastAPI pipeline (mic + Omi, speakers, redaction, flags), OpenRouter / OpenAI / Trigger.dev / Exa / Ambiguous integrations, Render deploy. Designed HakiScribe as HakiChain’s listening instrument.
 
-**Mercy Wairimu** — Product and legal workflow. In-room experience: no-look Flag, speaker naming, privilege before the model, source-traced Action Tray, human review before anything leaves the desk. Mobile-first frontend and Kenyan practice (English / Kiswahili / code-switch, Kenya DPA trust line).
+**Mercy Wairimu** — Product and legal workflow. In-room experience: no-look Flag, speaker naming, privilege before the model, source-traced Action Tray, human review before anything leaves the desk. Mobile-first frontend and Kenyan practice (English / Kiswahili / code-switch, GDPR trust line).
 
 ---
 
