@@ -1021,6 +1021,37 @@ async def _complete_gemini(creds: dict, system_prompt: str, user_prompt: str, mo
         return None
 
 
+async def _complete_vertex_gemini(
+    creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float
+) -> Optional[str]:
+    """Gemini through Vertex AI with the signed-in Google account's token."""
+    token = creds.get("access_token", "")
+    project = str(creds.get("project_id") or "").strip()
+    if not token or not project:
+        return None
+    location = vertex_location(creds)
+    url = (
+        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
+        f"/locations/{location}/publishers/google/models/{model}:generateContent"
+    )
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            },
+        )
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return (parts[0].get("text") or "").strip() or None
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Connected LLM models for the picker
 # ---------------------------------------------------------------------------
