@@ -1074,6 +1074,9 @@ def connected_llm_models() -> list[dict[str, str]]:
         add("anthropic:claude-3-5-haiku-20241022", "Claude 3.5 Haiku (your key)")
     if get_connection("openai"):
         add("openai:gpt-4o", "GPT-4o (your OpenAI key)")
+    if get_connection("gemini_oauth"):
+        add("gemini_oauth:gemini-2.0-flash", "Gemini 2.0 Flash (signed in with Google)")
+        add("gemini_oauth:gemini-1.5-pro", "Gemini 1.5 Pro (signed in with Google)")
     if get_connection("gemini"):
         add("gemini:gemini-1.5-flash", "Gemini 1.5 Flash (your key)")
     if get_connection("mistral"):
