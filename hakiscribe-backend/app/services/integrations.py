@@ -90,6 +90,32 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "gemini_oauth",
+        "name": "Google Gemini (sign in)",
+        "group": "ai",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Google and run the “Ask an AI model” task on Gemini through Vertex AI.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "project_id",
+                "label": "Google Cloud project ID",
+                "type": "text",
+                "help": "The project where Vertex AI is enabled, e.g. hakiscribe-demo.",
+                "placeholder": "my-project-id",
+                "mask": False,
+            },
+            {
+                "id": "location",
+                "label": "Vertex AI region",
+                "type": "text",
+                "help": "Leave blank for us-central1.",
+                "placeholder": "us-central1",
+                "mask": False,
+            },
+        ],
+    },
+    {
         "id": "mistral",
         "name": "Mistral",
         "group": "ai",
