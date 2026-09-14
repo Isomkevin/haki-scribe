@@ -4,7 +4,7 @@ import { CalendarClock, ExternalLink, FileText, Flag, RefreshCw, Scale } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { hakiApi, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
+import { hakiApi, friendlyErrorMessage, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
 
@@ -144,9 +144,19 @@ export function TrackerPage() {
         </header>
 
         {sessions.isError ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-            {sessions.error instanceof Error ? sessions.error.message : "The case tracker could not load."}
-          </p>
+          <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:p-5">
+            <p className="font-medium text-destructive">Case tracker could not load</p>
+            <p className="mt-1 text-sm leading-6 text-destructive/90">
+              {friendlyErrorMessage(
+                sessions.error,
+                "Sessions could not be loaded. Confirm the HakiScribe service is running, then refresh.",
+              )}
+            </p>
+            <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => void sessions.refetch()}>
+              <RefreshCw className="size-3.5" />
+              Try again
+            </Button>
+          </div>
         ) : null}
 
         <section className="mb-9 grid grid-cols-2 gap-3 sm:grid-cols-4">

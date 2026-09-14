@@ -57,12 +57,16 @@ import {
   displayValue,
   downloadTextFile,
   formatDuration,
+  friendlyErrorMessage,
   hakiApi,
   hasApiConfiguration,
   omiWebhookUrl,
+  parseBackgroundInfo,
+  sourceHostname,
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
+import { loadWorkspaceSettings } from "@/lib/workspace-settings";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
@@ -109,7 +113,7 @@ function ConnectionError({ message, retry }: { message: string; retry?: () => vo
       <AlertCircle />
       <AlertTitle>Connection unavailable</AlertTitle>
       <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-        <span>{message}</span>
+        <span>{friendlyErrorMessage(message)}</span>
         {retry && <Button variant="outline" size="sm" onClick={retry}><RefreshCw /> Try again</Button>}
       </AlertDescription>
     </Alert>
@@ -234,6 +238,13 @@ export function NewSessionPage() {
   const [source, setSource] = useState<SessionSource>("mic");
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("code-switch");
+  const [practiceName, setPracticeName] = useState("");
+  useEffect(() => {
+    const stored = loadWorkspaceSettings();
+    setSource(stored.workspace.defaultSource);
+    setLanguage(stored.workspace.defaultLanguage);
+    setPracticeName(stored.profile.practiceName.trim());
+  }, []);
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: hakiApi.listSessions, enabled: hasApiConfiguration, retry: false });
   const matters = useQuery({ queryKey: ["matters"], queryFn: hakiApi.listMatters, enabled: hasApiConfiguration, retry: false });
   const contacts = useQuery({ queryKey: ["contacts"], queryFn: hakiApi.listContacts, enabled: hasApiConfiguration, retry: false });
@@ -249,7 +260,7 @@ export function NewSessionPage() {
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
       navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id }, search: { fresh: false } });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
   const syncLibrary = useMutation({
     mutationFn: hakiApi.syncDemoLibrary,
@@ -260,7 +271,7 @@ export function NewSessionPage() {
       if (result.created > 0) toast.success(result.completing ? "Library restored. Finishing the trays." : "Library restored.");
       if (result.completing) window.setTimeout(() => { void queryClient.invalidateQueries({ queryKey: ["sessions"] }); void queryClient.invalidateQueries({ queryKey: ["matters"] }); }, 12000);
     },
-    onError: (error) => { if (!(error instanceof ApiError && error.status === 404)) toast.error(error.message); },
+    onError: (error) => { if (!(error instanceof ApiError && error.status === 404)) toast.error(friendlyErrorMessage(error)); },
   });
   const didSync = useRef(false);
   useEffect(() => {
@@ -278,7 +289,7 @@ export function NewSessionPage() {
       <main>
         <section className="border-b border-border bg-card/50">
           <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-            <SectionEyebrow>Private workspace</SectionEyebrow>
+            <SectionEyebrow>Private workspace{practiceName ? ` · ${practiceName}` : ""}</SectionEyebrow>
             <div className="mt-3 grid gap-7 lg:grid-cols-[minmax(0,1fr)_24.5rem] lg:items-start lg:gap-14">
               <div className="max-w-2xl">
                 <h1 className="font-serif text-4xl font-semibold leading-tight sm:text-5xl">Open a secure session.</h1>
@@ -305,8 +316,8 @@ export function NewSessionPage() {
                 {source === "omi" && <p className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">Pair the wearable after the session opens. Omi posts transcript segments to <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>.</p>}
                 <Button variant="warm" size="lg" className="mt-6 h-14 w-full text-base" onClick={() => create.mutate()} disabled={create.isPending || !hasApiConfiguration}><span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />{create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}</Button>
                 <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
-                {create.error && <p className="mt-3 text-sm text-destructive">{create.error.message}</p>}
-                {showcase.error && <p className="mt-3 text-sm text-destructive">{showcase.error.message}</p>}
+                {create.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(create.error, "The session could not be opened. Try again.")}</p>}
+                {showcase.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(showcase.error, "The demo session could not be opened. Try again.")}</p>}
               </div>
             </div>
           </div>
@@ -325,7 +336,7 @@ export function NewSessionPage() {
             <Button asChild variant="outline" size="sm"><Link to="/settings">Settings</Link></Button>
           </div>} />
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
-          {sessions.error && <ConnectionError message={sessions.error.message} retry={() => void sessions.refetch()} />}
+          {sessions.error && <ConnectionError message={friendlyErrorMessage(sessions.error)} retry={() => void sessions.refetch()} />}
           {sessions.isLoading && <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-card" />)}</div>}
           {sessions.data?.length === 0 && syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">Restoring the desk</p><p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p></div>}
           {sessions.data?.length === 0 && !syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">The library is empty</p><p className="mt-2 text-sm text-muted-foreground">Open the completed Wanjiru client meeting, or start listening.</p><Button className="mt-5" variant="outline" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building showcase…" : "Load judge demo"}</Button></div>}
@@ -660,7 +671,7 @@ function SpeakerScreen({ session, onNext }: { session: SessionDetail; onNext: ()
           ))}
         </div>
         {!speakers.length && <p className="chamber-card rounded-xl border border-dashed border-border py-8 text-center text-muted-foreground">No speaker labels were found. You can continue to the transcript check.</p>}
-        {mutation.error && <p className="mt-4 text-sm text-destructive">{mutation.error.message}</p>}
+        {mutation.error && <p className="mt-4 text-sm text-destructive">{friendlyErrorMessage(mutation.error)}</p>}
         <div className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:justify-end">
           <Button variant="ghost" className="h-11" onClick={onNext}>Skip</Button>
           <Button className="h-11" onClick={() => mutation.mutate()} disabled={mutation.isPending || !Object.values(mapping).some((name) => name.trim())}>
@@ -883,7 +894,7 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
             }}
           />
           <LegalIntelligence sessionId={session.id} matterId={session.matters?.[0]?.id} />
-          {generate.error && <div className="mt-5"><ConnectionError message={generate.error.message} /></div>}
+          {generate.error && <div className="mt-5"><ConnectionError message={friendlyErrorMessage(generate.error)} /></div>}
           <div className="safe-bottom sticky bottom-0 z-20 mt-8 border-t border-border bg-background/95 py-3 backdrop-blur-md sm:py-4">
             <Button variant="warm" size="lg" className="h-12 w-full" disabled={!selected.size || generate.isPending} onClick={() => generate.mutate(Array.from(selected))}>
               {generate.isPending ? "Generating selected work…" : `Generate selected (${selected.size})`}
@@ -965,11 +976,7 @@ function ActionCard({ action, transcript, flags, checked, onChecked, onDismiss, 
           <blockquote className="font-serif leading-7">“{source.text}”</blockquote>
         </div>
       )}
-      {background !== undefined && (
-        <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs leading-5 text-muted-foreground sm:px-5">
-          External research — not from the record. {typeof background === "string" ? background : displayValue(background)}
-        </div>
-      )}
+      {background !== undefined && <BackgroundResearch value={background} />}
       {open && (
         <div className="grid gap-4 border-t border-border p-4 sm:grid-cols-2 sm:p-5">
           {Object.entries(action.extracted_fields).filter(([key]) => !hiddenFieldKeys.has(key)).map(([key, value]) => (
@@ -1045,7 +1052,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
       {catalogue.data?.configured === false && (
         <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing. Add OPENROUTER_API_KEY or connect OpenRouter in <Link to="/settings" className="font-medium text-foreground underline-offset-4 hover:underline">Settings</Link>.</p>
       )}
-      {ask.error && <p className="mt-3 text-sm text-destructive">{ask.error.message}</p>}
+      {ask.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(ask.error)}</p>}
     </section>
   );
 }
@@ -1072,7 +1079,7 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
       }
       void intel.refetch();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
   const watch = useMutation({
     mutationFn: () => hakiApi.watchLegalIntel({ session_id: sessionId, matter_id: activeMatterId }),
@@ -1088,7 +1095,7 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
       }
       void intel.refetch();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
   const retrievedHits = retrieve.data?.hits ?? watch.data?.hits;
   const hits = retrievedHits ?? intel.data?.hits ?? [];
@@ -1257,6 +1264,65 @@ function LegalIntelligence({ sessionId, matterId, matters }: { sessionId?: strin
   );
 }
 
+function BackgroundResearch({ value }: { value: unknown }) {
+  const [expanded, setExpanded] = useState(false);
+  const sources = parseBackgroundInfo(value);
+  if (!sources.length) return null;
+  return (
+    <div className="border-t border-border bg-muted/40 px-4 py-4 sm:px-5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        External research — not from the record
+      </p>
+      <ul className="mt-3 space-y-4">
+        {sources.map((source, index) => {
+          const host = sourceHostname(source.url);
+          const extract = source.extract ?? "";
+          const facts = source.facts ?? [];
+          const long = extract.length > 280 || extract.split("\n").length > 4 || facts.length > 4;
+          return (
+            <li key={`${source.url ?? source.title ?? index}`} className="rounded-lg border border-border/70 bg-card/80 p-3 sm:p-4">
+              {source.url ? (
+                <a href={source.url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-start gap-1.5 break-words font-medium text-primary hover:underline">
+                  {source.title ?? host ?? source.url}
+                  <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
+                </a>
+              ) : (
+                <p className="font-medium text-foreground">{source.title ?? "Open-web background"}</p>
+              )}
+              {(host || source.published) && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {[host, source.published?.slice(0, 10)].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {extract && (
+                <p className={cn("mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/85", !expanded && "line-clamp-4")}>
+                  {extract}
+                </p>
+              )}
+              {!!facts.length && (
+                <ul className={cn("mt-3 space-y-1.5 border-t border-border/60 pt-3 text-sm leading-6 text-foreground/85", !expanded && facts.length > 4 && "max-h-28 overflow-hidden")}>
+                  {(expanded ? facts : facts.slice(0, 4)).map((fact) => (
+                    <li key={fact} className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary/70" aria-hidden />
+                      <span>{fact}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {long && (
+                <button type="button" className="mt-3 text-xs font-semibold text-primary hover:underline" onClick={() => setExpanded((current) => !current)}>
+                  {expanded ? "Show less" : "Read summary"}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-3 text-[11px] leading-5 text-muted-foreground">Verify this source before relying on it in filed work.</p>
+    </div>
+  );
+}
+
 function SourceList({ sources }: { sources: ResearchSource[] }) {
   if (!sources.length) return null;
   return (
@@ -1301,7 +1367,7 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
       setExportOpen(false);
     },
-    onError: (error: Error) => toast.error(error instanceof Error ? error.message : "Export failed"),
+    onError: (error: Error) => toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again.")),
   });
   if (result.status === "error") {
     return (
@@ -1310,7 +1376,7 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
           <AlertCircle className="size-5 text-destructive" />
           <div>
             <h2 className="font-semibold">This item was not generated</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{result.error ?? "The service returned an error for this item."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{friendlyErrorMessage(result.error, "The service returned an error for this item.")}</p>
           </div>
         </div>
       </article>

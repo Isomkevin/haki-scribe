@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Brand, TrustLine } from "./brand";
-import { hakiApi, hasApiConfiguration } from "@/lib/hakiscribe";
+import { hakiApi, hasApiConfiguration, friendlyErrorMessage } from "@/lib/hakiscribe";
 import { researchTranscript, type ResearchReport } from "@/lib/research.functions";
 
 function transcriptText(segments: { speaker: string | null; text: string; redacted: boolean }[]) {
@@ -119,7 +119,11 @@ export function ResearchPage({ sessionId }: { sessionId?: string }) {
               Reading the record and checking authorities. This takes a minute or two.
             </p>
           )}
-          {research.error && <p className="text-sm text-destructive">{research.error.message}</p>}
+          {research.error && (
+            <p className="text-sm text-destructive">
+              {friendlyErrorMessage(research.error, "Legal research could not finish. Try again in a moment.")}
+            </p>
+          )}
           </div>
           <aside className="rounded-lg border border-border bg-muted/40 p-4 text-xs leading-5 text-muted-foreground lg:sticky lg:top-6">
             <p className="font-semibold text-foreground">Research safeguards</p>

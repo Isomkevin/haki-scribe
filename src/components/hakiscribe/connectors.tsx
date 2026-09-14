@@ -6,6 +6,7 @@ import {
   Loader2,
   LockKeyhole,
   Plug,
+  RefreshCw,
   Unplug,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { hakiApi, type Integration, type IntegrationField } from "@/lib/hakiscribe";
+import { friendlyErrorMessage, hakiApi, type Integration, type IntegrationField } from "@/lib/hakiscribe";
 import { SectionHeading } from "./shell";
 
 const GROUP_LABELS: Record<string, string> = {
@@ -50,7 +51,7 @@ export function ConnectorsSection() {
       setDialogError(null);
     },
     onError: (error: Error) => {
-      setDialogError(error instanceof Error ? error.message : "Could not connect.");
+      setDialogError(friendlyErrorMessage(error, "Could not verify that connector. Check the key and try again."));
     },
   });
 
@@ -104,9 +105,25 @@ export function ConnectorsSection() {
         </header>
 
         {integrations.isError ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-            {integrations.error instanceof Error ? integrations.error.message : "Could not load connectors."}
-          </p>
+          <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:p-5">
+            <p className="font-medium text-destructive">Connectors could not load</p>
+            <p className="mt-1 text-sm leading-6 text-destructive/90">
+              {friendlyErrorMessage(
+                integrations.error,
+                "Connectors are unavailable right now. Confirm the HakiScribe backend is running, then try again.",
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => void integrations.refetch()}
+            >
+              <RefreshCw className="size-3.5" />
+              Try again
+            </Button>
+          </div>
         ) : null}
 
         {integrations.isLoading ? (

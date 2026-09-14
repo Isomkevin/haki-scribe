@@ -205,6 +205,121 @@ export interface HealthStatus {
   webhook?: string;
 }
 
+const GENERIC_HTTP_MESSAGES = new Set([
+  "not found",
+  "internal server error",
+  "bad request",
+  "unauthorized",
+  "forbidden",
+  "method not allowed",
+  "bad gateway",
+  "service unavailable",
+  "gateway timeout",
+  "error",
+  "ok",
+]);
+
+function extractErrorDetail(body: string): string {
+  if (!body.trim()) return "";
+  try {
+    const parsed = JSON.parse(body) as {
+      detail?: string | Array<{ msg?: string; message?: string }> | Record<string, unknown>;
+      message?: string;
+      error?: string;
+    };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) return parsed.detail.trim();
+    if (Array.isArray(parsed.detail)) {
+      const parts = parsed.detail
+        .map((item) => (typeof item === "string" ? item : item.msg ?? item.message ?? ""))
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (parts.length) return parts.join(" ");
+    }
+    if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message.trim();
+    if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+  } catch {
+    // Plain-text or HTML body from a proxy / older server.
+  }
+  const plain = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plain.length > 180) return "";
+  return plain;
+}
+
+function isGenericHttpMessage(message: string) {
+  const normalized = message.trim().toLowerCase().replace(/[.!]+$/, "");
+  return !normalized || GENERIC_HTTP_MESSAGES.has(normalized) || /^\d{3}\s/.test(normalized);
+}
+
+function humanizeApiFailure(status: number, rawMessage: string, path: string): string {
+  const message = rawMessage.trim();
+  if (message && !isGenericHttpMessage(message)) return message;
+
+  const normalized = message.toLowerCase().replace(/[.!]+$/, "");
+  const effectiveStatus =
+    status ||
+    (normalized === "not found"
+      ? 404
+      : normalized === "bad request"
+        ? 400
+        : normalized === "unauthorized"
+          ? 401
+          : normalized === "forbidden"
+            ? 403
+            : normalized === "method not allowed"
+              ? 405
+              : normalized.includes("timeout") || normalized === "gateway timeout"
+                ? 504
+                : normalized === "service unavailable" || normalized === "bad gateway" || normalized === "internal server error"
+                  ? 500
+                  : 0);
+
+  if (effectiveStatus === 404) {
+    if (path.startsWith("/integrations")) {
+      return "Connectors are unavailable on this service. Confirm the HakiScribe backend is running and up to date, then try again.";
+    }
+    if (path.startsWith("/sessions")) {
+      return "That session could not be found. It may have been removed, or the service URL is pointing at the wrong environment.";
+    }
+    if (path.startsWith("/health")) {
+      return "The workspace health check is missing on this service. Confirm the backend is running the latest HakiScribe build.";
+    }
+    return "We could not find what you asked for. Refresh the page or check that the service is running the latest build.";
+  }
+  if (effectiveStatus === 400) {
+    return "The request could not be completed. Check the details you entered and try again.";
+  }
+  if (effectiveStatus === 401 || effectiveStatus === 403) {
+    return "This workspace is not authorised for that action. Check your service credentials and try again.";
+  }
+  if (effectiveStatus === 408 || effectiveStatus === 504) {
+    return "The service took too long to respond. Try again in a moment.";
+  }
+  if (effectiveStatus === 429) {
+    return "Too many requests were sent just now. Wait a moment, then try again.";
+  }
+  if (effectiveStatus >= 500) {
+    return "The HakiScribe service hit an unexpected problem. Try again in a moment. If it continues, check that the backend is healthy.";
+  }
+  return "Something went wrong talking to the HakiScribe service. Try again.";
+}
+
+/** Prefer this in UI so bare HTTP phrases like "Not Found" never reach the user. */
+export function friendlyErrorMessage(error: unknown, fallback = "Something went wrong. Try again.") {
+  if (typeof error === "string") {
+    if (error && !isGenericHttpMessage(error)) return error;
+    return humanizeApiFailure(0, error, "") || fallback;
+  }
+  if (error instanceof ApiError) {
+    if (error.message && !isGenericHttpMessage(error.message)) return error.message;
+    return humanizeApiFailure(error.status ?? 0, error.message, "") || fallback;
+  }
+  if (error instanceof Error) {
+    if (error.message && !isGenericHttpMessage(error.message)) return error.message;
+    return fallback;
+  }
+  return fallback;
+}
+
 function apiUrl(path: string) {
   if (!configuredBaseUrl) {
     throw new ApiError("HakiScribe cannot reach its service because VITE_API_BASE_URL is not configured.");
@@ -227,14 +342,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     const body = await response.text();
-    let message = body || `Request failed (${response.status})`;
-    try {
-      const parsed = JSON.parse(body) as { detail?: string; message?: string };
-      message = parsed.detail ?? parsed.message ?? message;
-    } catch {
-      // Keep the server's plain-text response.
-    }
-    throw new ApiError(message, response.status);
+    const detail = extractErrorDetail(body);
+    throw new ApiError(humanizeApiFailure(response.status, detail, path), response.status);
   }
   return (await response.json()) as T;
 }
@@ -355,4 +464,186 @@ export function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
+}
+
+export interface BackgroundSource {
+  title: string | null;
+  url: string | null;
+  published: string | null;
+  extract: string | null;
+  facts: string[];
+}
+
+function looksLikeJsonBlob(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    (trimmed.startsWith("{") && trimmed.includes('"')) ||
+    (trimmed.startsWith("[") && trimmed.includes("{"))
+  );
+}
+
+function tryParseJson(text: string): unknown | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    // Exa highlights sometimes land with literal newlines inside an otherwise JSON-shaped string.
+  }
+  try {
+    const repaired = trimmed
+      .replace(/\r\n/g, "\\n")
+      .replace(/\r/g, "\\n")
+      .replace(/\n/g, "\\n")
+      .replace(/\t/g, "\\t");
+    return JSON.parse(repaired) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== "string") return null;
+  const parsed = tryParseJson(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  return null;
+}
+
+function stringField(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/** Pull title/url/summary from a JSON-shaped string when JSON.parse still fails. */
+function recoverFieldsFromBlob(text: string): Partial<BackgroundSource> | null {
+  if (!looksLikeJsonBlob(text)) return null;
+  const title = text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1];
+  const url = text.match(/"url"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1];
+  const published = text.match(/"published"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1];
+  const extract =
+    text.match(/"highlight"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1] ??
+    text.match(/"extract"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1] ??
+    text.match(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/)?.[1];
+  if (!title && !url && !extract) return null;
+  const unescape = (value: string | undefined) =>
+    (value ?? "")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, " ")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  return {
+    title: title ? unescape(title) : null,
+    url: url ? unescape(url) : null,
+    published: published ? unescape(published) : null,
+    extract: extract ? unescape(extract) : null,
+  };
+}
+
+function splitResearchBody(text: string): { summary: string; facts: string[] } {
+  const normalized = text
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, " ")
+    .replace(/\r/g, "")
+    .replace(/\u2022/g, "\n- ")
+    .trim();
+  const lines = normalized
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const facts: string[] = [];
+  const prose: string[] = [];
+  for (const line of lines) {
+    const bullet = line.match(/^[-*•]\s*(.+)$/)?.[1]?.trim();
+    if (bullet) {
+      if (!facts.some((fact) => fact.toLowerCase() === bullet.toLowerCase())) facts.push(bullet);
+      continue;
+    }
+    // Prefer the longer copy when Exa duplicates highlight + extract.
+    const normalizedLine = line.toLowerCase();
+    if (prose.some((part) => part.toLowerCase() === normalizedLine)) continue;
+    const overlap = prose.findIndex((part) => {
+      const other = part.toLowerCase();
+      return other.includes(normalizedLine) || normalizedLine.includes(other);
+    });
+    if (overlap === -1) prose.push(line);
+    else if (line.length > (prose[overlap]?.length ?? 0)) prose[overlap] = line;
+  }
+  return { summary: prose.join("\n\n"), facts };
+}
+
+function readableResearchText(value: unknown): { summary: string; facts: string[] } {
+  if (value == null) return { summary: "", facts: [] };
+  if (typeof value !== "string") return { summary: "", facts: [] };
+  const text = value.trim();
+  if (!text) return { summary: "", facts: [] };
+  if (looksLikeJsonBlob(text)) {
+    const recovered = recoverFieldsFromBlob(text);
+    if (recovered?.extract) return splitResearchBody(recovered.extract);
+  }
+  return splitResearchBody(text);
+}
+
+function toBackgroundSource(value: unknown): BackgroundSource | null {
+  const record = asRecord(value);
+  if (record) {
+    const url = stringField(record, "url");
+    const title = stringField(record, "title");
+    const published = stringField(record, "published");
+    // Prefer highlight, then extract — they are often duplicates from Exa.
+    const highlight = stringField(record, "highlight", "extract", "text", "summary");
+    const extractAlt = stringField(record, "extract");
+    const rawBody =
+      highlight && extractAlt && highlight !== extractAlt && !highlight.includes(extractAlt) && !extractAlt.includes(highlight)
+        ? `${highlight}\n${extractAlt}`
+        : highlight ?? extractAlt ?? "";
+    const { summary, facts } = readableResearchText(rawBody);
+    if (title || url || summary || facts.length) {
+      return { title, url, published, extract: summary || null, facts };
+    }
+  }
+
+  if (typeof value === "string") {
+    const recovered = recoverFieldsFromBlob(value);
+    if (recovered) {
+      const { summary, facts } = readableResearchText(recovered.extract ?? "");
+      if (recovered.title || recovered.url || summary || facts.length) {
+        return {
+          title: recovered.title ?? null,
+          url: recovered.url ?? null,
+          published: recovered.published ?? null,
+          extract: summary || null,
+          facts,
+        };
+      }
+    }
+    const { summary, facts } = readableResearchText(value);
+    // Never surface a raw JSON blob as the readable summary.
+    if (looksLikeJsonBlob(summary) && !facts.length) return null;
+    return summary || facts.length ? { title: null, url: null, published: null, extract: summary || null, facts } : null;
+  }
+  return null;
+}
+
+export function parseBackgroundInfo(value: unknown): BackgroundSource[] {
+  if (value == null || value === "") return [];
+  if (typeof value === "string") {
+    const parsed = tryParseJson(value);
+    if (parsed != null) value = parsed;
+  }
+  const items = Array.isArray(value) ? value : [value];
+  return items.map(toBackgroundSource).filter((item): item is BackgroundSource => Boolean(item));
+}
+
+export function sourceHostname(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }

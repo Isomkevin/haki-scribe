@@ -1,23 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { SettingsPage } from "@/components/hakiscribe/settings";
+import { SETTINGS_SECTIONS } from "@/lib/workspace-settings";
 
 export const Route = createFileRoute("/settings")({
+  validateSearch: z.object({
+    section: z.enum(SETTINGS_SECTIONS).optional(),
+  }),
   head: () => ({
     meta: [
       { title: "Settings — HakiScribe" },
       {
         name: "description",
         content:
-          "Configure HakiScribe connectors, keys and workspace tools so drafted work can reach the systems your practice already uses.",
+          "Profile, security, connectors and workspace defaults for the HakiScribe private practice workspace.",
       },
       { property: "og:title", content: "Settings — HakiScribe" },
       {
         property: "og:description",
-        content: "Connect AI, storage and practice tools from workspace settings. Credentials stay on the server.",
+        content: "Configure profile, security, and the tools your practice already uses. Credentials stay on the server.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: SettingsPage,
+  component: SettingsRoute,
 });
+
+function SettingsRoute() {
+  const { section } = Route.useSearch();
+  return <SettingsPage section={section ?? "profile"} />;
+}
