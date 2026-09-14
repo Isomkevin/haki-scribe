@@ -68,6 +68,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(stream.router, prefix="/sessions", tags=["stream"])
 app.include_router(actions.router, prefix="/sessions", tags=["actions"])
