@@ -64,6 +64,20 @@ _CONFIG: dict[str, dict[str, Any]] = {
         "extra_auth_params": {"access_type": "offline", "prompt": "consent"},
         "console": "https://console.cloud.google.com/apis/credentials",
     },
+    "gemini_oauth": {
+        "label": "Google Gemini (sign in)",
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "openid",
+            "email",
+        ],
+        "client_id_env": ("GOOGLE_OAUTH_CLIENT_ID",),
+        "client_secret_env": ("GOOGLE_OAUTH_CLIENT_SECRET",),
+        "extra_auth_params": {"access_type": "offline", "prompt": "consent"},
+        "console": "https://console.cloud.google.com/apis/credentials",
+    },
     "dropbox": {
         "label": "Dropbox",
         "authorize_url": "https://www.dropbox.com/oauth2/authorize",
@@ -158,25 +172,31 @@ def _prune_states() -> None:
         _STATES.pop(key, None)
 
 
-def _issue_state(provider_id: str) -> str:
+def _issue_state(provider_id: str, extras: Optional[dict[str, str]] = None) -> str:
     _prune_states()
     state = secrets.token_urlsafe(24)
-    _STATES[state] = {"provider_id": provider_id, "created_at": time.time()}
+    _STATES[state] = {
+        "provider_id": provider_id,
+        "created_at": time.time(),
+        "extras": dict(extras or {}),
+    }
     return state
 
 
-def _consume_state(state: str, provider_id: str) -> None:
+def _consume_state(state: str, provider_id: str) -> dict[str, str]:
+    """Returns the extras stashed when the sign-in started (e.g. project id)."""
     _prune_states()
     entry = _STATES.pop(state, None)
     if entry is None or entry["provider_id"] != provider_id:
         raise OAuthError("This sign-in link has expired. Start the connection again.", 400)
+    return dict(entry.get("extras") or {})
 
 
 # ---------------------------------------------------------------------------
 # Authorisation URL
 # ---------------------------------------------------------------------------
 
-def authorization_url(provider_id: str) -> str:
+def authorization_url(provider_id: str, extras: Optional[dict[str, str]] = None) -> str:
     cfg = _CONFIG.get(provider_id)
     if cfg is None:
         raise OAuthError(f"{provider_id} does not use OAuth", 404)
@@ -194,7 +214,7 @@ def authorization_url(provider_id: str) -> str:
         "redirect_uri": redirect_uri(provider_id),
         "response_type": "code",
         "scope": " ".join(cfg["scopes"]),
-        "state": _issue_state(provider_id),
+        "state": _issue_state(provider_id, extras),
     }
     params.update({k: str(v) for k, v in cfg["extra_auth_params"].items()})
 
@@ -241,13 +261,16 @@ def _creds_from_token(payload: dict[str, Any], previous: Optional[dict[str, Any]
         creds["expires_at"] = str(int(time.time() + float(expires_in) - 60))
     if previous and previous.get("account"):
         creds["account"] = previous["account"]
+    for carried in ("project_id", "location"):
+        if previous and previous.get(carried):
+            creds[carried] = previous[carried]
     return creds
 
 
 async def exchange_code(provider_id: str, code: str, state: str) -> dict[str, Any]:
     if provider_id not in _CONFIG:
         raise OAuthError(f"{provider_id} does not use OAuth", 404)
-    _consume_state(state, provider_id)
+    extras = _consume_state(state, provider_id)
     payload = await _token_request(
         provider_id,
         {
@@ -257,6 +280,9 @@ async def exchange_code(provider_id: str, code: str, state: str) -> dict[str, An
         },
     )
     creds = _creds_from_token(payload)
+    for key, value in extras.items():
+        if value:
+            creds[key] = value
     account = await _account_label(provider_id, creds["access_token"])
     if account:
         creds["account"] = account
@@ -293,7 +319,15 @@ async def _account_label(provider_id: str, access_token: str) -> Optional[str]:
     """Best-effort human label for the connected account — shown on the card."""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            if provider_id in {"google_drive", "google_calendar"}:
+            if provider_id == "gemini_oauth":
+                resp = await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if resp.status_code < 400:
+                    data = resp.json()
+                    return data.get("email") or data.get("name")
+            elif provider_id in {"google_drive", "google_calendar"}:
                 resp = await client.get(
                     "https://www.googleapis.com/drive/v3/about?fields=user",
                     headers={"Authorization": f"Bearer {access_token}"},

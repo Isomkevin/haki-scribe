@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { z } from "zod";
 import { SessionPage } from "@/components/hakiscribe/app";
 
@@ -18,5 +19,9 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 function SessionRoute() {
   const { sessionId } = Route.useParams();
   const { fresh } = Route.useSearch();
-  return <SessionPage sessionId={sessionId} fresh={fresh} />;
+  return (
+    <RequireAuth>
+      <SessionPage sessionId={sessionId} fresh={fresh} />
+    </RequireAuth>
+  );
 }

@@ -90,6 +90,32 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "gemini_oauth",
+        "name": "Google Gemini (sign in)",
+        "group": "ai",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Google and run the “Ask an AI model” task on Gemini through Vertex AI.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "project_id",
+                "label": "Google Cloud project ID",
+                "type": "text",
+                "help": "The project where Vertex AI is enabled, e.g. hakiscribe-demo.",
+                "placeholder": "my-project-id",
+                "mask": False,
+            },
+            {
+                "id": "location",
+                "label": "Vertex AI region",
+                "type": "text",
+                "help": "Leave blank for us-central1.",
+                "placeholder": "us-central1",
+                "mask": False,
+            },
+        ],
+    },
+    {
         "id": "mistral",
         "name": "Mistral",
         "group": "ai",
@@ -669,7 +695,38 @@ async def _verify_google_calendar(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def vertex_location(creds: dict[str, Any]) -> str:
+    return (str(creds.get("location") or "").strip() or os.environ.get("VERTEX_LOCATION") or "us-central1")
+
+
+async def _verify_gemini_oauth(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    project = str(creds.get("project_id") or "").strip()
+    if not token:
+        return {"ok": False, "error": "Sign in with Google first"}
+    if not project:
+        return {"ok": False, "error": "Missing Google Cloud project ID"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {
+                "ok": False,
+                "error": (
+                    f"Google could not open project “{project}” ({resp.status_code}). "
+                    "Check the project ID and that this account has access."
+                ),
+            }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 _VERIFIERS = {
+    "gemini_oauth": _verify_gemini_oauth,
     "google_calendar": _verify_google_calendar,
     "anthropic": _verify_anthropic,
     "openai": _verify_openai,
@@ -843,7 +900,7 @@ async def complete_with_provider(
 ) -> Optional[str]:
     """Run a completion through the user's own connected LLM key.
     Returns None when the provider is not connected or the call fails."""
-    creds = get_creds(provider_id)
+    creds = await get_fresh_creds(provider_id)
     if creds is None:
         return None
     try:
@@ -865,6 +922,8 @@ async def complete_with_provider(
                 "https://openrouter.ai/api/v1",
                 extra_headers=openrouter_headers(),
             )
+        elif provider_id == "gemini_oauth":
+            return await _complete_vertex_gemini(creds, system_prompt, user_prompt, model or "gemini-2.0-flash", timeout_s)
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
@@ -962,6 +1021,37 @@ async def _complete_gemini(creds: dict, system_prompt: str, user_prompt: str, mo
         return None
 
 
+async def _complete_vertex_gemini(
+    creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float
+) -> Optional[str]:
+    """Gemini through Vertex AI with the signed-in Google account's token."""
+    token = creds.get("access_token", "")
+    project = str(creds.get("project_id") or "").strip()
+    if not token or not project:
+        return None
+    location = vertex_location(creds)
+    url = (
+        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
+        f"/locations/{location}/publishers/google/models/{model}:generateContent"
+    )
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+            },
+        )
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return (parts[0].get("text") or "").strip() or None
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Connected LLM models for the picker
 # ---------------------------------------------------------------------------
@@ -984,6 +1074,9 @@ def connected_llm_models() -> list[dict[str, str]]:
         add("anthropic:claude-3-5-haiku-20241022", "Claude 3.5 Haiku (your key)")
     if get_connection("openai"):
         add("openai:gpt-4o", "GPT-4o (your OpenAI key)")
+    if get_connection("gemini_oauth"):
+        add("gemini_oauth:gemini-2.0-flash", "Gemini 2.0 Flash (signed in with Google)")
+        add("gemini_oauth:gemini-1.5-pro", "Gemini 1.5 Pro (signed in with Google)")
     if get_connection("gemini"):
         add("gemini:gemini-1.5-flash", "Gemini 1.5 Flash (your key)")
     if get_connection("mistral"):

@@ -378,7 +378,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface AuthUser {
+  email: string;
+  name: string;
+  demo?: boolean;
+}
+
+export interface DemoCredentials {
+  enabled: boolean;
+  email?: string;
+  password?: string;
+  name?: string;
+}
+
 export const hakiApi = {
+  login: (body: { email: string; password: string }) =>
+    request<{ token: string; user: AuthUser }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+  demoCredentials: () => request<DemoCredentials>("/auth/demo"),
   listSessions: () => request<Session[]>("/sessions"),
   getSession: (id: string) => request<SessionDetail>(`/sessions/${id}`),
   createSession: (body: { title: string; source: SessionSource; language_hint?: string }) =>
@@ -461,15 +477,23 @@ export const hakiApi = {
 };
 
 /** URL the connect popup opens; the server bounces it to the provider's consent screen. */
-export function integrationOAuthUrl(providerId: string) {
+export function integrationOAuthUrl(providerId: string, params?: Record<string, string>) {
   const base = configuredBaseUrl || PRODUCTION_API_URL;
-  return `${base}/integrations/oauth/${providerId}/start`;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString();
+  return `${base}/integrations/oauth/${providerId}/start${suffix ? `?${suffix}` : ""}`;
 }
 
 /** Opens the provider consent popup and resolves once it reports back. */
-export function startIntegrationOAuth(providerId: string): Promise<"connected" | "failed"> {
+export function startIntegrationOAuth(
+  providerId: string,
+  params?: Record<string, string>,
+): Promise<"connected" | "failed"> {
   return new Promise((resolve, reject) => {
-    const popup = window.open(integrationOAuthUrl(providerId), "hakiscribe-oauth", "width=520,height=680");
+    const popup = window.open(integrationOAuthUrl(providerId, params), "hakiscribe-oauth", "width=520,height=680");
     if (!popup) {
       reject(new Error("Your browser blocked the sign-in window. Allow pop-ups for HakiScribe and try again."));
       return;

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { NewSessionPage } from "@/components/hakiscribe/app";
 
 export const Route = createFileRoute("/new")({
@@ -12,5 +13,13 @@ export const Route = createFileRoute("/new")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: NewSessionPage,
+  component: NewRoute,
 });
+
+function NewRoute() {
+  return (
+    <RequireAuth>
+      <NewSessionPage />
+    </RequireAuth>
+  );
+}

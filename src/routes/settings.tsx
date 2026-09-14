@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { z } from "zod";
 import { SettingsPage } from "@/components/hakiscribe/settings";
 import { SETTINGS_SECTIONS } from "@/lib/workspace-settings";
@@ -29,5 +30,9 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsRoute() {
   const { section } = Route.useSearch();
-  return <SettingsPage section={section ?? "profile"} />;
+  return (
+    <RequireAuth>
+      <SettingsPage section={section ?? "profile"} />
+    </RequireAuth>
+  );
 }

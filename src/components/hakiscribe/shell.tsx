@@ -1,12 +1,34 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Headphones, Mic, Scale, Settings2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowLeft, Headphones, LogOut, Mic, Scale, Settings2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { currentSession, signOut } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SessionStatus } from "@/lib/hakiscribe";
 import { Brand, SecureBadge } from "./brand";
 import { InstallAppButton } from "./pwa-register";
+
+/** Only appears once a session exists in this browser. */
+function SignOutButton() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => setSignedIn(Boolean(currentSession())), []);
+  if (!signedIn) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground"
+      onClick={() => {
+        signOut();
+        window.location.assign("/");
+      }}
+    >
+      <LogOut />
+      <span className="hidden sm:inline">Sign out</span>
+    </Button>
+  );
+}
 
 export function PageShell({ children, back }: { children: ReactNode; back?: boolean }) {
   return (
@@ -43,6 +65,7 @@ export function PageShell({ children, back }: { children: ReactNode; back?: bool
                 </Button>
               </>
             )}
+            <SignOutButton />
             <SecureBadge />
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { z } from "zod";
 import { ResearchPage } from "@/components/hakiscribe/research";
 
@@ -26,5 +27,9 @@ export const Route = createFileRoute("/research")({
 
 function ResearchRoute() {
   const { session } = Route.useSearch();
-  return <ResearchPage {...(session ? { sessionId: session } : {})} />;
+  return (
+    <RequireAuth>
+      <ResearchPage {...(session ? { sessionId: session } : {})} />
+    </RequireAuth>
+  );
 }
