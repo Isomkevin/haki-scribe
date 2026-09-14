@@ -1,28 +1,26 @@
 """Omi wearable ingress.
 
-Omi POSTs live transcript segments (or a finished memory) to this URL.
-Pairing is via `?session_id=<HakiScribe UUID>` so a lawyer can open a
-session on their phone, paste the webhook into Omi, and keep looking at
-the client — the room is the capture surface, not a chat box.
+Supports:
+1. Legacy paste pairing — ``?session_id=<HakiScribe UUID>``
+2. Miniapp path — ``?uid=<omi-user>`` (and Omi's own session_id), after
+   the lawyer completes ``/integrations/omi/auth``
 
 Accepted shapes (official Omi + our seed script):
-- POST body array of segments
+- POST body array of segments (realtime)
 - {session_id, segments}
 - {session_external_id, segments}
-- {id, transcript_segments} memory webhook
-Query `session_id` wins when present.
+- {id, transcript_segments, structured} memory webhook
 """
 
 from __future__ import annotations
 
 import os
-import uuid
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
-from app.models.schemas import TranscriptSegment
-from app.services import storage
+from app.models.schemas import SessionStatus, TranscriptSegment
+from app.services import omi_pairing, storage
 
 router = APIRouter()
 
@@ -87,24 +85,34 @@ def _normalize_segments(raw_segments: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def _extract_payload(body: Any, query_session_id: str | None) -> tuple[str | None, list[dict[str, Any]]]:
+def _extract_payload(
+    body: Any, query_session_id: str | None
+) -> tuple[str | None, list[dict[str, Any]], str | None, bool]:
+    """Returns session_ref, segments, memory_title, is_memory."""
     session_ref = query_session_id
     segments: list[Any] = []
+    memory_title: str | None = None
+    is_memory = False
 
     if isinstance(body, list):
         segments = body
     elif isinstance(body, dict):
-        session_ref = (
-            query_session_id
-            or body.get("session_external_id")
-            or body.get("session_id")
-            or None
-        )
+        # Prefer query session_id; body may carry Omi's conversation id.
+        session_ref = query_session_id or body.get("session_external_id") or body.get("session_id") or body.get("id")
+        structured = body.get("structured") if isinstance(body.get("structured"), dict) else {}
+        if structured.get("title"):
+            memory_title = str(structured["title"]).strip() or None
         segments = (
             body.get("segments")
             or body.get("transcript_segments")
             or body.get("transcriptSegments")
             or []
+        )
+        is_memory = bool(
+            body.get("transcript_segments") is not None
+            or body.get("transcriptSegments") is not None
+            or structured
+            or body.get("finished_at")
         )
         if not segments and isinstance(body.get("transcript"), str) and body["transcript"].strip():
             segments = [{"text": body["transcript"], "start": 0, "end": 0}]
@@ -113,7 +121,19 @@ def _extract_payload(body: Any, query_session_id: str | None) -> tuple[str | Non
 
     if not isinstance(segments, list):
         raise HTTPException(status_code=400, detail="segments must be a list")
-    return str(session_ref) if session_ref else None, _normalize_segments(segments)
+    return (str(session_ref) if session_ref else None), _normalize_segments(segments), memory_title, is_memory
+
+
+def _check_secret(*, uid: str | None, x_omi_secret: str) -> None:
+    if not OMI_SHARED_SECRET:
+        return
+    # Miniapp posts with a linked uid do not send x-omi-secret.
+    if uid and omi_pairing.is_linked(uid):
+        if x_omi_secret and x_omi_secret != OMI_SHARED_SECRET:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+        return
+    if x_omi_secret != OMI_SHARED_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
 @router.post("/omi")
@@ -123,43 +143,47 @@ async def receive_omi_transcript(
     uid: str | None = Query(default=None),
     x_omi_secret: str = Header(default=""),
 ):
-    if OMI_SHARED_SECRET and x_omi_secret != OMI_SHARED_SECRET:
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    cleaned_uid = (uid or "").strip() or None
+    _check_secret(uid=cleaned_uid, x_omi_secret=x_omi_secret)
 
     try:
         body = await request.json()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    session_ref, segments = _extract_payload(body, session_id)
-    if session_ref is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing session_id. Pair Omi with /webhooks/omi?session_id=<HakiScribe session UUID>.",
-        )
+    session_ref, segments, memory_title, is_memory = _extract_payload(body, session_id)
 
     try:
-        resolved = uuid.UUID(session_ref)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="session_id must be a HakiScribe session UUID") from None
-
-    detail = storage.get_session(resolved)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        session = omi_pairing.resolve_session(
+            session_ref=session_ref,
+            uid=cleaned_uid,
+            memory_title=memory_title,
+            is_memory=is_memory and bool(cleaned_uid),
+        )
+    except omi_pairing.OmiPairingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
 
     for raw in segments:
+        source_raw = {**(raw["source_raw"] or {})}
+        if cleaned_uid:
+            source_raw["omi_uid"] = cleaned_uid
+        if session_ref:
+            source_raw["omi_session_id"] = session_ref
         storage.append_segment(
-            resolved,
+            session.id,
             TranscriptSegment(
-                session_id=resolved,
+                session_id=session.id,
                 speaker=raw["speaker"],
                 text=raw["text"],
                 start_ms=raw["start_ms"],
                 end_ms=raw["end_ms"],
                 confidence=raw["confidence"],
-                source_raw={**(raw["source_raw"] or {}), "omi_uid": uid} if uid else raw["source_raw"],
+                source_raw=source_raw,
             ),
         )
 
-    # Omi realtime apps expect session_id echoed back.
-    return {"session_id": str(resolved), "received": len(segments), "uid": uid}
+    if is_memory and cleaned_uid and session.status == SessionStatus.recording:
+        storage.update_session_status(session.id, SessionStatus.ready)
+
+    # Omi realtime apps expect session_id echoed back (HakiScribe UUID).
+    return {"session_id": str(session.id), "received": len(segments), "uid": cleaned_uid}

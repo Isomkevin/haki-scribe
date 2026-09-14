@@ -203,6 +203,24 @@ export interface HealthStatus {
   integrations?: Record<string, boolean>;
   environments?: string[];
   webhook?: string;
+  omi_miniapp?: {
+    webhook_url: string;
+    auth_url: string;
+    setup_completed_url: string;
+    linked: boolean;
+  };
+}
+
+export interface OmiStatus {
+  linked: boolean;
+  uid: string | null;
+  masked_uid: string | null;
+  connected_at: string | null;
+  last_activity_at?: string | null;
+  active_session_id?: string | null;
+  webhook_url: string;
+  auth_url: string;
+  setup_completed_url: string;
 }
 
 const GENERIC_HTTP_MESSAGES = new Set([
@@ -395,6 +413,7 @@ export const hakiApi = {
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
   listIntegrations: () => request<Integration[]>("/integrations"),
+  omiStatus: () => request<OmiStatus>("/integrations/omi/status"),
   connectIntegration: (providerId: string, credentials: Record<string, string>) =>
     request<IntegrationStatus>(`/integrations/${providerId}`, {
       method: "POST",
@@ -431,6 +450,15 @@ export const hakiApi = {
 
 export function omiWebhookUrl(sessionId: string) {
   return `${configuredBaseUrl}/webhooks/omi?session_id=${sessionId}`;
+}
+
+export function omiMiniappUrls() {
+  const base = configuredBaseUrl || PRODUCTION_API_URL;
+  return {
+    webhookUrl: `${base}/webhooks/omi`,
+    authUrl: `${base}/integrations/omi/auth`,
+    setupCompletedUrl: `${base}/integrations/omi/setup-completed`,
+  };
 }
 
 export function whatsappShareUrl(text: string) {

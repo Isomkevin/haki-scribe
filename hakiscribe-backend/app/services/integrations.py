@@ -224,6 +224,23 @@ _PROVIDERS: list[dict[str, Any]] = [
             },
         ],
     },
+    {
+        "id": "omi",
+        "name": "Omi wearable",
+        "group": "practice",
+        "what_it_does": "Receive live transcripts and finished memories from the Omi Miniapp — no per-session webhook paste.",
+        "capabilities": ["Live transcript", "Finished memories"],
+        "fields": [
+            {
+                "id": "uid",
+                "label": "Omi user id",
+                "type": "text",
+                "help": "Filled automatically when you open the Auth URL from Omi. For local testing you can paste a uid here.",
+                "placeholder": "omi-user-…",
+                "mask": True,
+            },
+        ],
+    },
 ]
 
 
@@ -578,6 +595,13 @@ async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "error": None}
 
 
+async def _verify_omi(creds: dict[str, Any]) -> dict[str, Any]:
+    uid = str(creds.get("uid") or "").strip()
+    if not uid:
+        return {"ok": False, "error": "Missing Omi uid"}
+    return {"ok": True, "error": None}
+
+
 _VERIFIERS = {
     "anthropic": _verify_anthropic,
     "openai": _verify_openai,
@@ -589,6 +613,7 @@ _VERIFIERS = {
     "dropbox": _verify_dropbox,
     "onedrive": _verify_onedrive,
     "hakichain": _verify_hakichain,
+    "omi": _verify_omi,
 }
 
 

@@ -457,6 +457,8 @@ export function NewSessionPage() {
     syncLibrary.mutate();
   }, [sessions.isError, sessions.isLoading, syncLibrary.mutate]);
   const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
+  const omiStatus = useQuery({ queryKey: ["omi-status"], queryFn: hakiApi.omiStatus, enabled: hasApiConfiguration, retry: false });
+  const omiLinked = Boolean(omiStatus.data?.linked || health.data?.omi_miniapp?.linked);
   const sessionCount = sessions.data?.length ?? 0;
   const matterCount = matters.data?.length ?? 0;
   const readyCount = sessions.data?.filter((session) => session.status === "ready" || session.status === "exported").length ?? 0;
@@ -490,7 +492,25 @@ export function NewSessionPage() {
                 </div>
                 <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
                 <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"><option value="code-switch">English + Kiswahili</option><option value="en">English</option><option value="sw">Kiswahili</option></select>
-                {source === "omi" && <p className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">Pair the wearable after the session opens. Omi posts transcript segments to <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>.</p>}
+                {source === "omi" && (
+                  <div className="mt-4 space-y-2 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                    {omiLinked ? (
+                      <p>
+                        Omi is connected. Speak with the wearable — HakiScribe opens or attaches a session automatically.
+                        You can still open a desk session here to watch captions live.
+                      </p>
+                    ) : (
+                      <p>
+                        Connect Omi under{" "}
+                        <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
+                          Settings → Connectors
+                        </Link>{" "}
+                        (Miniapp auth), or pair after the session opens with{" "}
+                        <code className="font-mono text-[11px]">/webhooks/omi?session_id=&lt;id&gt;</code>.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <Button variant="warm" size="lg" className="mt-6 h-14 w-full text-base" onClick={() => create.mutate()} disabled={create.isPending || !hasApiConfiguration}><span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />{create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}</Button>
                 <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
                 {create.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(create.error, "The session could not be opened. Try again.")}</p>}
@@ -647,6 +667,13 @@ export function SessionPage({ sessionId, fresh }: { sessionId: string; fresh: bo
 
 function RecordingScreen({ session, onStopped }: { session: SessionDetail; onStopped: (detail: SessionDetail) => void }) {
   const startedAt = useRef(Date.now());
+  const omiStatus = useQuery({
+    queryKey: ["omi-status"],
+    queryFn: hakiApi.omiStatus,
+    enabled: hasApiConfiguration && session.source === "omi",
+    retry: false,
+  });
+  const omiLinked = Boolean(omiStatus.data?.linked);
   const recorder = useRef<MediaRecorder | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -762,24 +789,37 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
           {session.source === "omi" && !captions.length ? (
             <div className="space-y-3 text-sm text-primary-foreground/80">
               <p className="flex items-center justify-center gap-2">
-                <Radio className="size-4" /> Listening via Omi. Incoming segments appear here.
+                <Radio className="size-4" />{" "}
+                {omiLinked
+                  ? "Listening for Omi. Incoming segments appear here."
+                  : "Listening via Omi. Incoming segments appear here."}
               </p>
-              <p className="break-all rounded-md bg-primary-foreground/8 px-3 py-2 font-mono text-[11px] text-primary-foreground/70">
-                {omiWebhookUrl(session.id)}
-              </p>
-              <div className="flex justify-center">
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(omiWebhookUrl(session.id));
-                    toast.success("Omi webhook copied");
-                  }}
-                >
-                  <Copy /> Copy pairing URL
-                </Button>
-              </div>
+              {omiLinked ? (
+                <p className="text-center text-xs text-primary-foreground/65">
+                  Miniapp is linked. Speak into the wearable — no paste required.
+                </p>
+              ) : null}
+              <details className="rounded-md bg-primary-foreground/8 px-3 py-2 text-left">
+                <summary className="cursor-pointer text-xs text-primary-foreground/70">
+                  Advanced pairing URL
+                </summary>
+                <p className="mt-2 break-all font-mono text-[11px] text-primary-foreground/70">
+                  {omiWebhookUrl(session.id)}
+                </p>
+                <div className="mt-2 flex justify-center">
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(omiWebhookUrl(session.id));
+                      toast.success("Omi webhook copied");
+                    }}
+                  >
+                    <Copy /> Copy pairing URL
+                  </Button>
+                </div>
+              </details>
             </div>
           ) : (
             <div className="max-h-28 space-y-2 overflow-y-auto text-sm italic text-primary-foreground/65">

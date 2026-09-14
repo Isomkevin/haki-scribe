@@ -78,8 +78,9 @@ def root():
 @app.get("/health")
 async def health():
     from app.integrations import ambiguous_client
-    from app.services import db, integrations, object_store
+    from app.services import db, integrations, object_store, omi_pairing
 
+    omi_linked = bool(omi_pairing.linked_uid())
     return {
         "status": "ok",
         "storage": {"database": db.status(), "documents": object_store.status()},
@@ -89,11 +90,18 @@ async def health():
             "exa": bool(os.environ.get("EXA_API_KEY")),
             "ambiguous": bool(os.environ.get("AMBIGUOUS_API_KEY")),
             "ambiguous_ok": await ambiguous_client.ping() if os.environ.get("AMBIGUOUS_API_KEY") else False,
-            "omi": True,
+            "omi": omi_linked,
+            "omi_linked": omi_linked,
             "omi_secret": bool(os.environ.get("OMI_SHARED_SECRET")),
         },
         "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous", "desk:legal-intel"],
         "webhook": "/webhooks/omi?session_id=<session-uuid>",
+        "omi_miniapp": {
+            "webhook_url": omi_pairing.webhook_url(),
+            "auth_url": omi_pairing.auth_url(),
+            "setup_completed_url": omi_pairing.setup_completed_url(),
+            "linked": omi_linked,
+        },
         "exa": {
             "search": "/news/search",
             "watch": "/news/watch",

@@ -55,11 +55,38 @@ local-only behavior. Add keys incrementally to light up real integrations.
 See `trigger/README.md` for deploying the Trigger.dev tasks — they need
 a **publicly reachable** `BACKEND_INTERNAL_URL`, not `localhost`.
 
+## Omi Miniapp (Connectors)
+
+Lawyers install a private HakiScribe integration in the Omi app once. Omi then
+POSTs live transcripts and finished memories to the public webhook with `uid`
+(and Omi’s own conversation id). HakiScribe maps that user to an open desk
+session — no pasting a per-session webhook URL.
+
+1. Deploy the backend with a public `BACKEND_INTERNAL_URL` (the Render service URL).
+2. In Omi: Explore → Create App → External integration. Enable triggers for
+   **Real-time transcript** and **Memory creation** pointing at the same webhook
+   when the store allows it; otherwise use a second private app or Developer Mode
+   dual webhook for memory.
+3. Copy Auth URL, Setup-completed URL, and Webhook URL from **Connectors → Omi**
+   (or from `GET /health` → `omi_miniapp`):
+   - Webhook: `{BACKEND}/webhooks/omi`
+   - Auth: `{BACKEND}/integrations/omi/auth`
+   - Setup completed: `{BACKEND}/integrations/omi/setup-completed`
+4. Install the Miniapp → open Auth (Omi appends `?uid=…`) → speak into the
+   wearable → a `source: "omi"` session appears on the desk.
+5. Legacy demos still work: `POST /webhooks/omi?session_id=<HakiScribe UUID>`.
+6. Unlinked uids are rejected (`403`). Disconnect on Connectors clears the link.
+
+`GET /integrations/omi/setup-completed?uid=…` returns
+`{"is_setup_completed": true|false}` per the Miniapp contract.
+Linked Miniapp posts do not require `x-omi-secret`; the secret remains optional
+hardening for paste-URL pairing when the header is present.
+
 ## What's stubbed and needs real wiring before it's more than a demo
 
 - `app/services/storage.py` — in-memory, swap for Supabase.
 - `app/integrations/ambiguous_client.create_contact` — best-effort route (`/api/crm/contacts`); confirm the exact path against Ambiguous's live API reference.
-- `app/routers/omi_webhook.py` — field names guessed; check Omi's actual webhook payload docs.
+- `app/routers/omi_webhook.py` — Miniapp uid + legacy UUID pairing are wired; confirm payload field names against Omi’s latest docs if a shape drifts.
 - `app/services/storage.py::find_matter_by_client` — simple substring match; fine for a demo, not production matching.
 - `app/services/transcription.py::IntronVoiceProvider` — not implemented; needed only for the CodeSwitch Africa Challenge submission.
 
