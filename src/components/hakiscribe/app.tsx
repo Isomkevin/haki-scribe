@@ -34,7 +34,7 @@ import {
   UnlockKeyhole,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -1080,8 +1080,9 @@ function ActionWorkspace({ session, initialResults, showResults, onResults, onTr
         <>
           <ResultsList results={results} sessionId={session.id} />
           {failedIds.length > 0 && (
-            <div className="mt-6">
-              <Button variant="outline" disabled={generate.isPending} onClick={() => generate.mutate(failedIds)}>
+            <div className="safe-bottom sticky bottom-0 z-20 mt-6 border-t border-border bg-background/95 py-3 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
+              <Button variant="outline" className="h-11 w-full sm:mt-6 sm:w-auto" disabled={generate.isPending} onClick={() => generate.mutate(failedIds)}>
+                <RefreshCw className={cn(generate.isPending && "animate-spin")} />
                 Retry failed ({failedIds.length})
               </Button>
             </div>
@@ -1595,10 +1596,86 @@ function SourceList({ sources }: { sources: ResearchSource[] }) {
 }
 
 function ResultsList({ results, sessionId }: { results: ActionResult[]; sessionId: string }) {
-  return <div className="mt-8 space-y-4">{results.map((item) => <ResultCard key={item.action_id} result={item} sessionId={sessionId} />)}</div>;
+  const [filter, setFilter] = useState<"all" | "ready" | "failed">("all");
+  const readyCount = results.filter((item) => item.status !== "error").length;
+  const failedCount = results.length - readyCount;
+  const visible = results.filter((item) => {
+    if (filter === "ready") return item.status !== "error";
+    if (filter === "failed") return item.status === "error";
+    return true;
+  });
+
+  return (
+    <div className="mt-6 sm:mt-8">
+      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-border bg-card/70 p-4 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Review desk</p>
+          <p className="mt-1 font-serif text-xl font-semibold leading-snug sm:text-2xl">
+            {readyCount} ready{failedCount > 0 ? ` · ${failedCount} needs attention` : ""}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Edit drafts here before anything leaves the workspace.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter results">
+          {([
+            { id: "all", label: `All (${results.length})` },
+            { id: "ready", label: `Ready (${readyCount})` },
+            ...(failedCount > 0 ? [{ id: "failed" as const, label: `Failed (${failedCount})` }] : []),
+          ] as const).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.id}
+              className={cn(
+                "min-h-10 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors",
+                filter === item.id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
+              )}
+              onClick={() => setFilter(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4 sm:space-y-5">
+        {visible.map((item, index) => (
+          <ResultCard key={item.action_id} result={item} sessionId={sessionId} index={index} />
+        ))}
+      </div>
+
+      {!visible.length && (
+        <div className="chamber-card rounded-2xl border border-dashed border-border py-12 text-center">
+          <p className="font-serif text-xl font-semibold">Nothing in this filter</p>
+          <p className="mt-2 text-sm text-muted-foreground">Switch filters to see the rest of the generated work.</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: string }) {
+function ResultMeta({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border/70 bg-background/70 px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <div className="mt-1.5 text-sm leading-6 text-foreground">{children}</div>
+    </div>
+  );
+}
+
+function ResultActions({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:pb-0">
+      {children}
+    </div>
+  );
+}
+
+function ResultCard({ result, sessionId, index = 0 }: { result: ActionResult; sessionId: string; index?: number }) {
   const Icon = actionIcons[result.type];
   const [documentText, setDocumentText] = useState(displayValue(result.result["document_text"] ?? ""));
   const queryClient = useQueryClient();
@@ -1625,25 +1702,40 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
     },
     onError: (error: Error) => toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again.")),
   });
+
+  const typeLabel = result.type.replaceAll("_", " ");
+  const savedExternally = Object.keys(result.result).some((key) =>
+    ["document_id", "ambiguous_document_id", "calendar_id", "ambiguous_event_id", "contact_id", "matter_id", "workspace_url"].includes(key),
+  );
+
   if (result.status === "error") {
     return (
-      <article className="chamber-card rounded-xl border border-destructive/30 p-5">
-        <div className="flex items-center gap-3">
-          <AlertCircle className="size-5 text-destructive" />
-          <div>
-            <h2 className="font-semibold">This item was not generated</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{friendlyErrorMessage(result.error, "The service returned an error for this item.")}</p>
+      <article className="chamber-card overflow-hidden rounded-2xl border border-destructive/30 bg-card">
+        <div className="flex items-start gap-3 border-b border-destructive/15 bg-destructive/5 px-4 py-4 sm:px-6">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-destructive">Needs attention</p>
+            <h2 className="mt-1 font-serif text-xl font-semibold capitalize">{typeLabel}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {friendlyErrorMessage(result.error, "The service returned an error for this item.")}
+            </p>
           </div>
+        </div>
+        <div className="px-4 py-3 text-xs text-muted-foreground sm:px-6">
+          Use Retry failed below, or return to Actions and generate this item again.
         </div>
       </article>
     );
   }
+
   const calendarHref = typeof result.result["ics"] === "string" ? `data:text/calendar;charset=utf-8,${encodeURIComponent(result.result["ics"])}` : null;
   const workspaceUrl = typeof result.result["workspace_url"] === "string" ? result.result["workspace_url"] : null;
   const shareUrl = typeof result.result["whatsapp_share_url"] === "string"
     ? result.result["whatsapp_share_url"]
     : whatsappShareUrl(documentText || displayValue(result.result["note_text"] ?? result.result["narrative"] ?? result.result["description"] ?? result.result["matter_name"] ?? result.type));
-  const hiddenResultKeys = new Set(["ics", "narrative", "description", "document_text", "note_text", "whatsapp_share_url", "whatsapp_share_text", "workspace_url"]);
+  const hiddenResultKeys = new Set(["ics", "narrative", "description", "document_text", "note_text", "whatsapp_share_url", "whatsapp_share_text", "workspace_url", "activity_description"]);
   const title = result.type === "workspace_matter"
     ? `${result.result["note"] ? String(result.result["note"]).startsWith("linked") ? "Linked matter" : "New matter" : "Matter"}: ${displayValue(result.result["matter_name"])}`
     : result.type === "crm_entry"
@@ -1652,128 +1744,175 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
         ? "Private note"
         : result.type === "time_entry"
           ? `${displayValue(result.result["duration_hours"])}h · ${displayValue(result.result["matter_name"] ?? "This session")}`
-          : result.type.replaceAll("_", " ");
+          : result.type === "draft_document"
+            ? "Editable legal draft"
+            : typeLabel;
   const longText = result.type === "time_entry" ? displayValue(result.result["narrative"] ?? result.result["activity_description"] ?? "") : result.type === "calendar_event" ? displayValue(result.result["description"] ?? "") : result.type === "private_note" ? displayValue(result.result["note_text"] ?? "") : "";
+
   return (
-    <article className="chamber-card overflow-hidden rounded-xl border border-border">
-      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-4 sm:px-6">
-        <span className="grid size-10 place-items-center rounded-xl bg-success text-success-foreground"><Icon className="size-4" /></span>
+    <article className="chamber-card overflow-hidden rounded-2xl border border-border">
+      <header className="grid gap-4 border-b border-border bg-gradient-to-br from-success/40 via-card to-card px-4 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:px-6 sm:py-5">
+        <span className="grid size-12 place-items-center rounded-2xl bg-success text-success-foreground shadow-sm">
+          <Icon className="size-5" />
+        </span>
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-success-foreground">Generated</p>
-          <h2 className="break-words font-semibold capitalize">{title}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="border-success-foreground/15 bg-success/70 text-success-foreground">
+              Ready to review
+            </Badge>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</span>
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+          </div>
+          <h2 className="mt-2 break-words font-serif text-xl font-semibold leading-snug capitalize sm:text-2xl">{title}</h2>
+        </div>
+        <div className="hidden text-right text-xs text-muted-foreground sm:block">
+          {savedExternally ? "In library + tools" : "Local result"}
         </div>
       </header>
+
       {result.type === "draft_document" ? (
-        <div className="p-4 sm:p-8">
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-            <Button variant="outline" size="sm" className="min-w-0" onClick={() => { void navigator.clipboard.writeText(documentText); toast.success("Draft copied"); }}><Copy /> Copy</Button>
-            <Button variant="outline" size="sm" className="min-w-0" onClick={() => { downloadTextFile("hakiscribe-draft.txt", documentText); toast.success("Draft downloaded"); }}><Download /> Download</Button>
-            <Button asChild variant="outline" size="sm" className="min-w-0"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> <span className="truncate">WhatsApp review</span></a></Button>
-            {(workspaceUrl || typeof result.result["ambiguous_document_url"] === "string") && (
-              <Button asChild variant="outline" size="sm" className="min-w-0">
-                <a href={(workspaceUrl || result.result["ambiguous_document_url"]) as string} target="_blank" rel="noreferrer"><FileText /> Open in Ambiguous</a>
-              </Button>
-            )}
-            {storageProviders.data && storageProviders.data.length > 0 && (
-              <div className="relative">
-                <Button variant="outline" size="sm" className="min-w-0" onClick={() => setExportOpen((prev) => !prev)}>
-                  <ExternalLink /> Export
+        <div className="p-4 sm:p-6 lg:p-8">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">Edit freely. Nothing is filed until you export or share.</p>
+            <ResultActions>
+              <Button variant="outline" size="sm" className="h-10 shrink-0" onClick={() => { void navigator.clipboard.writeText(documentText); toast.success("Draft copied"); }}><Copy /> Copy</Button>
+              <Button variant="outline" size="sm" className="h-10 shrink-0" onClick={() => { downloadTextFile("hakiscribe-draft.txt", documentText); toast.success("Draft downloaded"); }}><Download /> Download</Button>
+              <Button asChild variant="outline" size="sm" className="h-10 shrink-0"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
+              {(workspaceUrl || typeof result.result["ambiguous_document_url"] === "string") && (
+                <Button asChild variant="outline" size="sm" className="h-10 shrink-0">
+                  <a href={(workspaceUrl || result.result["ambiguous_document_url"]) as string} target="_blank" rel="noreferrer"><FileText /> Ambiguous</a>
                 </Button>
-                {exportOpen && (
-                  <div className="absolute right-0 z-10 mt-1 min-w-44 rounded-md border border-border bg-popover p-1 shadow-md">
-                    {storageProviders.data.map((provider) => (
-                      <button
-                        key={provider.provider_id}
-                        type="button"
-                        disabled={exportDoc.isPending}
-                        onClick={() => exportDoc.mutate({ provider: provider.provider_id })}
-                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
-                      >
-                        <Cloud className="size-3.5" />
-                        {provider.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+              {storageProviders.data && storageProviders.data.length > 0 && (
+                <div className="relative shrink-0">
+                  <Button variant="outline" size="sm" className="h-10" onClick={() => setExportOpen((prev) => !prev)}>
+                    <ExternalLink /> Export
+                  </Button>
+                  {exportOpen && (
+                    <div className="absolute right-0 z-10 mt-1 min-w-48 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+                      {storageProviders.data.map((provider) => (
+                        <button
+                          key={provider.provider_id}
+                          type="button"
+                          disabled={exportDoc.isPending}
+                          onClick={() => exportDoc.mutate({ provider: provider.provider_id })}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+                        >
+                          <Cloud className="size-3.5" />
+                          {provider.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </ResultActions>
           </div>
-          <Textarea aria-label="Editable legal document" value={documentText} onChange={(event) => setDocumentText(event.target.value)} className="min-h-[22rem] resize-y border-0 bg-background p-4 font-serif text-base leading-8 shadow-none focus-visible:ring-1 sm:min-h-[28rem] sm:p-10" />
+          <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[inset_0_1px_0_oklch(1_0_0/0.65)]">
+            <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:px-6">
+              <span>Draft document</span>
+              <span>Editable</span>
+            </div>
+            <Textarea
+              aria-label="Editable legal document"
+              value={documentText}
+              onChange={(event) => setDocumentText(event.target.value)}
+              className="min-h-[22rem] resize-y rounded-none border-0 bg-transparent p-5 font-serif text-base leading-8 shadow-none focus-visible:ring-0 sm:min-h-[28rem] sm:p-8 lg:p-10"
+            />
+          </div>
         </div>
       ) : result.type === "legal_research" || result.type === "web_search" ? (
-        <div className="p-5 sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {result.type === "legal_research" ? "Question researched" : "Background check"}
-          </p>
-          <p className="mt-1 font-serif text-lg leading-7">{displayValue(result.result["question"])}</p>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{displayValue(result.result["answer"])}</p>
+        <div className="space-y-5 p-4 sm:p-6">
+          <ResultMeta label={result.type === "legal_research" ? "Question researched" : "Background check"}>
+            <p className="font-serif text-lg leading-7">{displayValue(result.result["question"])}</p>
+          </ResultMeta>
+          <div className="rounded-2xl border border-border bg-background/80 p-4 sm:p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Answer</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{displayValue(result.result["answer"])}</p>
+          </div>
           <SourceList sources={(result.result["sources"] as ResearchSource[] | undefined) ?? []} />
-          <p className="mt-4 text-xs text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             {result.type === "legal_research"
               ? "Check every authority before relying on it. Research is never merged into a draft."
               : "Background reference only. Never used as evidence or as a drafted fact."}
           </p>
         </div>
       ) : result.type === "llm_task" ? (
-        <div className="p-5 sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Instruction</p>
-          <p className="mt-1 text-sm leading-6">{displayValue(result.result["instruction"])}</p>
-          <p className="mt-5 whitespace-pre-wrap font-serif text-base leading-7">{displayValue(result.result["output"])}</p>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-5 p-4 sm:p-6">
+          <ResultMeta label="Instruction">
+            <p>{displayValue(result.result["instruction"])}</p>
+          </ResultMeta>
+          <div className="rounded-2xl border border-border bg-background/80 p-4 sm:p-5">
+            <p className="whitespace-pre-wrap font-serif text-base leading-7">{displayValue(result.result["output"])}</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Badge variant="outline">{displayValue(result.result["model"])}</Badge>
-            <Button variant="outline" size="sm" onClick={() => void navigator.clipboard.writeText(displayValue(result.result["output"]))}><Copy /> Copy</Button>
+            <Button variant="outline" size="sm" className="h-10" onClick={() => void navigator.clipboard.writeText(displayValue(result.result["output"]))}><Copy /> Copy</Button>
           </div>
         </div>
       ) : result.type === "private_note" ? (
-        <div className="p-5 sm:p-8">
-          <p className="whitespace-pre-wrap font-serif text-base leading-8">{longText}</p>
+        <div className="p-4 sm:p-6 lg:p-8">
+          <div className="rounded-2xl border border-border bg-background/80 p-5 sm:p-7">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Private to you</p>
+            <p className="mt-3 whitespace-pre-wrap font-serif text-base leading-8">{longText}</p>
+          </div>
         </div>
       ) : result.type === "time_entry" ? (
-        <div className="grid gap-4 p-5 sm:grid-cols-3 sm:p-6">
-          <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Hours</p><p className="mt-1 font-serif text-2xl">{displayValue(result.result["duration_hours"])}</p></div>
-          <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Matter</p><p className="mt-1 text-sm">{displayValue(result.result["matter_name"])}</p></div>
-          <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Billable</p><p className="mt-1 text-sm">{displayValue(result.result["billable"] ?? true)}</p></div>
-          <div className="sm:col-span-3"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Narrative</p><p className="mt-2 whitespace-pre-wrap font-serif text-base leading-7">{longText}</p></div>
+        <div className="space-y-4 p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ResultMeta label="Hours"><p className="font-serif text-3xl font-semibold">{displayValue(result.result["duration_hours"])}</p></ResultMeta>
+            <ResultMeta label="Matter"><p>{displayValue(result.result["matter_name"])}</p></ResultMeta>
+            <ResultMeta label="Billable"><p>{displayValue(result.result["billable"] ?? true)}</p></ResultMeta>
+          </div>
+          <div className="rounded-2xl border border-border bg-background/80 p-4 sm:p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Narrative</p>
+            <p className="mt-2 whitespace-pre-wrap font-serif text-base leading-7">{longText}</p>
+          </div>
         </div>
       ) : (
-        <div className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 sm:p-6">
-          {Object.entries(result.result).filter(([key]) => !hiddenResultKeys.has(key)).map(([key, value]) => (
-            <div key={key}>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{key.replaceAll("_", " ")}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{displayValue(value)}</p>
-            </div>
-          ))}
+        <div className="space-y-4 p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Object.entries(result.result).filter(([key]) => !hiddenResultKeys.has(key)).map(([key, value]) => (
+              <ResultMeta key={key} label={key.replaceAll("_", " ")}>
+                <p className="whitespace-pre-wrap">{displayValue(value)}</p>
+              </ResultMeta>
+            ))}
+          </div>
           {longText && result.type === "calendar_event" && (
-            <div className="sm:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Description</p>
+            <div className="rounded-2xl border border-border bg-background/80 p-4 sm:p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Description</p>
               <p className="mt-2 whitespace-pre-wrap font-serif text-base leading-7">{longText}</p>
             </div>
           )}
-          <div className="grid gap-2 sm:col-span-2 sm:flex sm:flex-wrap">
-            {calendarHref && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
+          <ResultActions>
+            {calendarHref && <Button asChild variant="outline" className="h-10 shrink-0"><a href={calendarHref} download="hakiscribe-event.ics"><Download /> Download .ics</a></Button>}
             {calendarProvider.data && (
               <Button
                 variant="outline"
-                className="w-full sm:w-auto"
+                className="h-10 shrink-0"
                 disabled={exportDoc.isPending}
                 onClick={() => exportDoc.mutate({ provider: "google_calendar" })}
               >
-                <CalendarPlus /> Add to Google Calendar
+                <CalendarPlus /> Google Calendar
               </Button>
             )}
-            <Button asChild variant="outline" className="w-full sm:w-auto"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
-            {workspaceUrl && <Button asChild variant="outline" className="w-full sm:w-auto"><a href={workspaceUrl} target="_blank" rel="noreferrer">Open in Ambiguous</a></Button>}
-          </div>
+            <Button asChild variant="outline" className="h-10 shrink-0"><a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
+            {workspaceUrl && <Button asChild variant="outline" className="h-10 shrink-0"><a href={workspaceUrl} target="_blank" rel="noreferrer">Open in Ambiguous</a></Button>}
+          </ResultActions>
         </div>
       )}
-      <footer className="grid gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
-        <span>
-          {Object.keys(result.result).some((key) => ["document_id", "ambiguous_document_id", "calendar_id", "ambiguous_event_id", "contact_id", "matter_id", "workspace_url"].includes(key))
+
+      <footer className="grid gap-3 border-t border-border bg-muted/30 px-4 py-3.5 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+        <span className="inline-flex items-start gap-2 leading-5">
+          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" />
+          {savedExternally
             ? "Saved to the Session Library and connected tools"
-            : "Saved as a local HakiScribe result"}
+            : "Saved as a local HakiScribe result until you export"}
         </span>
         {result.type !== "draft_document" && result.type !== "calendar_event" && result.type !== "workspace_matter" && result.type !== "crm_entry" && (
-          <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+          <Button asChild variant="ghost" size="sm" className="h-9 justify-self-start px-2 text-xs sm:justify-self-end">
             <a href={shareUrl} target="_blank" rel="noreferrer"><MessageCircle className="size-3.5" /> WhatsApp</a>
           </Button>
         )}
