@@ -2,14 +2,18 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowRight,
   BriefcaseBusiness,
+  History,
   Info,
+  KeyRound,
   LockKeyhole,
   Plug,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +23,8 @@ import {
   friendlyErrorMessage,
   hakiApi,
   hasApiConfiguration,
+  type Integration,
+  type Session,
   type SessionSource,
 } from "@/lib/hakiscribe";
 import {
@@ -33,7 +39,7 @@ import {
 } from "@/lib/workspace-settings";
 import { ConnectorsSection } from "./connectors";
 import { InstallAppButton } from "./pwa-register";
-import { PageShell, WorkspaceFooter } from "./shell";
+import { PageShell, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
 
 const NAV: { id: SettingsSection; label: string; icon: ComponentType<{ className?: string }> }[] = [
@@ -117,6 +123,7 @@ function fieldClassName() {
 
 function ProfileSection() {
   const { settings, loaded, commit } = useStoredSettings();
+  const { session: authSession } = useAuth();
   const [draft, setDraft] = useState<WorkspaceProfile>(settings.profile);
 
   useEffect(() => {
@@ -133,8 +140,19 @@ function ProfileSection() {
       <SectionIntro
         eyebrow="Profile"
         title="How this practice is identified on this device"
-        copy="These details stay in this browser. HakiScribe does not use a login yet, so the profile is workspace configuration rather than an account."
+        copy="Local display details for this browser, plus linked views of connectors, masked keys, and recent private sessions."
       />
+      {authSession?.user && (
+        <div className="mb-6 rounded-lg border border-border bg-card px-4 py-3 sm:px-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Signed in</p>
+          <p className="mt-1 font-medium text-foreground">
+            {authSession.user.name || authSession.user.email}
+          </p>
+          {authSession.user.email && authSession.user.name ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">{authSession.user.email}</p>
+          ) : null}
+        </div>
+      )}
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Full name" htmlFor="display-name">
           <Input
@@ -182,7 +200,253 @@ function ProfileSection() {
       <Button className="mt-6" onClick={save}>
         Save profile
       </Button>
+
+      <ProfileLinkedOverview />
     </section>
+  );
+}
+
+const RECENT_SESSION_LIMIT = 5;
+
+function ProfileLinkedOverview() {
+  const integrations = useQuery({
+    queryKey: ["integrations"],
+    queryFn: hakiApi.listIntegrations,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+  const sessions = useQuery({
+    queryKey: ["sessions"],
+    queryFn: hakiApi.listSessions,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+
+  const connected = (integrations.data ?? []).filter((item) => item.connected);
+  const recent = (sessions.data ?? [])
+    .slice()
+    .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+    .slice(0, RECENT_SESSION_LIMIT);
+
+  return (
+    <div className="mt-10 space-y-8 border-t border-border pt-8">
+      <div>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Connected tools</p>
+            <h3 className="mt-1 font-serif text-xl font-semibold">Integrations and keys</h3>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+              Linked connectors and masked credentials. Manage connect or disconnect from Connectors.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/settings" search={{ section: "connectors" }}>
+              Manage connectors
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+
+        {!hasApiConfiguration && (
+          <EmptyLinkedState message="Add VITE_API_BASE_URL to load connectors and keys from the workspace service." />
+        )}
+        {hasApiConfiguration && integrations.isLoading && (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-16 animate-pulse rounded-lg border border-border bg-card" />
+            ))}
+          </div>
+        )}
+        {hasApiConfiguration && integrations.isError && (
+          <EmptyLinkedState
+            message={friendlyErrorMessage(integrations.error, "Could not load connectors.")}
+            action={
+              <Button type="button" variant="outline" size="sm" onClick={() => void integrations.refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        )}
+        {hasApiConfiguration && integrations.data && connected.length === 0 && (
+          <EmptyLinkedState
+            message="No connectors linked yet."
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link to="/settings" search={{ section: "connectors" }}>
+                  <Plug className="size-3.5" />
+                  Open connectors
+                </Link>
+              </Button>
+            }
+          />
+        )}
+        {connected.length > 0 && (
+          <ul className="space-y-2">
+            {connected.map((provider) => (
+              <ConnectedIntegrationRow key={provider.provider_id} provider={provider} />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Session history</p>
+            <h3 className="mt-1 font-serif text-xl font-semibold">Recent private sessions</h3>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+              Open a session workspace, or browse the full library.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/new">
+              Full library
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+
+        {!hasApiConfiguration && (
+          <EmptyLinkedState message="Add VITE_API_BASE_URL to load session history from the workspace service." />
+        )}
+        {hasApiConfiguration && sessions.isLoading && (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-14 animate-pulse rounded-lg border border-border bg-card" />
+            ))}
+          </div>
+        )}
+        {hasApiConfiguration && sessions.isError && (
+          <EmptyLinkedState
+            message={friendlyErrorMessage(sessions.error, "Could not load sessions.")}
+            action={
+              <Button type="button" variant="outline" size="sm" onClick={() => void sessions.refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        )}
+        {hasApiConfiguration && sessions.data && recent.length === 0 && (
+          <EmptyLinkedState
+            message="No sessions yet."
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link to="/new">
+                  <History className="size-3.5" />
+                  Start a session
+                </Link>
+              </Button>
+            }
+          />
+        )}
+        {recent.length > 0 && (
+          <ul className="space-y-2">
+            {recent.map((session) => (
+              <ProfileSessionRow key={session.id} session={session} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConnectedIntegrationRow({ provider }: { provider: Integration }) {
+  const credEntries = Object.entries(provider.masked_creds ?? {}).filter(([, value]) => Boolean(value));
+  const sourceLabel =
+    provider.source === "workspace" ? "Workspace key" : provider.account ? `Signed in as ${provider.account}` : "Connected";
+
+  return (
+    <li>
+      <Link
+        to="/settings"
+        search={{ section: "connectors" }}
+        className="group flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-primary/30 hover:bg-muted/40"
+      >
+        <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground">
+          <Plug className="size-4 text-primary" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium text-foreground group-hover:text-primary">{provider.name}</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {provider.group}
+            </span>
+          </span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{sourceLabel}</span>
+          {credEntries.length > 0 ? (
+            <span className="mt-2 flex flex-wrap gap-2">
+              {credEntries.map(([field, value]) => (
+                <span
+                  key={field}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground"
+                >
+                  <KeyRound className="size-3 shrink-0 text-primary" />
+                  <span className="capitalize">{field.replaceAll("_", " ")}</span>
+                  <span className="text-foreground/80">{value}</span>
+                </span>
+              ))}
+            </span>
+          ) : provider.connected ? (
+            <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <KeyRound className="size-3 text-primary" />
+              {provider.oauth || provider.auth === "oauth" ? "OAuth linked · no API key stored in browser" : "Key stored server-side"}
+            </span>
+          ) : null}
+          {provider.connected_at ? (
+            <span className="mt-1.5 block text-[11px] text-muted-foreground">
+              Linked{" "}
+              {new Date(provider.connected_at).toLocaleDateString(undefined, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          ) : null}
+        </span>
+        <ArrowRight className="mt-2 size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      </Link>
+    </li>
+  );
+}
+
+function ProfileSessionRow({ session }: { session: Session }) {
+  return (
+    <li>
+      <Link
+        to="/sessions/$sessionId"
+        params={{ sessionId: session.id }}
+        search={{ fresh: false }}
+        className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-primary/30 hover:bg-muted/40"
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground">
+          <SourceIcon source={session.source} className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground group-hover:text-primary">{session.title}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {new Date(session.updated_at || session.created_at).toLocaleDateString(undefined, {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+            {" · "}
+            {session.source === "omi" ? "Omi wearable" : "Microphone"}
+          </span>
+        </span>
+        <StatusBadge status={session.status} />
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      </Link>
+    </li>
+  );
+}
+
+function EmptyLinkedState({ message, action }: { message: string; action?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+      <p className="text-sm text-muted-foreground">{message}</p>
+      {action ? <div className="mt-3 flex justify-center">{action}</div> : null}
+    </div>
   );
 }
 
