@@ -8,11 +8,11 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.models.schemas import ActionResult
-from app.services import integrations, omi_pairing, storage
+from app.services import integrations, oauth, omi_pairing, storage
 
 router = APIRouter()
 
@@ -287,7 +287,24 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
     if result is None or result.status != "success":
         raise HTTPException(status_code=404, detail="Generated document not found")
 
-    text = result.result.get("document_text") if isinstance(result.result, dict) else None
+    payload_data = result.result if isinstance(result.result, dict) else {}
+
+    if payload_data.get("start") and payload.provider == "google_calendar":
+        event = await integrations.create_calendar_event(
+            payload.provider,
+            title=str(payload_data.get("title") or result.type.value),
+            start=str(payload_data.get("start")),
+            end=str(payload_data.get("end") or payload_data.get("start")),
+            description=str(payload_data.get("description") or ""),
+        )
+        if not event["ok"]:
+            raise HTTPException(status_code=400, detail=event.get("error") or "Could not add the calendar event")
+        payload_data.setdefault("exports", [])
+        payload_data["exports"].append({"provider": payload.provider, "url": event.get("url")})
+        storage.upsert_action_results(session_id, [result])
+        return {"ok": True, "url": event.get("url"), "provider": payload.provider}
+
+    text = payload_data.get("document_text")
     if not isinstance(text, str) or not text.strip():
         raise HTTPException(status_code=400, detail="This action has no document text to export")
 
