@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { z } from "zod";
 import { SessionPage } from "@/components/hakiscribe/app";
 

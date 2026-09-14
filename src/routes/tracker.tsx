@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { TrackerPage } from "@/components/hakiscribe/tracker";
 
 export const Route = createFileRoute("/tracker")({
@@ -19,5 +20,13 @@ export const Route = createFileRoute("/tracker")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: TrackerPage,
+  component: TrackerRoute,
 });
+
+function TrackerRoute() {
+  return (
+    <RequireAuth>
+      <TrackerPage />
+    </RequireAuth>
+  );
+}
