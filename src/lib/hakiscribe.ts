@@ -158,6 +158,13 @@ export interface IntegrationField {
   mask: boolean;
 }
 
+export interface IntegrationOAuthSetup {
+  console: string;
+  redirect_uri: string;
+  client_id_env: string;
+  client_secret_env: string;
+}
+
 export interface Integration {
   provider_id: string;
   name: string;
@@ -168,6 +175,11 @@ export interface Integration {
   connected: boolean;
   connected_at: string | null;
   source?: "workspace" | "user" | null;
+  account?: string | null;
+  auth?: "oauth" | "api_key";
+  oauth?: boolean;
+  oauth_configured?: boolean;
+  oauth_setup?: IntegrationOAuthSetup | null;
   masked_creds: Record<string, string>;
 }
 
@@ -447,6 +459,42 @@ export const hakiApi = {
     );
   },
 };
+
+/** URL the connect popup opens; the server bounces it to the provider's consent screen. */
+export function integrationOAuthUrl(providerId: string) {
+  const base = configuredBaseUrl || PRODUCTION_API_URL;
+  return `${base}/integrations/oauth/${providerId}/start`;
+}
+
+/** Opens the provider consent popup and resolves once it reports back. */
+export function startIntegrationOAuth(providerId: string): Promise<"connected" | "failed"> {
+  return new Promise((resolve, reject) => {
+    const popup = window.open(integrationOAuthUrl(providerId), "hakiscribe-oauth", "width=520,height=680");
+    if (!popup) {
+      reject(new Error("Your browser blocked the sign-in window. Allow pop-ups for HakiScribe and try again."));
+      return;
+    }
+    let done = false;
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(poll);
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { source?: string; provider?: string; status?: string } | null;
+      if (!data || data.source !== "hakiscribe-oauth" || data.provider !== providerId) return;
+      done = true;
+      cleanup();
+      popup.close();
+      resolve(data.status === "connected" ? "connected" : "failed");
+    };
+    window.addEventListener("message", onMessage);
+    const poll = window.setInterval(() => {
+      if (!popup.closed || done) return;
+      cleanup();
+      resolve("failed");
+    }, 600);
+  });
+}
 
 export function omiWebhookUrl(sessionId: string) {
   return `${configuredBaseUrl}/webhooks/omi?session_id=${sessionId}`;
