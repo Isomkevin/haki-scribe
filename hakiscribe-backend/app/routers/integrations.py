@@ -4,6 +4,7 @@ to connected storage providers. Also extends the LLM model picker with
 connected provider keys.
 """
 
+import os
 import uuid
 from typing import Any, Optional
 
@@ -37,7 +38,11 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}")
 
     creds = {k: str(v).strip() for k, v in payload.credentials.items() if str(v).strip()}
+    if provider_id == "openrouter" and "default_model" not in creds:
+        creds["default_model"] = os.environ.get("ASK_MODEL") or "openai/gpt-4o"
     if not creds:
+        raise HTTPException(status_code=400, detail="No credentials provided")
+    if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter"} and not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="No credentials provided")
 
     result = await integrations.verify(provider_id, creds)
@@ -56,9 +61,15 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
 
 @router.delete("/{provider_id}")
 def disconnect_integration(provider_id: str):
-    if not integrations.remove_connection(provider_id):
+    if not integrations.can_disconnect(provider_id):
+        if integrations.get_connection(provider_id):
+            raise HTTPException(
+                status_code=400,
+                detail="This connector uses the workspace key. Remove OPENROUTER_API_KEY (or the matching env var) to disconnect it.",
+            )
         raise HTTPException(status_code=404, detail="Provider not connected")
-    return {"provider_id": provider_id, "connected": False}
+    integrations.remove_connection(provider_id)
+    return {"provider_id": provider_id, "connected": bool(integrations.get_connection(provider_id))}
 
 
 @router.post("/{session_id}/documents/{action_id}/export")

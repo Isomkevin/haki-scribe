@@ -229,7 +229,7 @@ function ProviderCard({
         {provider.connected ? (
           <Badge variant="outline" className="shrink-0 gap-1 border-success-foreground/20 bg-success/10 text-success-foreground">
             <CheckCircle2 className="size-3" />
-            Connected
+            {provider.source === "workspace" ? "Workspace key" : "Connected"}
           </Badge>
         ) : (
           <Badge variant="secondary" className="shrink-0">Not connected</Badge>
@@ -249,6 +249,11 @@ function ProviderCard({
         </div>
       ) : null}
 
+      {provider.connected && provider.source === "workspace" ? (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Using the workspace {provider.name} key from server config. Ask routes through this connector.
+        </p>
+      ) : null}
       {provider.connected && provider.connected_at ? (
         <p className="mt-3 text-[11px] text-muted-foreground">
           Connected {new Date(provider.connected_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
@@ -256,7 +261,12 @@ function ProviderCard({
       ) : null}
 
       <div className="mt-auto pt-4">
-        {provider.connected ? (
+        {provider.connected && provider.source === "workspace" ? (
+          <Button size="sm" variant="outline" onClick={onConnect}>
+            <Link2 className="mr-2 size-3.5" />
+            Replace key
+          </Button>
+        ) : provider.connected ? (
           <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
             {isDisconnecting ? (
               <Loader2 className="mr-2 size-3.5 animate-spin" />

@@ -1084,7 +1084,7 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
         </Button>
       </div>
       {catalogue.data?.configured === false && (
-        <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing.</p>
+        <p className="mt-3 text-xs text-muted-foreground">No language model is connected yet, so answers will explain that instead of guessing. Add OPENROUTER_API_KEY or connect OpenRouter under Connectors.</p>
       )}
       {ask.error && <p className="mt-3 text-sm text-destructive">{ask.error.message}</p>}
     </section>

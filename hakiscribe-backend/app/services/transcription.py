@@ -64,7 +64,12 @@ class OpenRouterWhisperProvider(TranscriptionProvider):
     slug on OpenRouter, not a second OpenAI account."""
 
     def __init__(self):
-        self.api_key = os.environ["OPENROUTER_API_KEY"]
+        from app.integrations import llm_client
+
+        key = llm_client.api_key()
+        if not key:
+            raise KeyError("OPENROUTER_API_KEY")
+        self.api_key = key
         self.model = os.environ.get("ASR_MODEL", "openai/whisper-large-v3")
 
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
@@ -159,9 +164,11 @@ class UnavailableProvider(TranscriptionProvider):
 
 
 def get_provider() -> TranscriptionProvider:
+    from app.integrations import llm_client
+
     name = os.environ.get("ASR_PROVIDER", "openrouter").lower()
     if name == "openrouter":
-        return OpenRouterWhisperProvider() if os.environ.get("OPENROUTER_API_KEY") else UnavailableProvider()
+        return OpenRouterWhisperProvider() if llm_client.api_key() else UnavailableProvider()
     if name == "groq":
         return GroqWhisperProvider() if os.environ.get("GROQ_API_KEY") else UnavailableProvider()
     if name == "openai":

@@ -239,7 +239,7 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
             seen.add(str(url))
         sources.append(item)
 
-    model = str(fields.get("model") or llm_client.DEFAULT_MODEL)
+    model = str(fields.get("model") or llm_client.default_model())
     answer = None
     if sources:
         context = _sources_block(sources)
@@ -265,7 +265,7 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
 async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
     fields = action.extracted_fields
     instruction = str(fields.get("instruction") or action.preview or action.title).strip()
-    model = str(fields.get("model") or llm_client.DEFAULT_MODEL)
+    model = str(fields.get("model") or llm_client.default_model())
     record = generation.format_transcript(transcript)
 
     output = None
@@ -277,6 +277,16 @@ async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegme
                 provider_id, ASK_SYSTEM_PROMPT,
                 f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
                 model=model_name,
+            )
+        except Exception as exc:  # noqa: BLE001
+            output = f"The model could not be reached: {exc}"
+    elif integrations.get_creds("openrouter"):
+        try:
+            output = await integrations.complete_with_provider(
+                "openrouter",
+                ASK_SYSTEM_PROMPT,
+                f"Instruction: {instruction}\n\nVerified transcript:\n{record}",
+                model=model,
             )
         except Exception as exc:  # noqa: BLE001
             output = f"The model could not be reached: {exc}"

@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 from app.services import documents
 from app.models.schemas import ActionType, DetectedAction, FlaggedMoment, Matter, TranscriptSegment
 
+from app.integrations import llm_client
+from app.services.integrations import openrouter_headers
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DETECTION_MODEL = os.environ.get("DETECTION_MODEL", "openai/gpt-4o")
 
@@ -342,13 +345,13 @@ async def detect_actions(
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = llm_client.api_key()
     if api_key:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(
                     OPENROUTER_URL,
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers={"Authorization": f"Bearer {api_key}", **openrouter_headers()},
                     json={
                         "model": DETECTION_MODEL,
                         "messages": [

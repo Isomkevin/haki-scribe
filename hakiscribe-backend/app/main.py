@@ -78,13 +78,13 @@ def root():
 @app.get("/health")
 async def health():
     from app.integrations import ambiguous_client
-    from app.services import db, object_store
+    from app.services import db, integrations, object_store
 
     return {
         "status": "ok",
         "storage": {"database": db.status(), "documents": object_store.status()},
         "integrations": {
-            "openrouter": bool(os.environ.get("OPENROUTER_API_KEY")),
+            "openrouter": bool(integrations.get_creds("openrouter")),
             "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")),
             "exa": bool(os.environ.get("EXA_API_KEY")),
             "ambiguous": bool(os.environ.get("AMBIGUOUS_API_KEY")),
@@ -114,6 +114,11 @@ def models():
     base = llm_client.available_models()
     from app.services import integrations
     connected = integrations.connected_llm_models()
-    if connected:
-        base["models"] = [*base["models"], *connected]
+    seen = {item["id"] for item in connected}
+    merged = list(connected)
+    for item in base.get("models") or []:
+        if isinstance(item, dict) and item.get("id") not in seen:
+            merged.append(item)
+            seen.add(str(item.get("id")))
+    base["models"] = merged
     return base

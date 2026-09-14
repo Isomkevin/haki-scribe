@@ -27,6 +27,9 @@ from app.models.schemas import (
     TranscriptSegment,
 )
 
+from app.integrations import llm_client
+from app.services.integrations import openrouter_headers
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DRAFTING_MODEL = os.environ.get("DRAFTING_MODEL", "openai/gpt-4o")
 
@@ -66,14 +69,14 @@ def _duration_hours(transcript: list[TranscriptSegment] | None, fallback: float 
 
 
 async def complete_text(system_prompt: str, user_prompt: str) -> str | None:
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = llm_client.api_key()
     if not api_key:
         return None
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 OPENROUTER_URL,
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={"Authorization": f"Bearer {api_key}", **openrouter_headers()},
                 json={
                     "model": DRAFTING_MODEL,
                     "messages": [

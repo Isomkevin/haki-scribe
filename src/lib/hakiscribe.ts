@@ -167,6 +167,7 @@ export interface Integration {
   fields: IntegrationField[];
   connected: boolean;
   connected_at: string | null;
+  source?: "workspace" | "user" | null;
   masked_creds: Record<string, string>;
 }
 

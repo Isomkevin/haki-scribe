@@ -117,9 +117,17 @@ _PROVIDERS: list[dict[str, Any]] = [
                 "id": "api_key",
                 "label": "OpenRouter API key",
                 "type": "password",
-                "help": "Found in openrouter.ai → Keys.",
+                "help": "Found in openrouter.ai → Keys. The workspace OPENROUTER_API_KEY is used automatically when set.",
                 "placeholder": "sk-or-…",
                 "mask": True,
+            },
+            {
+                "id": "default_model",
+                "label": "Default Ask model",
+                "type": "text",
+                "help": "OpenRouter model id used by the Ask composer when no model is chosen (ASK_MODEL).",
+                "placeholder": "openai/gpt-4o",
+                "mask": False,
             },
         ],
     },
@@ -260,12 +268,36 @@ def _mask_creds(provider_id: str, creds: dict[str, Any]) -> dict[str, str]:
 _connections: dict[str, dict[str, Any]] = {}
 # provider_id -> {"provider_id", "connected_at", "creds": {...}}
 
+# Workspace .env keys that should appear as connected connectors so the
+# Ask composer can route through the same OpenRouter (or OpenAI) config
+# used for detection and drafting — without pasting the key in the UI.
+_ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
+    "openrouter": {"api_key": "OPENROUTER_API_KEY", "default_model": "ASK_MODEL"},
+    "openai": {"api_key": "OPENAI_API_KEY"},
+}
+
+
+def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
+    mapping = _ENV_CREDENTIAL_FIELDS.get(provider_id)
+    if not mapping:
+        return None
+    creds: dict[str, str] = {}
+    for field_id, env_name in mapping.items():
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            creds[field_id] = value
+    if provider_id == "openrouter" and not creds.get("api_key"):
+        return None
+    if provider_id == "openai" and not creds.get("api_key"):
+        return None
+    return creds or None
+
 
 def list_connections() -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for provider in _PROVIDERS:
         pid = provider["id"]
-        conn = _connections.get(pid)
+        conn = get_connection(pid)
         if conn:
             result.append(
                 {
@@ -277,6 +309,7 @@ def list_connections() -> list[dict[str, Any]]:
                     "fields": provider["fields"],
                     "connected": True,
                     "connected_at": conn.get("connected_at"),
+                    "source": conn.get("source") or "user",
                     "masked_creds": _mask_creds(pid, conn.get("creds", {})),
                 }
             )
@@ -291,6 +324,7 @@ def list_connections() -> list[dict[str, Any]]:
                     "fields": provider["fields"],
                     "connected": False,
                     "connected_at": None,
+                    "source": None,
                     "masked_creds": {},
                 }
             )
@@ -298,11 +332,22 @@ def list_connections() -> list[dict[str, Any]]:
 
 
 def get_connection(provider_id: str) -> Optional[dict[str, Any]]:
-    return _connections.get(provider_id)
+    saved = _connections.get(provider_id)
+    if saved:
+        return {**saved, "source": "user"}
+    env = _env_creds(provider_id)
+    if env:
+        return {
+            "provider_id": provider_id,
+            "connected_at": None,
+            "creds": env,
+            "source": "workspace",
+        }
+    return None
 
 
 def get_creds(provider_id: str) -> Optional[dict[str, Any]]:
-    conn = _connections.get(provider_id)
+    conn = get_connection(provider_id)
     return conn.get("creds") if conn else None
 
 
@@ -323,6 +368,11 @@ def remove_connection(provider_id: str) -> bool:
         _persist_integrations()
         return True
     return False
+
+
+def can_disconnect(provider_id: str) -> bool:
+    """Workspace env keys stay connected until the env var is removed."""
+    return provider_id in _connections
 
 
 def connections_snapshot() -> list[dict[str, Any]]:
@@ -667,7 +717,15 @@ async def complete_with_provider(
         elif provider_id == "mistral":
             return await _complete_openai(creds, system_prompt, user_prompt, model or "mistral-large-latest", timeout_s, "https://api.mistral.ai/v1")
         elif provider_id == "openrouter":
-            return await _complete_openai(creds, system_prompt, user_prompt, model or "openai/gpt-4o", timeout_s, "https://openrouter.ai/api/v1")
+            return await _complete_openai(
+                creds,
+                system_prompt,
+                user_prompt,
+                model or creds.get("default_model") or "openai/gpt-4o",
+                timeout_s,
+                "https://openrouter.ai/api/v1",
+                extra_headers=openrouter_headers(),
+            )
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
@@ -701,12 +759,35 @@ async def _complete_anthropic(creds: dict, system_prompt: str, user_prompt: str,
         return None
 
 
-async def _complete_openai(creds: dict, system_prompt: str, user_prompt: str, model: str, timeout_s: float, base_url: str) -> Optional[str]:
+def openrouter_headers() -> dict[str, str]:
+    referer = (
+        os.environ.get("OPENROUTER_HTTP_REFERER")
+        or os.environ.get("BACKEND_INTERNAL_URL")
+        or "https://hakiscribe.lovable.app"
+    )
+    return {
+        "HTTP-Referer": referer.rstrip("/"),
+        "X-Title": os.environ.get("OPENROUTER_APP_TITLE") or "HakiScribe",
+    }
+
+
+async def _complete_openai(
+    creds: dict,
+    system_prompt: str,
+    user_prompt: str,
+    model: str,
+    timeout_s: float,
+    base_url: str,
+    extra_headers: Optional[dict[str, str]] = None,
+) -> Optional[str]:
     key = creds.get("api_key", "")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         resp = await client.post(
             f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            headers=headers,
             json={
                 "model": model,
                 "messages": [
@@ -749,18 +830,36 @@ async def _complete_gemini(creds: dict, system_prompt: str, user_prompt: str, mo
 def connected_llm_models() -> list[dict[str, str]]:
     """Return model options for connected LLM providers so the Ask picker
     can list them alongside the built-in default."""
+    from app.integrations import llm_client
+
     models: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(model_id: str, label: str) -> None:
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            models.append({"id": model_id, "label": label})
+
     if get_connection("anthropic"):
-        models.append({"id": "anthropic:claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet (your key)"})
-        models.append({"id": "anthropic:claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku (your key)"})
+        add("anthropic:claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet (your key)")
+        add("anthropic:claude-3-5-haiku-20241022", "Claude 3.5 Haiku (your key)")
     if get_connection("openai"):
-        models.append({"id": "openai:gpt-4o", "label": "GPT-4o (your key)"})
+        add("openai:gpt-4o", "GPT-4o (your OpenAI key)")
     if get_connection("gemini"):
-        models.append({"id": "gemini:gemini-1.5-flash", "label": "Gemini 1.5 Flash (your key)"})
+        add("gemini:gemini-1.5-flash", "Gemini 1.5 Flash (your key)")
     if get_connection("mistral"):
-        models.append({"id": "mistral:mistral-large-latest", "label": "Mistral Large (your key)"})
-    if get_connection("openrouter"):
-        models.append({"id": "openrouter:openai/gpt-4o", "label": "OpenRouter GPT-4o (your key)"})
+        add("mistral:mistral-large-latest", "Mistral Large (your key)")
+    if get_creds("openrouter"):
+        for item in llm_client.CURATED_MODELS:
+            add(item["id"], f"{item['label']} · OpenRouter")
+        creds = get_creds("openrouter") or {}
+        default = str(creds.get("default_model") or os.environ.get("ASK_MODEL") or "").strip()
+        if default:
+            add(default, f"{default} (Ask default · OpenRouter)")
+        for env_name, label in (("DETECTION_MODEL", "Detection"), ("DRAFTING_MODEL", "Drafting")):
+            mid = os.environ.get(env_name, "").strip()
+            if mid:
+                add(mid, f"{mid} ({label} · OpenRouter)")
     if get_connection("claude_custom"):
-        models.append({"id": "claude_custom:gpt-4o", "label": "Custom endpoint (your key)"})
+        add("claude_custom:gpt-4o", "Custom endpoint (your key)")
     return models
