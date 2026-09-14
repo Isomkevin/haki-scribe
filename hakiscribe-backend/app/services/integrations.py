@@ -900,7 +900,7 @@ async def complete_with_provider(
 ) -> Optional[str]:
     """Run a completion through the user's own connected LLM key.
     Returns None when the provider is not connected or the call fails."""
-    creds = get_creds(provider_id)
+    creds = await get_fresh_creds(provider_id)
     if creds is None:
         return None
     try:
@@ -922,6 +922,8 @@ async def complete_with_provider(
                 "https://openrouter.ai/api/v1",
                 extra_headers=openrouter_headers(),
             )
+        elif provider_id == "gemini_oauth":
+            return await _complete_vertex_gemini(creds, system_prompt, user_prompt, model or "gemini-2.0-flash", timeout_s)
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
