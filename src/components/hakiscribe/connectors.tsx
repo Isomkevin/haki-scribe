@@ -146,6 +146,15 @@ export function ConnectorsSection() {
 
   function submitConnect() {
     if (!dialogProvider) return;
+    if (dialogProvider.oauth && dialogProvider.oauth_configured) {
+      const required = (dialogProvider.fields ?? [])[0];
+      if (required && !(dialogValues[required.id] ?? "").trim()) {
+        setDialogError(`${required.label} is needed before signing in.`);
+        return;
+      }
+      void beginOAuth(dialogProvider, dialogValues);
+      return;
+    }
     connect.mutate({ providerId: dialogProvider.provider_id, credentials: dialogValues });
   }
 
