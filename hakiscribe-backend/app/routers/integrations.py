@@ -8,11 +8,11 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.models.schemas import ActionResult
-from app.services import integrations, omi_pairing, storage
+from app.services import integrations, oauth, omi_pairing, storage
 
 router = APIRouter()
 
@@ -33,6 +33,128 @@ def list_integrations():
 @router.get("/omi/status")
 def omi_status():
     return omi_pairing.status_payload()
+
+
+# ---------------------------------------------------------------------------
+# OAuth — Google Drive, Google Calendar, Dropbox, Microsoft OneDrive
+# ---------------------------------------------------------------------------
+
+
+@router.get("/oauth/{provider_id}/start")
+def oauth_start(provider_id: str):
+    """Popup lands here; we bounce it to the provider's consent screen."""
+    try:
+        url = oauth.authorization_url(provider_id)
+    except oauth.OAuthError as exc:
+        return HTMLResponse(
+            status_code=exc.status_code,
+            content=_oauth_html(title="Cannot start sign-in", body=exc.message, ok=False, provider_id=provider_id),
+        )
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/oauth/{provider_id}/callback", response_class=HTMLResponse)
+async def oauth_callback(
+    provider_id: str,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    error_description: str | None = Query(default=None),
+):
+    definition = integrations.provider_def(provider_id)
+    if definition is None:
+        return HTMLResponse(
+            status_code=404,
+            content=_oauth_html(title="Unknown connector", body=f"No connector called {provider_id}.", ok=False, provider_id=provider_id),
+        )
+    if error:
+        return HTMLResponse(
+            status_code=400,
+            content=_oauth_html(
+                title=f"{definition['name']} sign-in cancelled",
+                body=error_description or error,
+                ok=False,
+                provider_id=provider_id,
+            ),
+        )
+    if not code or not state:
+        return HTMLResponse(
+            status_code=400,
+            content=_oauth_html(
+                title="Incomplete sign-in",
+                body="The provider did not return an authorisation code. Start the connection again.",
+                ok=False,
+                provider_id=provider_id,
+            ),
+        )
+    try:
+        creds = await oauth.exchange_code(provider_id, code, state)
+    except oauth.OAuthError as exc:
+        return HTMLResponse(
+            status_code=exc.status_code,
+            content=_oauth_html(title="Sign-in failed", body=exc.message, ok=False, provider_id=provider_id),
+        )
+
+    check = await integrations.verify(provider_id, creds)
+    if not check["ok"]:
+        return HTMLResponse(
+            status_code=400,
+            content=_oauth_html(
+                title="Sign-in failed",
+                body=check.get("error") or "The provider rejected the new token.",
+                ok=False,
+                provider_id=provider_id,
+            ),
+        )
+
+    integrations.save_connection(provider_id, creds)
+    account = creds.get("account")
+    return HTMLResponse(
+        content=_oauth_html(
+            title=f"{definition['name']} connected",
+            body=(f"Signed in as {account}. " if account else "") + "You can close this window.",
+            ok=True,
+            provider_id=provider_id,
+        )
+    )
+
+
+def _oauth_html(*, title: str, body: str, ok: bool, provider_id: str) -> str:
+    accent = "#1f4d3a" if ok else "#8b2e2e"
+    status = "connected" if ok else "failed"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} · HakiScribe</title>
+  <style>
+    body {{ font-family: Georgia, "Times New Roman", serif; background: #f4f1ea; color: #1a1a1a;
+      margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; }}
+    main {{ max-width: 28rem; background: #fff; border: 1px solid #d9d2c5; border-radius: 12px;
+      padding: 1.75rem 1.5rem; box-shadow: 0 8px 24px rgba(31, 77, 58, 0.08); }}
+    h1 {{ font-size: 1.4rem; margin: 0 0 0.75rem; color: {accent}; }}
+    p {{ margin: 0; line-height: 1.55; color: #444; font-family: system-ui, sans-serif; font-size: 0.95rem; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{title}</h1>
+    <p>{body}</p>
+  </main>
+  <script>
+    try {{
+      if (window.opener) {{
+        window.opener.postMessage(
+          {{ source: "hakiscribe-oauth", provider: "{provider_id}", status: "{status}" }},
+          "*"
+        );
+      }}
+    }} catch (err) {{}}
+    setTimeout(function () {{ window.close(); }}, {1200 if ok else 4000});
+  </script>
+</body>
+</html>"""
 
 
 @router.get("/omi/setup-completed")
@@ -165,7 +287,24 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
     if result is None or result.status != "success":
         raise HTTPException(status_code=404, detail="Generated document not found")
 
-    text = result.result.get("document_text") if isinstance(result.result, dict) else None
+    payload_data = result.result if isinstance(result.result, dict) else {}
+
+    if payload_data.get("start") and payload.provider == "google_calendar":
+        event = await integrations.create_calendar_event(
+            payload.provider,
+            title=str(payload_data.get("title") or result.type.value),
+            start=str(payload_data.get("start")),
+            end=str(payload_data.get("end") or payload_data.get("start")),
+            description=str(payload_data.get("description") or ""),
+        )
+        if not event["ok"]:
+            raise HTTPException(status_code=400, detail=event.get("error") or "Could not add the calendar event")
+        payload_data.setdefault("exports", [])
+        payload_data["exports"].append({"provider": payload.provider, "url": event.get("url")})
+        storage.upsert_action_results(session_id, [result])
+        return {"ok": True, "url": event.get("url"), "provider": payload.provider}
+
+    text = payload_data.get("document_text")
     if not isinstance(text, str) or not text.strip():
         raise HTTPException(status_code=400, detail="This action has no document text to export")
 

@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   Plug,
   RefreshCw,
+  ShieldCheck,
   Unplug,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ import {
   friendlyErrorMessage,
   hakiApi,
   omiMiniappUrls,
+  startIntegrationOAuth,
   type Integration,
   type IntegrationField,
   type OmiStatus,
@@ -56,6 +58,7 @@ export function ConnectorsSection() {
   const [dialogValues, setDialogValues] = useState<Record<string, string>>({});
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [omiDialogOpen, setOmiDialogOpen] = useState(false);
+  const [oauthPending, setOauthPending] = useState<string | null>(null);
   const [manualUid, setManualUid] = useState("");
 
   const connect = useMutation({
@@ -98,7 +101,29 @@ export function ConnectorsSection() {
 
   const connectedCount = (integrations.data ?? []).filter((item) => item.connected).length;
 
+  async function beginOAuth(provider: Integration) {
+    setOauthPending(provider.provider_id);
+    try {
+      const outcome = await startIntegrationOAuth(provider.provider_id);
+      if (outcome === "connected") {
+        toast.success(`${provider.name} connected`);
+      } else {
+        toast.error(`${provider.name} sign-in was not completed.`);
+      }
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, `Could not open the ${provider.name} sign-in window.`));
+    } finally {
+      setOauthPending(null);
+      void queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      void queryClient.invalidateQueries({ queryKey: ["health"] });
+    }
+  }
+
   function openConnect(provider: Integration) {
+    if (provider.oauth && provider.oauth_configured) {
+      void beginOAuth(provider);
+      return;
+    }
     if (provider.provider_id === "omi") {
       setOmiDialogOpen(true);
       setDialogError(null);
@@ -189,6 +214,7 @@ export function ConnectorsSection() {
                   provider={provider}
                   onConnect={() => openConnect(provider)}
                   onDisconnect={() => disconnect.mutate(provider.provider_id)}
+                  isConnecting={oauthPending === provider.provider_id}
                   isDisconnecting={disconnect.isPending && disconnect.variables === provider.provider_id}
                 />
               ),
@@ -282,7 +308,7 @@ function OmiSetupDialog({
   onLinkManual,
 }: {
   open: boolean;
-  status?: OmiStatus;
+  status?: OmiStatus | undefined;
   manualUid: string;
   onManualUid: (value: string) => void;
   error: string | null;
@@ -377,13 +403,13 @@ function OmiProviderCard({
   isDisconnecting,
 }: {
   provider: Integration;
-  status?: OmiStatus;
+  status?: OmiStatus | undefined;
   onOpen: () => void;
   onDisconnect: () => void;
   isDisconnecting: boolean;
 }) {
   const linked = provider.connected || Boolean(status?.linked);
-  const masked = status?.masked_uid || provider.masked_creds?.uid;
+  const masked = status?.masked_uid || provider.masked_creds?.['uid'];
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
@@ -448,13 +474,24 @@ function ProviderCard({
   provider,
   onConnect,
   onDisconnect,
+  isConnecting,
   isDisconnecting,
 }: {
   provider: Integration;
   onConnect: () => void;
   onDisconnect: () => void;
+  isConnecting: boolean;
   isDisconnecting: boolean;
 }) {
+  const signInLabel = provider.oauth
+    ? provider.provider_id === "dropbox"
+      ? "Sign in with Dropbox"
+      : provider.provider_id === "onedrive"
+        ? "Sign in with Microsoft"
+        : "Sign in with Google"
+    : "Connect";
+  const needsSetup = Boolean(provider.oauth) && !provider.oauth_configured;
+
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
@@ -489,6 +526,19 @@ function ProviderCard({
           Using the workspace {provider.name} key from server config. Ask routes through this connector.
         </p>
       ) : null}
+      {provider.connected && provider.account ? (
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <ShieldCheck className="size-3 text-primary" />
+          Signed in as {provider.account}
+        </p>
+      ) : null}
+      {needsSetup ? (
+        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+          Sign-in is not switched on for this service yet. Add the app credentials on the server, using the redirect
+          address <span className="break-all font-mono">{provider.oauth_setup?.redirect_uri}</span>. You can still paste
+          a token manually below.
+        </p>
+      ) : null}
       {provider.connected && provider.connected_at ? (
         <p className="mt-3 text-[11px] text-muted-foreground">
           Connected{" "}
@@ -503,14 +553,22 @@ function ProviderCard({
             Replace key
           </Button>
         ) : provider.connected ? (
-          <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
-            {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
-            Disconnect
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {provider.oauth && provider.oauth_configured ? (
+              <Button size="sm" variant="outline" onClick={onConnect} disabled={isConnecting}>
+                {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
+                Reconnect
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
+              {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
+              Disconnect
+            </Button>
+          </div>
         ) : (
-          <Button size="sm" onClick={onConnect}>
-            <Link2 className="mr-2 size-3.5" />
-            Connect
+          <Button size="sm" onClick={onConnect} disabled={isConnecting}>
+            {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Link2 className="mr-2 size-3.5" />}
+            {signInLabel}
           </Button>
         )}
       </div>

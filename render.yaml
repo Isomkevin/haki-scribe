@@ -42,4 +42,10 @@ services:
       #   EXA_API_KEY, EXA_MONITOR_WEBHOOK_URL
       #   AMBIGUOUS_API_KEY, AMBIGUOUS_CALENDAR_ID, AMBIGUOUS_NOTIFY_CHANNEL
       #   TRIGGER_SECRET_KEY, OMI_SHARED_SECRET
+      #   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET
+      #   DROPBOX_APP_KEY, DROPBOX_APP_SECRET
+      #   MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID
+      #   GOOGLE_CALENDAR_ID, GOOGLE_CALENDAR_TIMEZONE, OAUTH_REDIRECT_BASE_URL
+      # Connector sign-in callback to register with each provider:
+      #   https://hakiscribe-backend.onrender.com/integrations/oauth/{provider}/callback
       #   OPENAI_API_KEY, GROQ_API_KEY  (only if you change ASR_PROVIDER)

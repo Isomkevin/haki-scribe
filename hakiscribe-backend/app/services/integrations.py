@@ -160,14 +160,33 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "google_drive",
         "name": "Google Drive",
         "group": "storage",
-        "what_it_does": "Send drafted documents to your firm's Google Drive.",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Google and send drafted documents to your firm's Drive.",
         "capabilities": ["Export documents"],
         "fields": [
             {
                 "id": "access_token",
                 "label": "Google Drive access token",
                 "type": "password",
-                "help": "Create an OAuth token with drive.file scope in Google Cloud Console.",
+                "help": "Optional manual fallback — normally you just sign in with Google.",
+                "placeholder": "ya29.…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "google_calendar",
+        "name": "Google Calendar",
+        "group": "storage",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Google and push court dates and client meetings to your calendar.",
+        "capabilities": ["Add calendar events"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Google Calendar access token",
+                "type": "password",
+                "help": "Optional manual fallback — normally you just sign in with Google.",
                 "placeholder": "ya29.…",
                 "mask": True,
             },
@@ -177,14 +196,15 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "dropbox",
         "name": "Dropbox",
         "group": "storage",
-        "what_it_does": "Send drafted documents to your Dropbox.",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Dropbox and send drafted documents straight to your folders.",
         "capabilities": ["Export documents"],
         "fields": [
             {
                 "id": "access_token",
                 "label": "Dropbox access token",
                 "type": "password",
-                "help": "Create an app token with files.content.write in Dropbox Developer.",
+                "help": "Optional manual fallback — normally you just sign in with Dropbox.",
                 "placeholder": "sl.…",
                 "mask": True,
             },
@@ -194,14 +214,15 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "onedrive",
         "name": "Microsoft OneDrive",
         "group": "storage",
-        "what_it_does": "Send drafted documents to your OneDrive.",
+        "auth": "oauth",
+        "what_it_does": "Sign in with Microsoft and send drafted documents to your OneDrive.",
         "capabilities": ["Export documents"],
         "fields": [
             {
                 "id": "access_token",
                 "label": "Microsoft Graph access token",
                 "type": "password",
-                "help": "Create an Azure app token with Files.ReadWrite.All scope.",
+                "help": "Optional manual fallback — normally you just sign in with Microsoft.",
                 "placeholder": "eyJ…",
                 "mask": True,
             },
@@ -272,6 +293,8 @@ def _mask_creds(provider_id: str, creds: dict[str, Any]) -> dict[str, str]:
     if definition is None:
         return {}
     masked: dict[str, str] = {}
+    if creds.get("account"):
+        masked["account"] = str(creds["account"])
     for field in definition["fields"]:
         raw = str(creds.get(field["id"], ""))
         masked[field["id"]] = _mask(raw) if field.get("mask", True) else raw
@@ -310,6 +333,25 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
     return creds or None
 
 
+def _provider_meta(provider: dict[str, Any]) -> dict[str, Any]:
+    from app.services import oauth
+
+    pid = provider["id"]
+    uses_oauth = provider.get("auth") == "oauth" and oauth.supports_oauth(pid)
+    return {
+        "provider_id": pid,
+        "name": provider["name"],
+        "group": provider["group"],
+        "what_it_does": provider["what_it_does"],
+        "capabilities": provider["capabilities"],
+        "fields": provider["fields"],
+        "auth": "oauth" if uses_oauth else "api_key",
+        "oauth": uses_oauth,
+        "oauth_configured": uses_oauth and oauth.is_configured(pid),
+        "oauth_setup": oauth.setup_hint(pid) if uses_oauth else None,
+    }
+
+
 def list_connections() -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for provider in _PROVIDERS:
@@ -318,30 +360,22 @@ def list_connections() -> list[dict[str, Any]]:
         if conn:
             result.append(
                 {
-                    "provider_id": pid,
-                    "name": provider["name"],
-                    "group": provider["group"],
-                    "what_it_does": provider["what_it_does"],
-                    "capabilities": provider["capabilities"],
-                    "fields": provider["fields"],
+                    **_provider_meta(provider),
                     "connected": True,
                     "connected_at": conn.get("connected_at"),
                     "source": conn.get("source") or "user",
+                    "account": (conn.get("creds") or {}).get("account"),
                     "masked_creds": _mask_creds(pid, conn.get("creds", {})),
                 }
             )
         else:
             result.append(
                 {
-                    "provider_id": pid,
-                    "name": provider["name"],
-                    "group": provider["group"],
-                    "what_it_does": provider["what_it_does"],
-                    "capabilities": provider["capabilities"],
-                    "fields": provider["fields"],
+                    **_provider_meta(provider),
                     "connected": False,
                     "connected_at": None,
                     "source": None,
+                    "account": None,
                     "masked_creds": {},
                 }
             )
@@ -366,6 +400,22 @@ def get_connection(provider_id: str) -> Optional[dict[str, Any]]:
 def get_creds(provider_id: str) -> Optional[dict[str, Any]]:
     conn = get_connection(provider_id)
     return conn.get("creds") if conn else None
+
+
+async def get_fresh_creds(provider_id: str) -> Optional[dict[str, Any]]:
+    """Creds with a live access token — refreshes OAuth tokens when expired."""
+    creds = get_creds(provider_id)
+    if creds is None:
+        return None
+    from app.services import oauth
+
+    if not oauth.supports_oauth(provider_id):
+        return creds
+    try:
+        return await oauth.refresh_if_needed(provider_id, creds)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not refresh %s token: %s", provider_id, exc)
+        return creds
 
 
 def save_connection(provider_id: str, creds: dict[str, Any]) -> dict[str, Any]:
@@ -602,7 +652,25 @@ async def _verify_omi(creds: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "error": None}
 
 
+async def _verify_google_calendar(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Google Calendar returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 _VERIFIERS = {
+    "google_calendar": _verify_google_calendar,
     "anthropic": _verify_anthropic,
     "openai": _verify_openai,
     "gemini": _verify_gemini,
@@ -631,7 +699,7 @@ async def verify(provider_id: str, creds: dict[str, Any]) -> dict[str, Any]:
 async def export_document(provider_id: str, text: str, title: str) -> dict[str, Any]:
     """Upload a drafted document to the connected storage provider.
     Returns {"ok": bool, "url": str|None, "error": str|None}."""
-    creds = get_creds(provider_id)
+    creds = await get_fresh_creds(provider_id)
     if creds is None:
         return {"ok": False, "url": None, "error": "Provider not connected"}
 
@@ -714,6 +782,52 @@ async def _export_onedrive(creds: dict[str, Any], text: str, title: str) -> dict
             return {"ok": False, "url": None, "error": f"OneDrive returned {resp.status_code}: {resp.text[:200]}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "url": None, "error": str(exc)}
+
+
+async def create_calendar_event(
+    provider_id: str,
+    *,
+    title: str,
+    start: str,
+    end: str,
+    description: str = "",
+) -> dict[str, Any]:
+    """Push a generated calendar event to a connected calendar provider."""
+    creds = await get_fresh_creds(provider_id)
+    if creds is None:
+        return {"ok": False, "url": None, "error": "Provider not connected"}
+    if provider_id != "google_calendar":
+        return {"ok": False, "url": None, "error": f"Provider {provider_id} does not support calendar events"}
+
+    token = creds.get("access_token", "")
+    calendar_id = (os.environ.get("GOOGLE_CALENDAR_ID") or "primary").strip() or "primary"
+    body: dict[str, Any] = {
+        "summary": title,
+        "description": description,
+        "start": _gcal_time(start),
+        "end": _gcal_time(end or start),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=body,
+            )
+            if resp.status_code < 400:
+                data = resp.json()
+                return {"ok": True, "url": data.get("htmlLink"), "error": None}
+            return {"ok": False, "url": None, "error": f"Google Calendar returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "url": None, "error": str(exc)}
+
+
+def _gcal_time(value: str) -> dict[str, str]:
+    raw = (value or "").strip()
+    timezone = (os.environ.get("GOOGLE_CALENDAR_TIMEZONE") or "Africa/Nairobi").strip()
+    if len(raw) == 10 and raw.count("-") == 2:
+        return {"date": raw}
+    return {"dateTime": raw, "timeZone": timezone}
 
 
 # ---------------------------------------------------------------------------
