@@ -196,7 +196,7 @@ def _consume_state(state: str, provider_id: str) -> dict[str, str]:
 # Authorisation URL
 # ---------------------------------------------------------------------------
 
-def authorization_url(provider_id: str) -> str:
+def authorization_url(provider_id: str, extras: Optional[dict[str, str]] = None) -> str:
     cfg = _CONFIG.get(provider_id)
     if cfg is None:
         raise OAuthError(f"{provider_id} does not use OAuth", 404)
@@ -214,7 +214,7 @@ def authorization_url(provider_id: str) -> str:
         "redirect_uri": redirect_uri(provider_id),
         "response_type": "code",
         "scope": " ".join(cfg["scopes"]),
-        "state": _issue_state(provider_id),
+        "state": _issue_state(provider_id, extras),
     }
     params.update({k: str(v) for k, v in cfg["extra_auth_params"].items()})
 
