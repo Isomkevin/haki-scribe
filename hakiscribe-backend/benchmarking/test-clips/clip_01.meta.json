@@ -1,0 +1,11 @@
+{
+  "clip_id": "clip_01",
+  "language_pair": "en-sw",
+  "domain": "legal-court-hearing",
+  "accent_country": "KE",
+  "device_type": "phone-mic",
+  "noise_conditions": "quiet-office",
+  "reference_transcript_path": "clip_01.reference.txt",
+  "audio_file": "clip_01.webm",
+  "key_terms": ["Milimani", "Civil Suit", "KES 450000", "Wanjiru Holdings"]
+}

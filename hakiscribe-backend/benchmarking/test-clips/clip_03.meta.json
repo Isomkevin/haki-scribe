@@ -1,0 +1,11 @@
+{
+  "clip_id": "clip_03",
+  "language_pair": "en-sw",
+  "domain": "legal-judge-ruling",
+  "accent_country": "KE",
+  "device_type": "court-mic",
+  "noise_conditions": "moderate-room",
+  "reference_transcript_path": "clip_03.reference.txt",
+  "audio_file": "clip_03.webm",
+  "key_terms": ["adjourned", "14 April 2026", "costs", "plaintiff"]
+}

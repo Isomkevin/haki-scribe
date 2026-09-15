@@ -239,7 +239,7 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         creds["default_model"] = os.environ.get("ASK_MODEL") or "openai/gpt-4o"
     if not creds:
         raise HTTPException(status_code=400, detail="No credentials provided")
-    if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter"} and not creds.get("api_key"):
+    if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter", "intron"} and not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="No credentials provided")
     if provider_id == "omi" and not creds.get("uid"):
         raise HTTPException(status_code=400, detail="Missing Omi uid")

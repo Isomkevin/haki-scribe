@@ -1,0 +1,11 @@
+{
+  "clip_id": "clip_04",
+  "language_pair": "en-sw",
+  "domain": "legal-voice-memo",
+  "accent_country": "KE",
+  "device_type": "phone-mic",
+  "noise_conditions": "street-noise",
+  "reference_transcript_path": "clip_04.reference.txt",
+  "audio_file": "clip_04.webm",
+  "key_terms": ["M-Pesa", "deposit", "lease", "Friday"]
+}

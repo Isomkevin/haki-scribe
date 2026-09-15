@@ -158,6 +158,23 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "intron",
+        "name": "Intron Sahara (Voice AI)",
+        "group": "ai",
+        "what_it_does": "Transcribe African code-switched speech with Sahara for multilingual legal sessions.",
+        "capabilities": ["Speech-to-text", "Legal court hearing format"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Intron API key",
+                "type": "password",
+                "help": "From voice.intron.io → Developers. Workspace INTRON_API_KEY is used automatically when set.",
+                "placeholder": "…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "claude_custom",
         "name": "Custom OpenAI-compatible endpoint",
         "group": "ai",
@@ -340,6 +357,7 @@ _connections: dict[str, dict[str, Any]] = {}
 _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openrouter": {"api_key": "OPENROUTER_API_KEY", "default_model": "ASK_MODEL"},
     "openai": {"api_key": "OPENAI_API_KEY"},
+    "intron": {"api_key": "INTRON_API_KEY"},
 }
 
 
@@ -355,6 +373,8 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
     if provider_id == "openrouter" and not creds.get("api_key"):
         return None
     if provider_id == "openai" and not creds.get("api_key"):
+        return None
+    if provider_id == "intron" and not creds.get("api_key"):
         return None
     return creds or None
 
@@ -591,6 +611,59 @@ async def _verify_openrouter(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _tiny_silent_wav() -> bytes:
+    """Minimal WAV used only to probe whether an Intron API key is accepted."""
+    import struct
+
+    sample_rate = 16000
+    duration_samples = 1600  # 0.1s
+    data_size = duration_samples * 2
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + data_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b"data",
+        data_size,
+    )
+    return header + (b"\x00\x00" * duration_samples)
+
+
+async def _verify_intron(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            resp = await client.post(
+                "https://infer.voice.intron.io/file/v1/upload/sync",
+                headers={"Authorization": f"Bearer {key}"},
+                files={
+                    "audio_file_blob": ("probe.wav", _tiny_silent_wav(), "audio/wav"),
+                },
+                data={
+                    "audio_file_name": "hakiscribe-probe.wav",
+                    "use_language_asr_input": "en",
+                },
+            )
+            if resp.status_code in (401, 403):
+                return {"ok": False, "error": "Intron rejected the API key"}
+            if resp.status_code >= 500 and resp.status_code != 503:
+                return {"ok": False, "error": f"Intron unavailable ({resp.status_code})"}
+            # 200 / 400 (bad audio) / 503 (queued) all mean the key was accepted.
+            return {"ok": True, "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 async def _verify_custom_openai(creds: dict[str, Any]) -> dict[str, Any]:
     base = (creds.get("base_url") or "").strip().rstrip("/")
     key = creds.get("api_key", "")
@@ -733,6 +806,7 @@ _VERIFIERS = {
     "gemini": _verify_gemini,
     "mistral": _verify_mistral,
     "openrouter": _verify_openrouter,
+    "intron": _verify_intron,
     "claude_custom": _verify_custom_openai,
     "google_drive": _verify_google_drive,
     "dropbox": _verify_dropbox,

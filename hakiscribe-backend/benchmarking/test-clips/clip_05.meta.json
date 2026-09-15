@@ -1,0 +1,11 @@
+{
+  "clip_id": "clip_05",
+  "language_pair": "en-sw",
+  "domain": "legal-court-hearing",
+  "accent_country": "KE",
+  "device_type": "phone-mic",
+  "noise_conditions": "quiet-office",
+  "reference_transcript_path": "clip_05.reference.txt",
+  "audio_file": "clip_05.webm",
+  "key_terms": ["bail", "KES 200000", "mention", "next week"]
+}

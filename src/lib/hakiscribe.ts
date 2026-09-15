@@ -430,6 +430,25 @@ export const hakiApi = {
       body: JSON.stringify({ text }),
     }),
   finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
+  finalizeAsr: async (id: string, audio: Blob, filename = "recording.webm") => {
+    const form = new FormData();
+    form.append("audio", audio, filename);
+    let response: Response;
+    try {
+      response = await fetch(apiUrl(`/sessions/${id}/asr/finalize`), {
+        method: "POST",
+        body: form,
+      });
+    } catch {
+      throw new ApiError("We couldn’t connect to the HakiScribe service. Check the service URL and try again.");
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      const detail = extractErrorDetail(body);
+      throw new ApiError(humanizeApiFailure(response.status, detail, `/sessions/${id}/asr/finalize`), response.status);
+    }
+    return (await response.json()) as SessionDetail;
+  },
   detect: (id: string, force = false) =>
     request<DetectedAction[]>(`/sessions/${id}/detect${force ? "?force=true" : ""}`, { method: "POST" }),
   dismissAction: (sessionId: string, actionId: string) =>

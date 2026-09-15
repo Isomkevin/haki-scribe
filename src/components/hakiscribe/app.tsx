@@ -85,7 +85,7 @@ import {
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
-import { loadWorkspaceSettings } from "@/lib/workspace-settings";
+import { LANGUAGE_OPTIONS, loadWorkspaceSettings, usesSaharaRefine } from "@/lib/workspace-settings";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
@@ -447,6 +447,9 @@ export function NewSessionPage() {
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: hakiApi.listSessions, enabled: hasApiConfiguration, retry: false });
   const matters = useQuery({ queryKey: ["matters"], queryFn: hakiApi.listMatters, enabled: hasApiConfiguration, retry: false });
   const contacts = useQuery({ queryKey: ["contacts"], queryFn: hakiApi.listContacts, enabled: hasApiConfiguration, retry: false });
+  const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
+  const intronLinked = Boolean(health.data?.integrations?.["intron"]);
+  const wantsSaharaRefine = usesSaharaRefine(language);
   const create = useMutation({
     mutationFn: () => hakiApi.createSession({ title: title.trim() || `New ${source === "mic" ? "recording" : "Omi session"}`, source, ...(language ? { language_hint: language } : {}) }),
     onSuccess: (session) => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id }, search: { fresh: true } }),
@@ -478,7 +481,6 @@ export function NewSessionPage() {
     didSync.current = true;
     syncLibrary.mutate();
   }, [sessions.isError, sessions.isLoading, syncLibrary.mutate]);
-  const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
   const omiStatus = useQuery({ queryKey: ["omi-status"], queryFn: hakiApi.omiStatus, enabled: hasApiConfiguration, retry: false });
   const omiLinked = Boolean(omiStatus.data?.linked || health.data?.omi_miniapp?.linked);
   const omiStatusResolved = !hasApiConfiguration || omiStatus.isFetched || omiStatus.isError;
@@ -546,7 +548,25 @@ export function NewSessionPage() {
                   </p>
                 ) : null}
                 <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
-                <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"><option value="code-switch">English + Kiswahili</option><option value="en">English</option><option value="sw">Kiswahili</option></select>
+                <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring">
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                {wantsSaharaRefine && !intronLinked ? (
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Live captions use Whisper. After Stop, HakiScribe refines with Intron Sahara when connected under{" "}
+                    <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
+                      Settings → Connectors
+                    </Link>
+                    .
+                  </p>
+                ) : null}
+                {wantsSaharaRefine && intronLinked ? (
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Intron Sahara is connected — live Whisper captions refine to a legal court-hearing transcript when you Stop (keep recordings under ~90 seconds).
+                  </p>
+                ) : null}
                 {source === "omi" && omiLinked ? (
                   <div className="mt-4 space-y-2 rounded-lg border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
                     <p>
@@ -730,18 +750,21 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
   const recorder = useRef<MediaRecorder | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const stream = useRef<MediaStream | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
   const stopping = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [captions, setCaptions] = useState(session.transcript ?? []);
   const [flags, setFlags] = useState(session.flagged_moments ?? []);
   const [error, setError] = useState<string | null>(null);
   const [stoppingNow, setStoppingNow] = useState(false);
+  const [refiningSahara, setRefiningSahara] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed(Date.now() - startedAt.current), 1000);
     if (session.source === "mic") {
       void navigator.mediaDevices.getUserMedia({ audio: true }).then((mediaStream) => {
         stream.current = mediaStream;
+        audioChunks.current = [];
         const ws = new WebSocket(websocketUrl(session.id));
         socket.current = ws;
         ws.onmessage = (event) => {
@@ -751,7 +774,12 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
         ws.onopen = () => {
           const nextRecorder = new MediaRecorder(mediaStream);
           recorder.current = nextRecorder;
-          nextRecorder.ondataavailable = (event) => { if (event.data.size && ws.readyState === WebSocket.OPEN) ws.send(event.data); };
+          nextRecorder.ondataavailable = (event) => {
+            if (event.data.size) {
+              audioChunks.current.push(event.data);
+              if (ws.readyState === WebSocket.OPEN) ws.send(event.data);
+            }
+          };
           // Backend timestamps each chunk as 3s — keep the client in step.
           nextRecorder.start(3000);
         };
@@ -785,10 +813,62 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
     } catch (caught) { setError(caught instanceof Error ? caught.message : "The moment could not be flagged."); }
   };
   const stop = async () => {
-    setStoppingNow(true); stopping.current = true;
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    socket.current?.close(); stream.current?.getTracks().forEach((track) => track.stop());
-    try { onStopped(await hakiApi.getSession(session.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : "The session could not be loaded."); setStoppingNow(false); }
+    setStoppingNow(true);
+    stopping.current = true;
+    if (recorder.current?.state === "recording") {
+      await new Promise<void>((resolve) => {
+        const active = recorder.current;
+        if (!active) {
+          resolve();
+          return;
+        }
+        active.onstop = () => resolve();
+        active.stop();
+      });
+    }
+    socket.current?.close();
+    stream.current?.getTracks().forEach((track) => track.stop());
+    try {
+      let detail: SessionDetail;
+      const shouldRefine =
+        session.source === "mic" &&
+        usesSaharaRefine(session.language_hint) &&
+        audioChunks.current.length > 0;
+      if (shouldRefine) {
+        const health = await hakiApi.health().catch(() => null);
+        const intronOn = Boolean(health?.integrations?.["intron"]);
+        if (intronOn) {
+          setRefiningSahara(true);
+          const blob = new Blob(audioChunks.current, {
+            type: audioChunks.current[0]?.type || "audio/webm",
+          });
+          try {
+            detail = await hakiApi.finalizeAsr(session.id, blob, "recording.webm");
+            toast.success("Transcript refined with Intron Sahara");
+          } catch (caught) {
+            toast.error(
+              friendlyErrorMessage(
+                caught instanceof Error ? caught : new Error("Sahara refine failed"),
+                "Kept live captions — Sahara refine failed.",
+              ),
+            );
+            detail = await hakiApi.getSession(session.id);
+          } finally {
+            setRefiningSahara(false);
+          }
+        } else {
+          toast.info("Connect Intron Sahara in Settings to refine code-switched transcripts.");
+          detail = await hakiApi.getSession(session.id);
+        }
+      } else {
+        detail = await hakiApi.getSession(session.id);
+      }
+      onStopped(detail);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The session could not be loaded.");
+      setStoppingNow(false);
+      setRefiningSahara(false);
+    }
   };
 
   return (
@@ -886,7 +966,7 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
         {error && <p className="mt-4 text-center text-sm text-primary-foreground">{error}</p>}
         <div className="safe-bottom mt-auto flex flex-col items-center pt-5 sm:pt-8">
           <Button variant="quiet" className="h-12 w-full max-w-md border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20 sm:w-auto sm:min-w-36" onClick={() => void stop()} disabled={stoppingNow}>
-            <Square className="fill-current" /> {stoppingNow ? "Stopping…" : "Stop"}
+            <Square className="fill-current" /> {refiningSahara ? "Refining with Sahara…" : stoppingNow ? "Stopping…" : "Stop"}
           </Button>
           <TrustLine className="mt-5 text-primary-foreground/65 [&_svg]:text-primary-foreground" />
         </div>

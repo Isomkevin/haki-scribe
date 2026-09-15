@@ -1,0 +1,11 @@
+{
+  "clip_id": "clip_02",
+  "language_pair": "en-sw",
+  "domain": "legal-client-intake",
+  "accent_country": "KE",
+  "device_type": "laptop-mic",
+  "noise_conditions": "quiet-office",
+  "reference_transcript_path": "clip_02.reference.txt",
+  "audio_file": "clip_02.webm",
+  "key_terms": ["John Kamau", "employment", "three months", "notice"]
+}

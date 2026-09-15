@@ -21,7 +21,7 @@ class SessionStatus(str, Enum):
 class SessionCreate(BaseModel):
     title: str
     source: SessionSource
-    language_hint: Optional[str] = None  # "en", "sw", "code-switch"
+    language_hint: Optional[str] = None  # "en", "sw", "code-switch", "multilingual"
 
 
 class Session(BaseModel):

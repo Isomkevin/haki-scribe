@@ -248,7 +248,8 @@ export function ConnectorsSection() {
             <p className="font-medium text-foreground">How connectors reach the transcript</p>
             <p className="mt-1">
               AI providers extend the "Ask an AI model" task — they receive the assembled prompt and the verified,
-              non-redacted transcript slice, never a session ID or direct database access. Storage providers receive the
+              non-redacted transcript slice, never a session ID or direct database access. Intron Sahara transcribes
+              full recordings on Stop for multilingual sessions (legal court-hearing mode). Storage providers receive the
               already-generated document text, not the raw record. Omi posts transcripts to the webhook after Miniapp
               auth links your uid. All calls run server-side; the browser only shows progress and results.
             </p>

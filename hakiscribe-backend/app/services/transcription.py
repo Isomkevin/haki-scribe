@@ -3,8 +3,12 @@ ASR provider abstraction. Every provider implements `transcribe_chunk`.
 Routers only ever call `get_provider()` — never import a vendor SDK
 directly outside this file. This is what makes the CodeSwitch Africa
 Challenge swap (Whisper -> Intron Voice AI) a one-line change later.
+
+Intron Sahara is also used for full-file refine on multilingual /
+code-switch sessions via `transcribe_file` (legal court-hearing mode).
 """
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -43,13 +47,46 @@ CODE_SWITCH_PROMPT = (
     "Transcribe both languages faithfully. Do not translate."
 )
 
+SAHARA_SYNC_URL = "https://infer.voice.intron.io/file/v1/upload/sync"
+SAHARA_STATUS_URL = "https://infer.voice.intron.io/file/v1/status"
+
 
 def whisper_language(language_hint: Optional[str]) -> Optional[str]:
     return language_hint if language_hint in ("en", "sw") else None
 
 
 def whisper_prompt(language_hint: Optional[str]) -> Optional[str]:
-    return CODE_SWITCH_PROMPT if language_hint == "code-switch" else None
+    return CODE_SWITCH_PROMPT if language_hint in ("code-switch", "multilingual") else None
+
+
+def sahara_language(language_hint: Optional[str]) -> str:
+    """Map HakiScribe session hints to Sahara use_language_asr_input codes."""
+    if language_hint == "sw":
+        return "sw"
+    if language_hint == "en":
+        return "en"
+    # code-switch / multilingual: Kenyan EN–SW pair; Sahara handles mixing when hint is sw or en.
+    # Prefer sw for Kenyan court/client speech so Kiswahili tokens are not English-forced.
+    if language_hint in ("code-switch", "multilingual"):
+        return "sw"
+    return "en"
+
+
+def intron_api_key() -> Optional[str]:
+    from app.services import integrations
+
+    creds = integrations.get_creds("intron") or {}
+    key = (creds.get("api_key") or os.environ.get("INTRON_API_KEY") or "").strip()
+    return key or None
+
+
+def intron_configured() -> bool:
+    return bool(intron_api_key())
+
+
+def should_refine_with_sahara(language_hint: Optional[str]) -> bool:
+    """Product rule: Sahara refine on Stop for code-switch / multilingual when keyed."""
+    return language_hint in ("code-switch", "multilingual") and intron_configured()
 
 
 class TranscriptionProvider(ABC):
@@ -148,11 +185,135 @@ class OpenAIWhisperProvider(TranscriptionProvider):
 
 
 class IntronVoiceProvider(TranscriptionProvider):
-    """Stub for the Sahara CodeSwitch Africa Challenge submission.
-    Fill in against Intron's actual API docs before that deadline."""
+    """Intron Sahara v2.5 — African code-switching ASR.
+
+    Live chunks use sync upload without legal post-processing (latency).
+    Full-file refine (`transcribe_file`) enables legal court-hearing mode
+    for the product multilingual / CodeSwitch demo path.
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = (api_key or intron_api_key() or "").strip()
 
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
-        raise NotImplementedError("Wire this up against Intron Voice AI's API before the CodeSwitch submission.")
+        if not self.api_key:
+            return TranscriptionResult(text="", raw={"error": "intron_not_configured"})
+        return await self.transcribe_file(
+            audio_bytes,
+            filename=chunk_filename(audio_bytes),
+            language_hint=language_hint,
+            legal=False,
+        )
+
+    async def transcribe_file(
+        self,
+        audio_bytes: bytes,
+        *,
+        filename: Optional[str] = None,
+        language_hint: Optional[str] = None,
+        legal: bool = True,
+    ) -> TranscriptionResult:
+        if not self.api_key:
+            return TranscriptionResult(text="", raw={"error": "intron_not_configured"})
+
+        import httpx
+
+        name = filename or chunk_filename(audio_bytes)
+        mime = {
+            "wav": "audio/wav",
+            "mp3": "audio/mpeg",
+            "mp4": "audio/mp4",
+            "m4a": "audio/mp4",
+            "ogg": "audio/ogg",
+            "webm": "audio/webm",
+            "flac": "audio/flac",
+        }.get(name.rsplit(".", 1)[-1].lower(), "application/octet-stream")
+
+        data: dict[str, str] = {
+            "audio_file_name": name,
+            "use_language_asr_input": sahara_language(language_hint),
+        }
+        if legal:
+            data["use_category"] = "file_category_legal"
+            data["get_legal_court_hearing"] = "TRUE"
+
+        try:
+            async with httpx.AsyncClient(timeout=130) as client:
+                response = await client.post(
+                    SAHARA_SYNC_URL,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    files={"audio_file_blob": (name, audio_bytes, mime)},
+                    data=data,
+                )
+                body = _safe_json(response)
+                if response.status_code == 503:
+                    file_id = _extract_file_id(body)
+                    if not file_id:
+                        return TranscriptionResult(
+                            text="",
+                            raw={"error": "intron_503_without_file_id", "body": body},
+                        )
+                    return await self._poll_status(client, file_id)
+                if response.status_code >= 400:
+                    return TranscriptionResult(
+                        text="",
+                        raw={"error": "intron_http_error", "status": response.status_code, "body": body},
+                    )
+                return _result_from_sahara_payload(body)
+        except Exception as exc:  # noqa: BLE001 — keep product sessions open
+            return TranscriptionResult(text="", raw={"error": "intron_transcription_failed", "detail": str(exc)})
+
+    async def _poll_status(self, client, file_id: str, *, max_attempts: int = 40, delay_s: float = 3.0) -> TranscriptionResult:
+        for _ in range(max_attempts):
+            response = await client.get(
+                f"{SAHARA_STATUS_URL}/{file_id}",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                params={"get_structured_post_processing": "t"},
+            )
+            body = _safe_json(response)
+            data = body.get("data") if isinstance(body, dict) else None
+            status = (data or {}).get("processing_status") if isinstance(data, dict) else None
+            if status == "FILE_TRANSCRIBED":
+                return _result_from_sahara_payload(body)
+            if status == "FILE_PROCESSING_FAILED":
+                return TranscriptionResult(text="", raw={"error": "intron_processing_failed", "body": body})
+            await asyncio.sleep(delay_s)
+        return TranscriptionResult(text="", raw={"error": "intron_poll_timeout", "file_id": file_id})
+
+
+def _safe_json(response) -> dict:
+    try:
+        body = response.json()
+        return body if isinstance(body, dict) else {"raw": body}
+    except Exception:  # noqa: BLE001
+        return {"raw_text": (response.text or "")[:500]}
+
+
+def _extract_file_id(body: dict) -> Optional[str]:
+    data = body.get("data") if isinstance(body, dict) else None
+    if isinstance(data, dict) and data.get("file_id"):
+        return str(data["file_id"])
+    if body.get("file_id"):
+        return str(body["file_id"])
+    return None
+
+
+def _result_from_sahara_payload(body: dict) -> TranscriptionResult:
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict):
+        data = body if isinstance(body, dict) else {}
+    text = (
+        data.get("audio_transcript")
+        or data.get("legal_court_hearing")
+        or data.get("transcript")
+        or data.get("text")
+        or ""
+    )
+    if isinstance(text, dict):
+        text = text.get("text") or text.get("transcript") or str(text)
+    raw = dict(body) if isinstance(body, dict) else {"body": body}
+    raw["provider"] = "sahara"
+    return TranscriptionResult(text=str(text).strip(), raw=raw)
 
 
 class UnavailableProvider(TranscriptionProvider):
@@ -174,5 +335,5 @@ def get_provider() -> TranscriptionProvider:
     if name == "openai":
         return OpenAIWhisperProvider() if os.environ.get("OPENAI_API_KEY") else UnavailableProvider()
     if name == "intron":
-        return IntronVoiceProvider()
+        return IntronVoiceProvider() if intron_configured() else UnavailableProvider()
     raise ValueError(f"Unknown ASR_PROVIDER: {name}")

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.models.schemas import (
     FlagCreate,
@@ -14,7 +14,7 @@ from app.models.schemas import (
     SpeakerRelabelRequest,
     TranscriptSegment,
 )
-from app.services import demo_library, storage
+from app.services import demo_library, storage, transcription
 
 router = APIRouter()
 
@@ -37,6 +37,81 @@ def get_session(session_id: uuid.UUID):
     if detail is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return detail
+
+
+@router.post("/{session_id}/asr/finalize", response_model=SessionDetail)
+async def finalize_asr_with_sahara(
+    session_id: uuid.UUID,
+    audio: UploadFile = File(..., description="Full mic recording (WebM/WAV/…) for Sahara refine"),
+):
+    """Replace live Whisper captions with Intron Sahara (legal court-hearing mode).
+
+    Used when language_hint is code-switch or multilingual and Intron is connected.
+    Default live ASR remains unchanged — this is an additive post-Stop pass.
+    """
+    detail = storage.get_session(session_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not transcription.intron_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Intron Sahara is not connected. Add the Intron connector in Settings or set INTRON_API_KEY.",
+        )
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+    # Soft guidance for Sahara sync ≤120s — refuse obviously huge uploads (~3MB/min webm ballpark × 3).
+    if len(audio_bytes) > 12_000_000:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio is too large for Sahara sync (keep recordings under ~90 seconds).",
+        )
+
+    filename = audio.filename or transcription.chunk_filename(audio_bytes)
+    provider = transcription.IntronVoiceProvider()
+    result = await provider.transcribe_file(
+        audio_bytes,
+        filename=filename,
+        language_hint=detail.language_hint,
+        legal=True,
+    )
+    if not (result.text or "").strip():
+        err = (result.raw or {}).get("error") if isinstance(result.raw, dict) else None
+        raise HTTPException(
+            status_code=502,
+            detail=f"Sahara returned no transcript{f' ({err})' if err else ''}. Live captions were kept.",
+        )
+
+    # Split on blank lines / sentence-ish breaks so speaker UI still has rows to label.
+    chunks = [part.strip() for part in result.text.replace("\r\n", "\n").split("\n") if part.strip()]
+    if not chunks:
+        chunks = [result.text.strip()]
+
+    # Estimate duration from prior live segments when available.
+    prior = storage.get_transcript(session_id)
+    total_ms = prior[-1].end_ms if prior else max(3000, len(chunks) * 4000)
+    slice_ms = max(1000, total_ms // len(chunks))
+
+    segments: list[TranscriptSegment] = []
+    for index, text in enumerate(chunks):
+        start_ms = index * slice_ms
+        segments.append(
+            TranscriptSegment(
+                session_id=session_id,
+                speaker="Speaker 1",
+                text=text,
+                start_ms=start_ms,
+                end_ms=start_ms + slice_ms,
+                confidence=result.confidence,
+                source_raw={**(result.raw if isinstance(result.raw, dict) else {"raw": result.raw}), "provider": "sahara"},
+            )
+        )
+    storage.replace_transcript(session_id, segments)
+    refreshed = storage.get_session(session_id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return refreshed
 
 
 @router.post("/{session_id}/finalize", response_model=Session)

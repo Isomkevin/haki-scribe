@@ -1,0 +1,12 @@
+{
+  "clip_id": "clip_06",
+  "language_pair": "en-sw",
+  "domain": "legal-multilingual-african",
+  "accent_country": "KE",
+  "device_type": "laptop-mic",
+  "noise_conditions": "quiet-office",
+  "reference_transcript_path": "clip_06.reference.txt",
+  "audio_file": "clip_06.webm",
+  "language_hint": "multilingual",
+  "key_terms": ["Sahara", "code-switch", "HakiScribe", "Action Tray"]
+}

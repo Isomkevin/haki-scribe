@@ -98,6 +98,7 @@ async def health():
         "storage": {"database": db.status(), "documents": object_store.status()},
         "integrations": {
             "openrouter": bool(integrations.get_creds("openrouter")),
+            "intron": bool(integrations.get_creds("intron")),
             "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")),
             "exa": bool(os.environ.get("EXA_API_KEY")),
             "ambiguous": bool(os.environ.get("AMBIGUOUS_API_KEY")),

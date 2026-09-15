@@ -116,6 +116,15 @@ def append_segment(session_id: uuid.UUID, segment: TranscriptSegment) -> None:
     _persist()
 
 
+def replace_transcript(session_id: uuid.UUID, segments: list[TranscriptSegment]) -> list[TranscriptSegment]:
+    """Replace live captions with a full-file ASR result (e.g. Sahara refine)."""
+    if session_id not in _sessions:
+        return []
+    _transcripts[session_id] = list(segments)
+    _persist()
+    return _transcripts[session_id]
+
+
 def get_transcript(session_id: uuid.UUID) -> list[TranscriptSegment]:
     return _transcripts.get(session_id, [])
 

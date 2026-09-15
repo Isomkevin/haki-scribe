@@ -13,9 +13,14 @@ export const PRACTICE_ROLES = [
 
 export const LANGUAGE_OPTIONS = [
   { id: "code-switch", label: "English + Kiswahili" },
+  { id: "multilingual", label: "Multilingual / African code-switch (Sahara)" },
   { id: "en", label: "English" },
   { id: "sw", label: "Kiswahili" },
 ] as const;
+
+export function usesSaharaRefine(languageHint: string | null | undefined): boolean {
+  return languageHint === "code-switch" || languageHint === "multilingual";
+}
 
 export interface WorkspaceProfile {
   displayName: string;
