@@ -1,11 +1,12 @@
 # HakiScribe — Build Spec
 
 > **Status (2026-09):** Core pipeline, Action Tray, Omi Miniapp, connectors,
-> research/news, and workspace sign-in are implemented. Public `/` is a
-> landing page; private work lives under `/login`, `/new`, `/sessions/…`,
-> `/tracker`, `/research`, and `/settings`. Trigger.dev tasks live at the
-> **repo root** (`src/trigger/`). For day-to-day setup see
-> [`README.md`](./README.md), [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md),
+> research/news, workspace sign-in, and Intron Sahara refine/benchmarking
+> are implemented. Public `/` is a landing page; private work lives under
+> `/login`, `/new`, `/sessions/…`, `/tracker`, `/research`, and `/settings`.
+> Trigger.dev tasks live at the **repo root** (`src/trigger/`). Storage is
+> memory + JSON by default (`DATABASE_URL` optional). For day-to-day setup
+> see [`README.md`](./README.md), [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md),
 > and [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md).
 > This file remains the architecture / API contract reference.
 
@@ -33,19 +34,19 @@ reach the model, and speaker attribution needs to be a real name, not
 "Speaker 1" — because this record might matter evidentially. Sections 3
 and 5 below build those constraints in rather than bolting them on.
 
-**Targets:** AI Tinkerers Nairobi "Agents, Everywhere" hackathon (today) —
-built to the actual brief: agents that show up where people already
-work, not another standalone chat window. HakiScribe's home base is
-literally in the room (the Omi wearable), and its output lands in real
-tools (Ambiguous AI's Docs, Calendar, CRM) rather than a bespoke
-dashboard. Also targets a planned entry into the Sahara CodeSwitch
-Africa Challenge (Intron Voice AI), Legal & Public Services track — so
-the transcription layer should be swappable, not hard-wired to one ASR
-vendor.
+**Targets:** AI Tinkerers Nairobi "Agents, Everywhere" — agents that show
+up where people already work, not another standalone chat window.
+HakiScribe's home base is literally in the room (phone mic or Omi
+wearable), and its output lands in real tools (Ambiguous AI's Docs,
+Calendar, CRM, connected Drive/Dropbox/OneDrive) rather than a bespoke
+dashboard. Also entered for the Sahara CodeSwitch Africa Challenge
+(Intron Sahara), Legal & Public Services track — the transcription layer
+is swappable (`ASR_PROVIDER` + connector keys), not hard-wired to one ASR
+vendor. See [`submission/`](./submission/README.md).
 
 ---
 
-## 1. Scope for today
+## 1. Scope
 
 Two audio paths into one pipeline:
 
@@ -69,16 +70,17 @@ transcript.
 ```
 ┌─────────────┐        ┌──────────────────┐
 │  Mic client │──WS───▶│                  │
-│ (browser)   │        │                  │      ┌───────────────┐
-└─────────────┘        │   FastAPI        │─────▶│ Supabase (meta │
-                        │   backend        │      │ + auth)        │
-┌─────────────┐        │                  │      └───────────────┘
-│ Omi webhook │──HTTP─▶│  - session mgr   │
-│ (their cloud)│       │  - ASR provider  │      ┌───────────────┐
-└─────────────┘        │    abstraction   │─────▶│ Cloudflare R2  │
-                        │  - speaker relabel│     │ (audio blobs,  │
-                        │  - redaction      │     │  EU region)    │
-                        │  - matter registry│     └───────────────┘
+│ (browser)   │        │                  │      ┌─────────────────┐
+└─────────────┘        │   FastAPI        │─────▶│ Store            │
+                        │   backend        │      │ memory + JSON    │
+┌─────────────┐        │                  │      │ or DATABASE_URL  │
+│ Omi webhook │──HTTP─▶│  - session mgr   │      │ (Postgres)       │
+│ (their cloud)│       │  - ASR provider  │      └─────────────────┘
+└─────────────┘        │    abstraction   │
+                        │  - speaker relabel│     ┌─────────────────┐
+                        │  - redaction      │────▶│ Optional S3      │
+                        │  - matter registry│     │ (draft archive)  │
+                        │  - workspace auth │     └─────────────────┘
                         └────────┬─────────┘
                                  │
                      trigger-and-wait (Trigger.dev, falls back to
@@ -119,16 +121,22 @@ No document type is chosen up front. The UI's job is showing the tray
 and letting the user pick, not routing them through a template picker.
 
 - **Backend:** FastAPI (matches HakiChain's existing microservice stack),
-  so it slots into the same AWS deployment later.
-- **ASR provider abstraction:** one interface, multiple backends —
-  Whisper (via Groq or OpenAI, fast + good multilingual baseline) today,
-  Intron Voice AI as a swap-in for the CodeSwitch challenge. Never call
-  a specific vendor SDK outside of `app/services/transcription.py`.
-- **Storage:** session/transcript/matter metadata in Supabase (already
-  in use for HakiChain auth); raw audio blobs in Cloudflare R2 (EU
-  region, already the ODPC-aligned choice for HakiChain).
-- **Frontend:** built separately in Lovable, mobile-first. A prompt for
-  that build comes once this backend contract is settled.
+  so it slots into the same AWS deployment later. Deployed today via
+  Render Blueprint (`render.yaml`).
+- **ASR provider abstraction:** one interface, multiple backends in
+  `app/services/transcription.py` — OpenRouter Whisper (default),
+  OpenAI Whisper, Groq Whisper, and **Intron Sahara** (`ASR_PROVIDER=intron`
+  or connector / `INTRON_API_KEY` for multilingual Stop refine). Never call
+  a specific vendor SDK outside that module.
+- **Storage:** session/transcript/matter metadata in-process with a local
+  JSON file by default; set `DATABASE_URL` for durable Postgres (Supabase,
+  Neon, Render Postgres, etc.). Optional `S3_BUCKET` archives drafted
+  documents. Auth is `HAKISCRIBE_USERS` + signed bearer tokens — not
+  Supabase Auth. Cloudflare R2 remains a possible future blob store for
+  HakiChain alignment; it is not wired in this repo.
+- **Frontend:** TanStack Start app in this repo (Lovable-connected),
+  mobile-first. Public `/` landing; private `/login`, `/new`,
+  `/sessions/$sessionId`, `/tracker`, `/research`, `/settings`.
 
 ## 3. Data model
 
@@ -220,22 +228,26 @@ from this table since Lovable never calls them directly.
 **Order matters for one flow:** relabel speakers and apply redactions
 *before* calling `/detect` — both feed directly into the prompt.
 
-## 5. Build order
+## 5. Build status (implemented)
 
-1. **Data model + Supabase tables** — `Session`, `TranscriptSegment`,
-   `DetectedAction`, `FlaggedMoment`, `Matter`.
-2. **`/sessions` CRUD + `GET /sessions/{id}`** — nothing works without this.
-3. **Omi webhook path first** — easiest end-to-end demo (no live audio).
-4. **Speaker relabel + redaction endpoints** — small, high-leverage,
-   needed before detection is trustworthy.
-5. **Mic WebSocket path + no-look Flag button** — chunked audio in,
-   Whisper out, partial segments back; flags recorded as they happen.
-6. **Detection pass** (`/detect`) — the core of the product. Feed it
-   flags and known matters from the start, not as an afterthought.
-7. **Generation pass** (`/generate`) — draft_document, private_note,
-   calendar_event, and time_entry are fully real; workspace_matter
-   creates or links a real `Matter`; crm_entry stays stubbed.
-8. **Lovable frontend** — once 1–7 are stable, generate the prompt for it.
+The original hackathon build order is complete:
+
+1. **Data model + store** — `Session`, `TranscriptSegment`,
+   `DetectedAction`, `FlaggedMoment`, `Matter` (memory/JSON or
+   `DATABASE_URL`).
+2. **`/sessions` CRUD + `GET /sessions/{id}`**
+3. **Omi webhook + Miniapp uid pairing**
+4. **Speaker relabel + redaction endpoints**
+5. **Mic WebSocket path + no-look Flag**
+6. **Detection pass** (`/detect`) — flags, matters, optional Exa enrichment
+7. **Generation pass** (`/generate`) — draft/note/calendar/time real;
+   workspace_matter creates or links; crm_entry best-effort Ambiguous
+8. **Frontend** — landing / login split, Action Tray, tracker, research,
+   settings/connectors, judge demo
+9. **Intron Sahara** — connector + legal refine + benchmarking packet
+
+Remaining gaps are listed in §6 (non-goals) and [`roadmap.md`](./roadmap.md)
+external setup (OAuth app credentials, production auth secrets).
 
 ## 6. Explicit non-goals for now
 
@@ -266,6 +278,9 @@ automatically as keys are added.
   (`openai/whisper-large-v3` via `/api/v1/audio/transcriptions` in
   `transcription.py`), so live captions share the same key. Direct
   OpenAI or Groq Whisper remain available by switching `ASR_PROVIDER`.
+  **Intron Sahara** is implemented in the same module (`IntronVoiceProvider`):
+  use as primary ASR (`ASR_PROVIDER=intron`) or as multilingual Stop
+  refine via connector / `INTRON_API_KEY` (see `submission/`).
 - **Ambiguous AI** (`app/integrations/ambiguous_client.py`) — real REST
   calls into a live Ambiguous workspace: `POST /api/documents` for
   draft_document, `POST /api/calendar/events` for calendar_event,
@@ -303,14 +318,12 @@ automatically as keys are added.
   Gemini via Vertex OAuth; Anthropic / OpenAI via verified API keys.
   See `docs/CONNECTOR_OAUTH_SETUP.md`.
 
-## 9. Open decisions you'll need to make live
+## 9. Open decisions
 
-- Which Whisper endpoint (OpenAI's is the default for sponsor alignment
-  and code-switched Swahili/English accuracy; Groq's is faster and
-  cheaper if latency matters more during the live demo).
+- Whether live captions should stay on OpenRouter Whisper (default) or
+  switch to Groq for lower latency / Intron for code-switch-first demos.
 - How aggressively to pre-check `time_entry` actions by default — some
   lawyers want every session auto-logged, others want to opt in every time.
-- Whether to actually deploy the Trigger.dev tasks for the demo (needs a
-  publicly reachable backend URL) or rely on the in-process fallback —
-  the fallback is functionally identical, just without the dashboard
-  observability and automatic retries.
+- Whether to run Trigger.dev cloud for a given demo (needs a publicly
+  reachable `BACKEND_INTERNAL_URL`) or rely on the in-process fallback —
+  functionally identical, without the dashboard and automatic retries.

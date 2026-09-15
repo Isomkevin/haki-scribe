@@ -76,6 +76,7 @@ Scope today: one shared workspace for all signed-in users (not per-lawyer vaults
 | Exa | Citation crawl, web search, company lookup, news monitors (`/news/watch`, `/webhooks/exa`) | Research cards and news desk stay empty; pipeline still completes |
 | Google / Dropbox / Microsoft | OAuth connectors (`/integrations/oauth/…`) | Cards show "not configured"; exports stay local / Ambiguous-only |
 | Gemini (Vertex) | OAuth via same Google client (`gemini_oauth`) | Use key-based Gemini or skip |
+| Intron Sahara | Code-switch ASR + legal refine (`transcription.py::IntronVoiceProvider`) | Default stays OpenRouter Whisper; multilingual Stop skips Sahara refine |
 
 See `trigger/README.md` (and the repo-root Trigger worker) for deploying
 Trigger.dev tasks — they need a **publicly reachable** `BACKEND_INTERNAL_URL`,
@@ -108,13 +109,35 @@ session — no pasting a per-session webhook URL.
 Linked Miniapp posts do not require `x-omi-secret`; the secret remains optional
 hardening for paste-URL pairing when the header is present.
 
-## What's stubbed and needs real wiring before it's more than a demo
+## Intron Sahara (code-switch / legal refine)
 
-- `app/services/storage.py` — in-memory by default; set `DATABASE_URL` for Postgres, or swap for Supabase-backed storage later.
-- `app/integrations/ambiguous_client.create_contact` — best-effort route (`/api/crm/contacts`); confirm the exact path against Ambiguous's live API reference.
-- `app/routers/omi_webhook.py` — Miniapp uid + legacy UUID pairing are wired; confirm payload field names against Omi’s latest docs if a shape drifts.
-- `app/services/storage.py::find_matter_by_client` — simple substring match; fine for a demo, not production matching.
-- `app/services/transcription.py::IntronVoiceProvider` — not implemented; needed only for the CodeSwitch Africa Challenge submission.
+`IntronVoiceProvider` in `app/services/transcription.py` is implemented against
+Sahara sync + status polling. Use it in either of two ways:
+
+1. **Workspace key** — set `INTRON_API_KEY` (or link Intron under
+   **Settings → Connectors**). Multilingual / `code-switch` sessions call
+   Sahara legal court-hearing mode on Stop to refine the transcript.
+2. **Primary ASR** — set `ASR_PROVIDER=intron` so live chunks also go through
+   Sahara (higher latency; default product path remains OpenRouter Whisper).
+
+Challenge packet, responsible-AI notes, and demo script:
+[`../submission/README.md`](../submission/README.md). Benchmark harness:
+[`benchmarking/README.md`](./benchmarking/README.md).
+
+## What's still demo-grade (not production)
+
+- `app/services/storage.py` — in-memory + local JSON by default; set
+  `DATABASE_URL` for Postgres. Optional `S3_BUCKET` archives drafted
+  documents. Supabase can host Postgres via `DATABASE_URL` but is not the
+  default store or auth layer.
+- `app/integrations/ambiguous_client.create_contact` — best-effort route
+  (`/api/crm/contacts`); confirm the exact path against Ambiguous's live API
+  reference.
+- `app/routers/omi_webhook.py` — Miniapp uid + legacy UUID pairing are wired;
+  confirm payload field names against Omi’s latest docs if a shape drifts.
+- `app/services/storage.py::find_matter_by_client` — simple substring match;
+  fine for a demo, not production matching.
 - Auth is shared-workspace only — no per-lawyer session isolation yet.
 
-See `SPEC.md` for the full architecture and rationale — hand that file to whichever AI coding agent you're driving this with, it's written to be agent-agnostic.
+See [`../SPEC.md`](../SPEC.md) for the full architecture and API contract —
+written to be agent-agnostic.

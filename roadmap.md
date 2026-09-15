@@ -16,5 +16,4 @@
 
 - [x] Set `VITE_API_BASE_URL` to the deployed FastAPI URL (`https://hakiscribe-backend.onrender.com`).
 - [ ] Register the OAuth apps and add their credentials on Render (`GOOGLE_OAUTH_CLIENT_ID`/`SECRET`, `DROPBOX_APP_KEY`/`SECRET`, `MICROSOFT_CLIENT_ID`/`SECRET`), using the callback `https://hakiscribe-backend.onrender.com/integrations/oauth/{provider}/callback`. Guide: [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md). Blocked: only you can create those apps.
-- [ ] Deploy the updated backend to Render so the connector sign-in endpoints exist. Blocked: deployment happens from your Render account.
-- [ ] Add `AUTH_SECRET` and your real `HAKISCRIBE_USERS` accounts on Render, and set `DEMO_LOGIN_ENABLED=false` before any real client work. Blocked: only you can choose those accounts.
+- [ ] Confirm Render is on the latest commit that includes connector + auth routes, and that `AUTH_SECRET` / `HAKISCRIBE_USERS` (and optionally `DEMO_LOGIN_ENABLED=false`) are set for production. Blocked: Render dashboard access.

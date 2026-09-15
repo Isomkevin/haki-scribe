@@ -6,7 +6,7 @@ A legal work agent for the rooms where justice is spoken — client meetings, ch
 
 Built for [AI Tinkerers Nairobi — Agents, Everywhere](https://nairobi.aitinkerers.org/). Built for lawyers, judges, and clerks. Built as the listening instrument of [HakiChain](https://hakichain.com).
 
-[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Roadmap](./roadmap.md)
+[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Sahara CodeSwitch](./submission/README.md) · [Architecture / SPEC](./SPEC.md) · [Roadmap](./roadmap.md)
 
 ---
 
@@ -141,15 +141,15 @@ Private routes use `RequireAuth`. Signed-out visits go to `/login?next=…` and 
 | Layer | What we use |
 |---|---|
 | Frontend | React 19, TanStack Start, Vite, Tailwind CSS — mobile-first, built in Lovable |
-| Backend | FastAPI, WebSockets; in-memory by default, optional `DATABASE_URL` (Postgres) |
+| Backend | FastAPI, WebSockets; in-memory + local JSON by default, optional `DATABASE_URL` (Postgres), optional S3 draft archive |
 | Capture | Browser MediaRecorder → `/sessions/{id}/stream`, or Omi Miniapp / legacy webhook |
-| Speech | OpenRouter speech-to-text (`openai/whisper-large-v3`); optional OpenAI or Groq Whisper |
+| Speech | OpenRouter Whisper (`openai/whisper-large-v3`) by default; optional OpenAI / Groq Whisper; **Intron Sahara** for code-switch / legal refine (`ASR_PROVIDER=intron` or Settings → Connectors) |
 | Agent | OpenRouter → OpenAI GPT-4o for detection and drafting |
 | Durability | Trigger.dev at repo root (`src/trigger/`) — `detect-actions`, `generate-actions`, `research-actions` |
 | Enrichment | Exa company search, citation crawl, and news monitors — context only, never drafted as fact |
-| Connectors | Google Drive / Calendar, Dropbox, OneDrive (OAuth); Gemini (Vertex OAuth); Anthropic / OpenAI (verified keys) |
+| Connectors | Google Drive / Calendar, Dropbox, OneDrive (OAuth); Gemini (Vertex OAuth); Anthropic / OpenAI / Intron (verified keys) |
 | Delivery | Ambiguous AI Docs, Calendar, CRM, and Chat review notifications; WhatsApp handoff for review |
-| Auth | Server accounts + signed browser token (`POST /auth/login`) |
+| Auth | Server accounts + signed browser token (`POST /auth/login`) — not Supabase Auth |
 | Deploy | Render Blueprint (`render.yaml`) — binds `0.0.0.0:$PORT` |
 
 ---
@@ -166,6 +166,7 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 | **Exa** | Counterparty lookup on Action Tray cards; research / citation crawl; news monitors. |
 | **Ambiguous AI** | Real Docs, Calendar events, CRM deals/contacts, and a Chat ping when a draft is ready for a human — never auto-sent. |
 | **Omi** | Wearable Miniapp (uid pairing) or legacy per-session webhook. |
+| **Intron Sahara** | African code-switching ASR + legal court-hearing refine on multilingual Stop; Settings connector or `INTRON_API_KEY`. See [`submission/`](./submission/README.md). |
 | **AI Tinkerers** | Built for the Nairobi *Agents, Everywhere* brief: agents that show up where people already work. |
 
 ---
@@ -222,6 +223,20 @@ Do **not** put secrets in the committed `.env` — Lovable publishes that file. 
 Deploy the API with the repo-root [Render Blueprint](https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe). The published Lovable app at [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) reads `VITE_API_BASE_URL` from the repo-root `.env` (`https://hakiscribe-backend.onrender.com`). Republish after changing that value.
 
 Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md). Demo the HTTP path without a microphone via [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md). Architecture and API contract: [`SPEC.md`](./SPEC.md).
+
+### Docs map
+
+| Doc | Use it for |
+|---|---|
+| [`README.md`](./README.md) (this file) | Product story, routes, stack, local run |
+| [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md) | API runbook, auth, Omi Miniapp, demo HTTP path |
+| [`src/routes/README.md`](./src/routes/README.md) | TanStack file-based routing conventions |
+| [`SPEC.md`](./SPEC.md) | Architecture, data model, API contract |
+| [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md) | Google / Dropbox / Microsoft / Gemini OAuth on Render |
+| [`SUBMISSION.md`](./SUBMISSION.md) | AI Tinkerers Nairobi judge path |
+| [`submission/`](./submission/README.md) | Sahara CodeSwitch Africa challenge packet |
+| [`hakiscribe-backend/benchmarking/README.md`](./hakiscribe-backend/benchmarking/README.md) | ASR benchmark harness |
+| [`roadmap.md`](./roadmap.md) | Done checklist + remaining external setup |
 
 ---
 

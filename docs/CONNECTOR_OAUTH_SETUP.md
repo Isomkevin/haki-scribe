@@ -1,14 +1,14 @@
 # Connector OAuth setup guide
 
-This guide walks you through creating the OAuth apps at **Google**, **Dropbox**, and **Microsoft**, and adding their credentials to your Render deployment so that HakiScribe's **Connectors** page can offer real "Sign in with Google / Dropbox / Microsoft" connections and push documents and calendar events to real storage.
+This guide walks you through creating the OAuth apps at **Google**, **Dropbox**, and **Microsoft**, and adding their credentials to your Render deployment so that HakiScribe's **Settings → Connectors** section can offer real "Sign in with Google / Dropbox / Microsoft" connections and push documents and calendar events to real storage.
 
-Each section is self-contained — do them in any order. When you finish a provider, its card on the Connectors page changes from *"not configured on this server"* to a working **Sign in** button.
+Each section is self-contained — do them in any order. When you finish a provider, its card under **Settings → Connectors** changes from *"not configured on this server"* to a working **Sign in** button.
 
 ---
 
 ## What you are setting up
 
-HakiScribe lets a lawyer link their own cloud storage and calendar from the Connectors page. The browser never sees a token: it opens a sign-in popup, the provider redirects back to the backend, and the backend exchanges the code for tokens and stores them server-side. Access tokens are refreshed automatically before each export.
+HakiScribe lets a lawyer link their own cloud storage and calendar from **Settings → Connectors** (`/settings?section=connectors`; `/connectors` redirects there). The browser never sees a token: it opens a sign-in popup, the provider redirects back to the backend, and the backend exchanges the code for tokens and stores them server-side. Access tokens are refreshed automatically before each export.
 
 Four providers use this flow:
 
@@ -223,7 +223,7 @@ Save and deploy.
 
 After setting the variables, deploy the backend on Render (Render → Manual Deploy → Deploy latest commit, or clear build cache if the last deploy failed).
 
-### 4.1 Check the Connectors page
+### 4.1 Check Settings → Connectors
 
 1. Open the published HakiScribe app and **sign in** (private workspace).
 2. Go to **Settings → Connectors** (or open `/settings?section=connectors`; `/connectors` redirects there).

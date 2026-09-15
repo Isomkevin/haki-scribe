@@ -54,6 +54,7 @@ Omi: preferred path is **Settings → Connectors → Omi** (private Miniapp). Le
 | Exa | Counterparty background on tray cards; research / news — never drafted as fact |
 | Ambiguous AI | Docs, Calendar, CRM, Chat ping for human review |
 | Omi | Wearable Miniapp (uid) or legacy transcript webhook |
+| Intron Sahara | Optional code-switch / legal refine + challenge benchmarks (`submission/`) |
 
 Every integration degrades locally if its key is missing. The pipeline still completes.
 
