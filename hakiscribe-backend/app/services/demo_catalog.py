@@ -9,16 +9,55 @@ from __future__ import annotations
 from typing import Any
 
 SHOWCASE_TITLE = "Client meeting — Wanjiru Holdings, defective works at Kilimani site"
+SAHARA_DEMO_TITLE = "Sahara multilingual demo — Milimani court hearing (EN–SW code-switch)"
+
+# All Sahara-seeded demos (primary first). ensure_sahara_demo materializes every title.
+SAHARA_DEMO_TITLES: list[str] = [
+    SAHARA_DEMO_TITLE,
+    "Sahara refine — Wanjiru Holdings site memo (EN–SW)",
+    "Sahara refine — Otieno ELRC chambers note (EN–SW)",
+    "Sahara refine — Coastal Sacco Nyali recovery call (EN–SW)",
+    "Sahara refine — Githunguri succession intake (EN–SW)",
+    "Sahara refine — Karanja Westlands distress briefing (EN–Sheng)",
+]
 
 
-def _seg(speaker: str, text: str, start_s: float, dur_s: float = 6) -> dict:
-    return {
+def _seg(
+    speaker: str,
+    text: str,
+    start_s: float,
+    dur_s: float = 6,
+    *,
+    provider: str | None = None,
+    source_extra: dict[str, Any] | None = None,
+) -> dict:
+    segment: dict[str, Any] = {
         "speaker": speaker,
         "text": text,
         "start_ms": int(start_s * 1000),
         "end_ms": int((start_s + dur_s) * 1000),
         "confidence": 0.94,
     }
+    if provider:
+        raw = {"provider": provider}
+        if source_extra:
+            raw.update(source_extra)
+        segment["source_raw"] = raw
+    return segment
+
+
+def _sahara(
+    speaker: str,
+    text: str,
+    start_s: float,
+    dur_s: float = 6,
+    *,
+    court: bool = False,
+) -> dict:
+    extra: dict[str, Any] = {"mode": "file_category_legal"}
+    if court:
+        extra["get_legal_court_hearing"] = True
+    return _seg(speaker, text, start_s, dur_s, provider="sahara", source_extra=extra)
 
 
 MATTERS: list[dict[str, str]] = [
@@ -29,6 +68,10 @@ MATTERS: list[dict[str, str]] = [
     {"client_name": "Apex Logistics (EA) Limited", "matter_name": "Barclays vs. Apex Logistics — facility default"},
     {"client_name": "Githunguri Family Estate", "matter_name": "Estate of the late Njoroge Kamau — succession"},
     {"client_name": "Karanja & Sons Ltd", "matter_name": "Karanja & Sons v. Riverside Properties — irregular distress"},
+    {
+        "client_name": "Kamau Enterprises Ltd",
+        "matter_name": "Wanjiru Holdings Ltd v. Kamau Enterprises Ltd — lease arrears (Milimani CS 204/2026)",
+    },
 ]
 
 SESSIONS: list[dict[str, Any]] = [
@@ -60,6 +103,23 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": True,
     },
     {
+        "title": "Sahara refine — Wanjiru Holdings site memo (EN–SW)",
+        "source": "omi",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Wanjiru Holdings Ltd",
+        "speakers": {"Speaker 1": "Adv. Naomi Kariuki"},
+        "flags": [{"at_ms": 28000, "label": "Remedial cost — KES 4.2M"}],
+        "segments": [
+            _sahara("Speaker 1", "Voice memo kwa file ya Wanjiru Holdings. After the Kilimani site visit, Eng. Mutiso confirms remedial works at about four point two million shillings.", 0, 12),
+            _sahara("Speaker 1", "Sarova bado haijalipa — they have not answered the demand. Tafadhali draft a follow-up letter giving seven more days before we issue the arbitration notice under clause forty-one.", 12, 14),
+            _sahara("Speaker 1", "Diarise a call with James Wanjiru on Friday at nine. Keep the partner tax discussion off the record — that stays privileged.", 26, 11),
+            _sahara("Speaker 1", "Hii memo inafaa kuingia Action Tray as draft_document and calendar_event.", 37, 7),
+        ],
+        "redact_indexes": [],
+        "generate": True,
+    },
+    {
         "title": "Court proceeding — Employment & Labour Relations Court, Otieno termination",
         "source": "mic",
         "language_hint": "en",
@@ -79,6 +139,30 @@ SESSIONS: list[dict[str, Any]] = [
             _seg("Speaker 2", "Much obliged, my lord.", 71, 3),
         ],
         "redact_indexes": [],
+        "generate": True,
+    },
+    {
+        "title": "Sahara refine — Otieno ELRC chambers note (EN–SW)",
+        "source": "mic",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Achieng' Otieno",
+        "speakers": {"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Achieng' Otieno"},
+        "flags": [{"at_ms": 42000, "label": "Mention — 28 October"}],
+        "segments": [
+            _sahara(
+                "Speaker 1",
+                "Achieng', mahakama imeweka mention on the twenty-eighth of October. The respondent must file a replying affidavit within fourteen days.",
+                0,
+                12,
+                court=True,
+            ),
+            _sahara("Speaker 2", "Je, hiyo ina-mean nini kwa case yangu? Will I get my salary for February and March?", 12, 9),
+            _sahara("Speaker 1", "It means we keep pressure on Bidii Logistics. We will also prepare a supplementary affidavit if they raise the abandonment story again. Nataka ulete payslips and the dismissal letter by Friday.", 21, 14),
+            _sahara("Speaker 2", "Sawa. Also, my sister helped me with school fees — that bit is private, usiiandike kwenye letter.", 35, 9),
+            _sahara("Speaker 1", "Noted, that stays off the record. I will draft a client update letter and diarise the mention.", 44, 9),
+        ],
+        "redact_indexes": [3],
         "generate": True,
     },
     {
@@ -103,6 +187,25 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": False,
     },
     {
+        "title": "Sahara refine — Coastal Sacco Nyali recovery call (EN–SW)",
+        "source": "omi",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Mombasa Coastal Sacco",
+        "speakers": {"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Fatuma Said (CEO, Coastal Sacco)"},
+        "flags": [{"at_ms": 36000, "label": "Section 90 notice — Mwakio"}],
+        "segments": [
+            _sahara("Speaker 2", "Naomi, Mwakio bado hajalipa. Four point eight million is outstanding. Title iko Nyali, LR Mombasa Block Twelve slash three four one.", 0, 12),
+            _sahara("Speaker 1", "Tutaanza na section ninety statutory notice this week. After three months, the forty days' notification before sale. Hapana shortcuts.", 12, 12),
+            _sahara("Speaker 2", "Na Kadzo Traders? Nine hundred thousand, unsecured — tunaweza file plaint Mombasa Magistrate Court?", 24, 9),
+            _sahara("Speaker 1", "Yes. I will open one recovery matter for the portfolio, draft the Mwakio notice, and calendar our review on the twentieth at two p.m.", 33, 12),
+            _sahara("Speaker 2", "Asante. Please keep the board's internal provisioning figure off anything you send outside.", 45, 8),
+            _sahara("Speaker 1", "Understood — that stays privileged. Status note before the meeting.", 53, 7),
+        ],
+        "redact_indexes": [4],
+        "generate": True,
+    },
+    {
         "title": "Intake — new client, land succession dispute in Kiambu",
         "source": "mic",
         "language_hint": "code-switch",
@@ -121,6 +224,25 @@ SESSIONS: list[dict[str, Any]] = [
         ],
         "redact_indexes": [],
         "generate": False,
+    },
+    {
+        "title": "Sahara refine — Githunguri succession intake (EN–SW)",
+        "source": "mic",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Githunguri Family Estate",
+        "speakers": {"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Grace Njeri"},
+        "flags": [{"at_ms": 50000, "label": "Revocation under s.76"}],
+        "segments": [
+            _sahara("Speaker 2", "Dada, brother alichukua grant bila majina yetu. He transferred two acres in Githunguri to himself after baba died in twenty-nineteen.", 0, 13),
+            _sahara("Speaker 1", "Under the Law of Succession Act, a married daughter remains a beneficiary. Sitakuwa na haki is not the law. We can apply to revoke the grant under section seventy-six.", 13, 14),
+            _sahara("Speaker 2", "Mama and my two sisters were also left out. Is it too late?", 27, 7),
+            _sahara("Speaker 1", "Revocation is available where the grant was obtained by concealment, but we must move quickly. Lete death certificate, the grant, and the green card search next week.", 34, 14),
+            _sahara("Speaker 2", "Sawa. One thing — the family meeting about our sister abroad is private, usiiweke kwenye affidavit.", 48, 9),
+            _sahara("Speaker 1", "That stays off the record. I will open a succession matter and draft a first advice letter.", 57, 9),
+        ],
+        "redact_indexes": [4],
+        "generate": True,
     },
     {
         "title": "Case conference — Barclays vs. Apex Logistics, facility default and charge enforcement",
@@ -173,6 +295,25 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": True,
     },
     {
+        "title": "Sahara refine — Karanja Westlands distress briefing (EN–Sheng)",
+        "source": "omi",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Karanja & Sons Ltd",
+        "speakers": {"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Peter Karanja (Director, Karanja & Sons Ltd)"},
+        "flags": [{"at_ms": 40000, "label": "Irregular distress — BPRT"}],
+        "segments": [
+            _sahara("Speaker 2", "Bro, landlord alilock warehouse jana. Stock worth about six million. Hapana notice — only a call from the caretaker.", 0, 11),
+            _sahara("Speaker 1", "Lease ina-require thirty days' notice before distress. Without it, the levy is irregular. Tutaenda Business Premises Rent Tribunal for a reference and interim restoration.", 11, 14),
+            _sahara("Speaker 2", "Arrears ni three months, two point four million — but process ilikuwa wrong. How fast can we move?", 25, 9),
+            _sahara("Speaker 1", "We file this week and seek an interim order within seven days. I will also demand Riverside for the value of goods taken. Meeting twenty-fifth at eleven to sign the affidavit.", 34, 14),
+            _sahara("Speaker 2", "Poa. Keep the conversation about the side cash sale off paper — that one is sensitive.", 48, 8),
+            _sahara("Speaker 1", "Privileged. Bring the lease, rent schedule, and photos of the lock-out.", 56, 8),
+        ],
+        "redact_indexes": [4],
+        "generate": True,
+    },
+    {
         "title": "Court proceeding — Milimani Commercial Court, Riverside Properties injunction application",
         "source": "mic",
         "language_hint": "en",
@@ -193,6 +334,83 @@ SESSIONS: list[dict[str, Any]] = [
             _seg("Speaker 2", "Much obliged, my lady.", 87, 3),
         ],
         "redact_indexes": [],
+        "generate": True,
+    },
+    {
+        "title": SAHARA_DEMO_TITLE,
+        "source": "mic",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Kamau Enterprises Ltd",
+        "speakers": {
+            "Speaker 1": "Hon. Lady Justice Wambui",
+            "Speaker 2": "Adv. Naomi Kariuki",
+            "Speaker 3": "Adv. Peter Ochieng",
+        },
+        "flags": [
+            {"at_ms": 48000, "label": "Arrears quantified — KES 450,000"},
+            {"at_ms": 98000, "label": "Hearing date fixed"},
+        ],
+        "segments": [
+            _sahara(
+                "Speaker 1",
+                "COURT HEARING RECORD — Milimani Commercial Court. Civil Suit number two zero four of twenty twenty-six, Wanjiru Holdings Limited versus Kamau Enterprises Limited. Appearances please.",
+                0,
+                12,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 2",
+                "Kariuki for the plaintiff, my lady. Mheshimiwa, the defendant owes KES four hundred and fifty thousand under the lease agreement signed March twenty twenty-four.",
+                12,
+                14,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 3",
+                "Ochieng for the defendant. My lady, hatutaki kucheleweshwa tena, but we dispute the quantum and seek time to file a replying affidavit.",
+                26,
+                12,
+                court=True,
+            ),
+            _sahara("Speaker 1", "Counsel for the plaintiff, have you issued a formal demand?", 38, 5, court=True),
+            _sahara(
+                "Speaker 2",
+                "Yes, my lady. Demand letter dated the twelfth of August. Hapana response within the fourteen days granted. We request a hearing date within thirty days na amri ya mahakama on interim rent deposit.",
+                43,
+                16,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 1",
+                "The court notes the arrears at KES four hundred and fifty thousand. The defendant shall file and serve a replying affidavit within fourteen days. Mention on the fourteenth of April twenty twenty-six at ten o'clock in the forenoon.",
+                59,
+                16,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 2",
+                "Much obliged, my lady. We will also prepare a draft demand update for the client file and diarise the mention.",
+                75,
+                10,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 3",
+                "Off the record, my instructing client mentioned a side settlement discussion that must not enter the court record.",
+                85,
+                9,
+                court=True,
+            ),
+            _sahara(
+                "Speaker 1",
+                "That exchange stays off the record. Hii ni amri ya mahakama, na inafuata. Court rises.",
+                94,
+                8,
+                court=True,
+            ),
+        ],
+        "redact_indexes": [7],
         "generate": True,
     },
 ]

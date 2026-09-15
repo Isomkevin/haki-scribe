@@ -26,7 +26,21 @@ from app.models.schemas import (
     TranscriptSegment,
 )
 from app.services import action_detector, action_executor, enrichment, storage, trigger_client
-from app.services.demo_catalog import MATTERS, SESSIONS, SHOWCASE_TITLE
+from app.services.demo_catalog import MATTERS, SESSIONS, SHOWCASE_TITLE, SAHARA_DEMO_TITLE
+
+# Re-export for showcase.py and routers
+__all__ = [
+    "SHOWCASE_TITLE",
+    "SAHARA_DEMO_TITLE",
+    "SESSIONS",
+    "MATTERS",
+    "sync_demo_library",
+    "bootstrap_demo_library",
+    "ensure_showcase",
+    "ensure_sahara_demo",
+    "find_session_by_title",
+    "library_items",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +85,7 @@ def _materialize(spec: dict[str, Any]):
             title=spec["title"],
             source=SessionSource(spec["source"]),
             language_hint=spec.get("language_hint"),
+            detected_language=spec.get("detected_language"),
         )
     )
     for raw in spec["segments"]:
@@ -221,6 +236,25 @@ async def ensure_showcase(rebuild: bool = False):
     async with _lock:
         _ensure_matters()
         existing = None if rebuild else find_session_by_title(SHOWCASE_TITLE)
+        if existing is not None and (existing.action_results or existing.detected_actions):
+            if missing_workspace_mirror(existing):
+                await complete_session(existing, generate_results=True)
+                return storage.get_session(existing.id), False
+            return existing, False
+        if existing is None:
+            existing = _materialize(spec)
+        if existing is None:
+            return None, True
+        await complete_session(existing, generate_results=True)
+        return storage.get_session(existing.id), True
+
+
+async def ensure_sahara_demo(rebuild: bool = False):
+    """Completed multilingual court session as if refined by Intron Sahara legal mode."""
+    spec = next(item for item in SESSIONS if item["title"] == SAHARA_DEMO_TITLE)
+    async with _lock:
+        _ensure_matters()
+        existing = None if rebuild else find_session_by_title(SAHARA_DEMO_TITLE)
         if existing is not None and (existing.action_results or existing.detected_actions):
             if missing_workspace_mirror(existing):
                 await complete_session(existing, generate_results=True)

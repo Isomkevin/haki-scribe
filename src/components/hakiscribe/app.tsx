@@ -465,6 +465,17 @@ export function NewSessionPage() {
     },
     onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
+  const saharaDemo = useMutation({
+    mutationFn: hakiApi.ensureSaharaDemo,
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["matters"] });
+      void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      toast.success("Sahara multilingual court demo ready");
+      navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id }, search: { fresh: false } });
+    },
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
+  });
   const syncLibrary = useMutation({
     mutationFn: hakiApi.syncDemoLibrary,
     onSuccess: (result) => {
@@ -592,8 +603,10 @@ export function NewSessionPage() {
                   {create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}
                 </Button>
                 <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
+                <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => saharaDemo.mutate()} disabled={saharaDemo.isPending || !hasApiConfiguration}>{saharaDemo.isPending ? "Building Sahara multilingual demo…" : "Open Sahara multilingual court demo"}</Button>
                 {create.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(create.error, "The session could not be opened. Try again.")}</p>}
                 {showcase.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(showcase.error, "The demo session could not be opened. Try again.")}</p>}
+                {saharaDemo.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(saharaDemo.error, "The Sahara demo could not be opened. Try again.")}</p>}
               </div>
             </div>
           </div>
@@ -646,6 +659,11 @@ function SessionRow({ session }: { session: Session }) {
           {new Date(session.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
           {" · "}
           {session.source === "omi" ? "Omi wearable" : "Microphone"}
+          {session.language_hint === "multilingual" || session.language_hint === "code-switch" || session.detected_language === "code-switch" || session.detected_language === "multilingual"
+            ? " · Sahara / code-switch"
+            : session.language_hint
+              ? ` · ${session.language_hint}`
+              : ""}
         </span>
         {(matterNames.length > 0 || contactNames.length > 0 || (session.generated_types?.length ?? 0) > 0) && (
           <span className="mt-2 flex flex-wrap gap-1.5">

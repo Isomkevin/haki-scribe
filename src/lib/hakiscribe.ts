@@ -488,6 +488,7 @@ export const hakiApi = {
       { method: "POST", body: JSON.stringify({ provider }) },
     ),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
+  ensureSaharaDemo: () => request<SessionDetail>("/demo/sahara", { method: "POST" }),
   syncDemoLibrary: () =>
     request<{ created: number; reused: number; completing: boolean; sessions: Session[] }>("/demo/sync", {
       method: "POST",

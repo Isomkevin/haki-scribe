@@ -2,6 +2,15 @@
 
 Record screen + mic. Use a consented code-switched legal snippet (under 90 seconds).
 
+## 0. Fast path (no mic) — Sahara multilingual seed
+
+1. Private workspace → **New session** screen  
+2. Click **Open Sahara multilingual court demo**  
+3. Walk Action Tray: EN–SW court transcript (seeded as Sahara legal mode) → privilege lock → draft / calendar  
+4. Optional: connect real Intron key and record a live code-switch session for the video
+
+---
+
 ## 1. Connect Intron (15s)
 
 1. Open HakiScribe → **Settings → Connectors**
