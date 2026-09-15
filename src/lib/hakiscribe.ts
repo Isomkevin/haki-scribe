@@ -93,6 +93,7 @@ export interface Session {
   title: string;
   source: SessionSource;
   language_hint: string | null;
+  detected_language?: string | null;
   status: SessionStatus;
   created_at: string;
   updated_at: string;
@@ -430,9 +431,10 @@ export const hakiApi = {
       body: JSON.stringify({ text }),
     }),
   finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
-  finalizeAsr: async (id: string, audio: Blob, filename = "recording.webm") => {
+  finalizeAsr: async (id: string, audio: Blob, filename = "recording.webm", detectedMode?: string | null) => {
     const form = new FormData();
     form.append("audio", audio, filename);
+    if (detectedMode) form.append("detected_mode", detectedMode);
     let response: Response;
     try {
       response = await fetch(apiUrl(`/sessions/${id}/asr/finalize`), {

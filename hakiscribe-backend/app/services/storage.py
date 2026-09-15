@@ -111,6 +111,21 @@ def update_session_status(session_id: uuid.UUID, status) -> Optional[Session]:
     return session
 
 
+def update_session_fields(session_id: uuid.UUID, **fields) -> Optional[Session]:
+    """Patch optional Session fields (e.g. detected_language)."""
+    from datetime import datetime
+
+    session = _sessions.get(session_id)
+    if session is None:
+        return None
+    for key, value in fields.items():
+        if hasattr(session, key):
+            setattr(session, key, value)
+    session.updated_at = datetime.utcnow()
+    _persist()
+    return session
+
+
 def append_segment(session_id: uuid.UUID, segment: TranscriptSegment) -> None:
     _transcripts.setdefault(session_id, []).append(segment)
     _persist()

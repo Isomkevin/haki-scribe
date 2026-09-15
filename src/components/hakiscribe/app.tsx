@@ -85,7 +85,8 @@ import {
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
-import { LANGUAGE_OPTIONS, loadWorkspaceSettings, usesSaharaRefine } from "@/lib/workspace-settings";
+import { LANGUAGE_OPTIONS, loadWorkspaceSettings, shouldAutoSaharaRefine, usesSaharaRefine } from "@/lib/workspace-settings";
+import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
@@ -559,12 +560,17 @@ export function NewSessionPage() {
                     <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
                       Settings → Connectors
                     </Link>
-                    .
+                    . Code-switching is also auto-detected from live captions even if you start in English or Kiswahili.
                   </p>
                 ) : null}
                 {wantsSaharaRefine && intronLinked ? (
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    Intron Sahara is connected — live Whisper captions refine to a legal court-hearing transcript when you Stop (keep recordings under ~90 seconds).
+                    Intron Sahara is connected — live Whisper captions refine to a legal court-hearing transcript when you Stop (keep recordings under ~90 seconds). Mixed English/Kiswahili is also auto-detected mid-session.
+                  </p>
+                ) : null}
+                {!wantsSaharaRefine && intronLinked ? (
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Intron Sahara is connected. If live captions show English–Kiswahili mixing, HakiScribe will refine with Sahara automatically on Stop.
                   </p>
                 ) : null}
                 {source === "omi" && omiLinked ? (
@@ -759,6 +765,13 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
   const [stoppingNow, setStoppingNow] = useState(false);
   const [refiningSahara, setRefiningSahara] = useState(false);
 
+  const languageMix = useMemo(() => {
+    const text = captions.map((line) => line.text).join(" ");
+    return detectLanguageMix(text);
+  }, [captions]);
+  const mixBadge = detectedModeLabel(languageMix.mode);
+  const willAutoRefine = shouldAutoSaharaRefine(session.language_hint, languageMix.mode);
+
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed(Date.now() - startedAt.current), 1000);
     if (session.source === "mic") {
@@ -830,9 +843,10 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
     stream.current?.getTracks().forEach((track) => track.stop());
     try {
       let detail: SessionDetail;
+      const detectedMode = detectLanguageMix(captions.map((line) => line.text).join(" ")).mode;
       const shouldRefine =
         session.source === "mic" &&
-        usesSaharaRefine(session.language_hint) &&
+        shouldAutoSaharaRefine(session.language_hint, detectedMode) &&
         audioChunks.current.length > 0;
       if (shouldRefine) {
         const health = await hakiApi.health().catch(() => null);
@@ -843,8 +857,12 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
             type: audioChunks.current[0]?.type || "audio/webm",
           });
           try {
-            detail = await hakiApi.finalizeAsr(session.id, blob, "recording.webm");
-            toast.success("Transcript refined with Intron Sahara");
+            detail = await hakiApi.finalizeAsr(session.id, blob, "recording.webm", detectedMode);
+            toast.success(
+              detectedMode === "code-switch" || detectedMode === "multilingual"
+                ? "Code-switching detected — transcript refined with Intron Sahara"
+                : "Transcript refined with Intron Sahara",
+            );
           } catch (caught) {
             toast.error(
               friendlyErrorMessage(
@@ -876,9 +894,17 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,oklch(1_0_0/0.08),transparent_42%)]" />
       <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-primary-foreground/15 px-4 py-3 sm:px-8 sm:py-4">
         <span className="font-serif text-xl font-semibold">HakiScribe</span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1 text-xs">
-          <span className="size-2 animate-live-dot rounded-full bg-action" /> Recording
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {mixBadge && willAutoRefine ? (
+            <span className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-full border border-action/40 bg-action/15 px-3 py-1 text-[10px] leading-snug text-primary-foreground sm:max-w-none sm:text-xs">
+              <Globe className="size-3 shrink-0" />
+              <span className="truncate sm:whitespace-normal">{mixBadge}</span>
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1 text-xs">
+            <span className="size-2 animate-live-dot rounded-full bg-action" /> Recording
+          </span>
+        </div>
       </header>
       <main className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-5 sm:px-8 sm:py-8">
         <div className="text-center">

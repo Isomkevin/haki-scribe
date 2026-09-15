@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from typing import Optional
 
 from app.models.schemas import (
     FlagCreate,
@@ -43,12 +44,15 @@ def get_session(session_id: uuid.UUID):
 async def finalize_asr_with_sahara(
     session_id: uuid.UUID,
     audio: UploadFile = File(..., description="Full mic recording (WebM/WAV/…) for Sahara refine"),
+    detected_mode: Optional[str] = Form(None),
 ):
     """Replace live Whisper captions with Intron Sahara (legal court-hearing mode).
 
-    Used when language_hint is code-switch or multilingual and Intron is connected.
-    Default live ASR remains unchanged — this is an additive post-Stop pass.
+    Triggered when language_hint is code-switch/multilingual, or when live captions
+    were auto-detected as code-switched / multilingual. Default live ASR unchanged.
     """
+    from app.services import language_detect
+
     detail = storage.get_session(session_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -56,6 +60,19 @@ async def finalize_asr_with_sahara(
         raise HTTPException(
             status_code=400,
             detail="Intron Sahara is not connected. Add the Intron connector in Settings or set INTRON_API_KEY.",
+        )
+
+    prior = storage.get_transcript(session_id)
+    transcript_text = " ".join(seg.text for seg in prior if (seg.text or "").strip())
+    mix = language_detect.detect_language_mix(transcript_text)
+    mode = (detected_mode or "").strip() or mix.mode
+    if mode in ("code-switch", "multilingual", "en", "sw"):
+        storage.update_session_fields(session_id, detected_language=mode)
+
+    if not language_detect.needs_sahara_refine(detail.language_hint, detected_mode=mode, transcript_text=transcript_text):
+        raise HTTPException(
+            status_code=400,
+            detail="Sahara refine is only used for code-switched or multilingual sessions (explicit or auto-detected).",
         )
 
     audio_bytes = await audio.read()
@@ -69,11 +86,16 @@ async def finalize_asr_with_sahara(
         )
 
     filename = audio.filename or transcription.chunk_filename(audio_bytes)
+    sahara_hint = language_detect.effective_language_hint(
+        detail.language_hint,
+        detected_mode=mode,
+        transcript_text=transcript_text,
+    )
     provider = transcription.IntronVoiceProvider()
     result = await provider.transcribe_file(
         audio_bytes,
         filename=filename,
-        language_hint=detail.language_hint,
+        language_hint=sahara_hint,
         legal=True,
     )
     if not (result.text or "").strip():
@@ -89,7 +111,6 @@ async def finalize_asr_with_sahara(
         chunks = [result.text.strip()]
 
     # Estimate duration from prior live segments when available.
-    prior = storage.get_transcript(session_id)
     total_ms = prior[-1].end_ms if prior else max(3000, len(chunks) * 4000)
     slice_ms = max(1000, total_ms // len(chunks))
 
@@ -104,7 +125,12 @@ async def finalize_asr_with_sahara(
                 start_ms=start_ms,
                 end_ms=start_ms + slice_ms,
                 confidence=result.confidence,
-                source_raw={**(result.raw if isinstance(result.raw, dict) else {"raw": result.raw}), "provider": "sahara"},
+                source_raw={
+                    **(result.raw if isinstance(result.raw, dict) else {"raw": result.raw}),
+                    "provider": "sahara",
+                    "detected_language": mode,
+                    "language_detect_reason": mix.reason,
+                },
             )
         )
     storage.replace_transcript(session_id, segments)

@@ -84,9 +84,22 @@ def intron_configured() -> bool:
     return bool(intron_api_key())
 
 
-def should_refine_with_sahara(language_hint: Optional[str]) -> bool:
-    """Product rule: Sahara refine on Stop for code-switch / multilingual when keyed."""
-    return language_hint in ("code-switch", "multilingual") and intron_configured()
+def should_refine_with_sahara(
+    language_hint: Optional[str],
+    *,
+    detected_mode: Optional[str] = None,
+    transcript_text: Optional[str] = None,
+) -> bool:
+    """Sahara refine when user opted in or captions look code-switched / multilingual."""
+    if not intron_configured():
+        return False
+    from app.services.language_detect import needs_sahara_refine
+
+    return needs_sahara_refine(
+        language_hint,
+        detected_mode=detected_mode,
+        transcript_text=transcript_text,
+    )
 
 
 class TranscriptionProvider(ABC):

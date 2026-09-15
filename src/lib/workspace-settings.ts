@@ -22,6 +22,14 @@ export function usesSaharaRefine(languageHint: string | null | undefined): boole
   return languageHint === "code-switch" || languageHint === "multilingual";
 }
 
+/** Explicit opt-in or auto-detected code-switch / multilingual captions. */
+export function shouldAutoSaharaRefine(
+  languageHint: string | null | undefined,
+  detectedMode: string | null | undefined,
+): boolean {
+  return usesSaharaRefine(languageHint) || detectedMode === "code-switch" || detectedMode === "multilingual";
+}
+
 export interface WorkspaceProfile {
   displayName: string;
   practiceName: string;

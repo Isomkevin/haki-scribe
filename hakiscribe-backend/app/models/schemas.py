@@ -29,6 +29,8 @@ class Session(BaseModel):
     title: str
     source: SessionSource
     language_hint: Optional[str] = None
+    # Set when live captions look code-switched / multilingual (heuristic LID).
+    detected_language: Optional[str] = None
     status: SessionStatus = SessionStatus.recording
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
