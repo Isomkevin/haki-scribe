@@ -78,9 +78,14 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       window.location.assign(target);
     },
     onError: (err: Error) => {
-      const message = friendlyErrorMessage(err, "That email and password did not match an account.");
+      const message = friendlyErrorMessage(
+        err,
+        "That email and password did not match an account.",
+      );
       const waking =
-        /couldn’t connect|could not connect|unreachable|timed out|timeout|failed to fetch/i.test(message);
+        /couldn’t connect|could not connect|unreachable|timed out|timeout|failed to fetch/i.test(
+          message,
+        );
       setError(
         waking
           ? `${message} If this is your first visit, the workspace may still be waking up — wait a moment and try again.`
@@ -107,7 +112,8 @@ export function LoginPage({ next }: { next?: string | undefined }) {
   const demoDisabledByServer = demo.isSuccess && demo.data?.enabled === false;
   const showDemoPanel = hasApiConfiguration && !demoDisabledByServer;
   const demoReady = Boolean(resolveDemoCredentials(demo.data));
-  const demoWaking = showDemoPanel && (demo.isLoading || demo.isFetching || demo.isError || slowWake);
+  const demoWaking =
+    showDemoPanel && (demo.isLoading || demo.isFetching || demo.isError || slowWake);
   const demoCanSubmit = demoReady && !login.isPending;
 
   return (
@@ -153,15 +159,21 @@ export function LoginPage({ next }: { next?: string | undefined }) {
               </p>
               <h2 className="mt-3 font-serif text-2xl font-semibold leading-[1.12] tracking-tight sm:text-3xl lg:text-5xl">
                 Capture what matters.{" "}
-                <em className="italic text-intelligence-accent">Leave with work ready.</em>
+                <em className="italic text-intelligence-accent">
+                  Leave with your Legal work ready.
+                </em>
               </h2>
               <p className="mt-3 max-w-md text-sm leading-6 text-intelligence-muted sm:mt-4 sm:text-base sm:leading-7">
-                Sign in to open sessions, verify the record, protect privilege, and choose the source-traceable work HakiScribe prepares.
+                Sign in to open sessions, verify the record, protect privilege, and choose the
+                source-traceable work HakiScribe prepares.
               </p>
 
               <ul className="mt-5 space-y-2.5 sm:mt-7 sm:space-y-3">
                 {trustPoints.map((point) => (
-                  <li key={point} className="flex items-start gap-3 text-sm leading-6 text-intelligence-foreground/90">
+                  <li
+                    key={point}
+                    className="flex items-start gap-3 text-sm leading-6 text-intelligence-foreground/90"
+                  >
                     <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-intelligence-accent/15 text-intelligence-accent">
                       <Check className="size-3" strokeWidth={2.5} />
                     </span>
@@ -224,7 +236,10 @@ export function LoginPage({ next }: { next?: string | undefined }) {
               <div className="h-1 bg-gradient-to-r from-primary via-action to-primary" />
               <div className="space-y-5 p-5 sm:p-6">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <Label
+                    htmlFor="login-email"
+                    className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                  >
                     Email
                   </Label>
                   <Input
@@ -244,7 +259,10 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <Label
+                    htmlFor="login-password"
+                    className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                  >
                     Password
                   </Label>
                   <Input
@@ -331,7 +349,10 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                         onClick={() => void demo.refetch()}
                         disabled={demo.isFetching}
                       >
-                        <RefreshCw className={demo.isFetching ? "size-3.5 animate-spin" : "size-3.5"} aria-hidden />
+                        <RefreshCw
+                          className={demo.isFetching ? "size-3.5 animate-spin" : "size-3.5"}
+                          aria-hidden
+                        />
                         Retry connection
                       </Button>
                     )}
@@ -343,7 +364,8 @@ export function LoginPage({ next }: { next?: string | undefined }) {
             <div className="mt-6 space-y-3">
               <TrustLine className="rounded-full border border-border bg-card/80 px-3 py-1.5" />
               <p className="text-xs leading-5 text-muted-foreground">
-                Need a practice account? Ask your HakiChain administrator — this workspace is invite-only.
+                Need a practice account? Ask your HakiChain administrator — this workspace is
+                invite-only.
               </p>
             </div>
           </div>
