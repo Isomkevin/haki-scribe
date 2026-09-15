@@ -36,7 +36,7 @@ async def detect_actions(session_id: uuid.UUID, force: bool = Query(default=Fals
         "session_title": detail.title,
     }
 
-    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload)
+    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload, timeout_s=180.0)
     if trigger_output is not None:
         actions = [DetectedAction(**a) for a in trigger_output]
     else:

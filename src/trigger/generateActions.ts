@@ -12,19 +12,26 @@ export const generateActions = task({
   id: "generate-actions",
   // Research and model passes can take minutes — don't cut them short.
   maxDuration: 600,
+  retry: {
+    maxAttempts: 3,
+  },
   run: async (payload: GenerateActionsPayload) => {
     const backendUrl = process.env['BACKEND_INTERNAL_URL'];
     if (!backendUrl) {
       throw new Error("BACKEND_INTERNAL_URL is not set");
+    }
+    if (!process.env['BACKEND_INTERNAL_SECRET']) {
+      throw new Error("BACKEND_INTERNAL_SECRET is not set");
     }
 
     const response = await fetch(`${backendUrl}/internal/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Internal-Secret": process.env['BACKEND_INTERNAL_SECRET'] ?? "",
+        "X-Internal-Secret": process.env['BACKEND_INTERNAL_SECRET'],
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(580_000),
     });
 
     if (!response.ok) {

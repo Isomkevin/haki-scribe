@@ -124,7 +124,7 @@ async def detect(detail):
         "known_matters": [matter.model_dump(mode="json") for matter in storage.list_matters()],
         "session_title": detail.title,
     }
-    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload)
+    trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload, timeout_s=180.0)
     if trigger_output is not None:
         return [DetectedAction(**item) for item in trigger_output]
     return await action_detector.detect_actions(
