@@ -2,12 +2,18 @@
 
 Record screen + mic. Use a consented code-switched legal snippet (under 90 seconds).
 
-## 0. Fast path (no mic) — Sahara multilingual seed
+## 0. Fast path (no mic) — multilingual seeds
 
 1. Private workspace → **New session** screen  
-2. Click **Open Sahara multilingual court demo**  
-3. Walk Action Tray: EN–SW court transcript (seeded as Sahara legal mode) → privilege lock → draft / calendar  
-4. Optional: connect real Intron key and record a live code-switch session for the video
+2. Click **Open multilingual court & client demos**  
+3. Library gains six EN–SW / Sheng sessions mixed among existing matters (titles look like normal desk work):
+   - Court proceeding — Milimani Commercial Court, Wanjiru Holdings lease arrears
+   - Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up
+   - Client briefing — Otieno, ELRC directions after mention
+   - Client call — Coastal Sacco, Nyali statutory notice plan
+   - Follow-up intake — Githunguri succession, revocation advice
+   - Site briefing — Karanja & Sons, Westlands distress after lock-out  
+4. Walk Action Tray on any of them; optional: connect Intron and record live for the video
 
 ---
 

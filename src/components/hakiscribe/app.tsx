@@ -86,6 +86,8 @@ import {
   websocketUrl,
 } from "@/lib/hakiscribe";
 import { LANGUAGE_OPTIONS, loadWorkspaceSettings, shouldAutoSaharaRefine, usesSaharaRefine } from "@/lib/workspace-settings";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { filterDemoContacts, filterDemoMatters, filterDemoSessions } from "@/lib/demo-mode";
 import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
@@ -435,6 +437,7 @@ export function LandingPage() {
 export function NewSessionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { enabled: demoDataEnabled } = useDemoMode();
   const [source, setSource] = useState<SessionSource>("mic");
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("code-switch");
@@ -445,7 +448,12 @@ export function NewSessionPage() {
     setLanguage(stored.workspace.defaultLanguage);
     setPracticeName(stored.profile.practiceName.trim());
   }, []);
-  const sessions = useQuery({ queryKey: ["sessions"], queryFn: hakiApi.listSessions, enabled: hasApiConfiguration, retry: false });
+  const sessions = useQuery({
+    queryKey: ["sessions", { includeDemo: demoDataEnabled }],
+    queryFn: () => hakiApi.listSessions({ includeDemo: demoDataEnabled }),
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
   const matters = useQuery({ queryKey: ["matters"], queryFn: hakiApi.listMatters, enabled: hasApiConfiguration, retry: false });
   const contacts = useQuery({ queryKey: ["contacts"], queryFn: hakiApi.listContacts, enabled: hasApiConfiguration, retry: false });
   const health = useQuery({ queryKey: ["health"], queryFn: hakiApi.health, enabled: hasApiConfiguration, retry: false });
@@ -471,7 +479,7 @@ export function NewSessionPage() {
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       void queryClient.invalidateQueries({ queryKey: ["matters"] });
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      toast.success("Sahara multilingual court demo ready");
+      toast.success("Multilingual sessions added to the library");
       navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id }, search: { fresh: false } });
     },
     onError: (error) => toast.error(friendlyErrorMessage(error)),
@@ -489,19 +497,42 @@ export function NewSessionPage() {
   });
   const didSync = useRef(false);
   useEffect(() => {
+    didSync.current = false;
+  }, [demoDataEnabled]);
+  useEffect(() => {
+    if (!demoDataEnabled) return;
     if (didSync.current || !hasApiConfiguration || sessions.isLoading || sessions.isError) return;
     didSync.current = true;
     syncLibrary.mutate();
-  }, [sessions.isError, sessions.isLoading, syncLibrary.mutate]);
+  }, [demoDataEnabled, sessions.isError, sessions.isLoading, syncLibrary.mutate]);
   const omiStatus = useQuery({ queryKey: ["omi-status"], queryFn: hakiApi.omiStatus, enabled: hasApiConfiguration, retry: false });
   const omiLinked = Boolean(omiStatus.data?.linked || health.data?.omi_miniapp?.linked);
   const omiStatusResolved = !hasApiConfiguration || omiStatus.isFetched || omiStatus.isError;
   useEffect(() => {
     if (omiStatusResolved && !omiLinked && source === "omi") setSource("mic");
   }, [omiLinked, omiStatusResolved, source]);
-  const sessionCount = sessions.data?.length ?? 0;
-  const matterCount = matters.data?.length ?? 0;
-  const readyCount = sessions.data?.filter((session) => session.status === "ready" || session.status === "exported").length ?? 0;
+
+  const visibleSessions = filterDemoSessions(sessions.data ?? [], demoDataEnabled);
+  const visibleMatters = filterDemoMatters(matters.data ?? [], demoDataEnabled);
+  const demoMatterIds = new Set(
+    (matters.data ?? [])
+      .filter((matter) => !visibleMatters.some((visible) => visible.id === matter.id))
+      .map((matter) => matter.id),
+  );
+  const visibleContacts = filterDemoContacts(contacts.data ?? [], demoDataEnabled, demoMatterIds);
+  const sessionCount = visibleSessions.length;
+  const matterCount = visibleMatters.length;
+  const readyCount = visibleSessions.filter((session) => session.status === "ready" || session.status === "exported").length;
+
+  function refreshLibrary() {
+    if (demoDataEnabled) {
+      syncLibrary.mutate();
+      return;
+    }
+    void sessions.refetch();
+    void matters.refetch();
+    void contacts.refetch();
+  }
 
   return (
     <PageShell back>
@@ -602,11 +633,15 @@ export function NewSessionPage() {
                   <span className="size-2.5 animate-live-dot rounded-full bg-action-foreground" />
                   {create.isPending ? "Opening session…" : source === "mic" ? "Start recording" : "Start listening via Omi"}
                 </Button>
-                <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
-                <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => saharaDemo.mutate()} disabled={saharaDemo.isPending || !hasApiConfiguration}>{saharaDemo.isPending ? "Building Sahara multilingual demo…" : "Open Sahara multilingual court demo"}</Button>
+                {demoDataEnabled ? (
+                  <>
+                    <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building the Wanjiru showcase…" : "Open a completed judge demo"}</Button>
+                    <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => saharaDemo.mutate()} disabled={saharaDemo.isPending || !hasApiConfiguration}>{saharaDemo.isPending ? "Building multilingual sessions…" : "Open multilingual court & client demos"}</Button>
+                  </>
+                ) : null}
                 {create.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(create.error, "The session could not be opened. Try again.")}</p>}
-                {showcase.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(showcase.error, "The demo session could not be opened. Try again.")}</p>}
-                {saharaDemo.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(saharaDemo.error, "The Sahara demo could not be opened. Try again.")}</p>}
+                {demoDataEnabled && showcase.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(showcase.error, "The demo session could not be opened. Try again.")}</p>}
+                {demoDataEnabled && saharaDemo.error && <p className="mt-3 text-sm text-destructive">{friendlyErrorMessage(saharaDemo.error, "Those sessions could not be opened. Try again.")}</p>}
               </div>
             </div>
           </div>
@@ -619,19 +654,33 @@ export function NewSessionPage() {
             { label: "Ready to reopen", value: sessions.isLoading ? "—" : String(readyCount) },
           ].map((stat) => <div key={stat.label} className="chamber-card rounded-xl border border-border px-5 py-4"><p className="font-serif text-3xl font-semibold tabular-nums">{stat.value}</p><p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">{stat.label}</p></div>)}</div>}
           <SectionHeading eyebrow="Session library" title="Past sessions" action={<div className="flex flex-wrap items-center justify-end gap-2">
-            {sessions.data && <span className="hidden text-sm text-muted-foreground sm:inline">{sessions.data.length} total</span>}
-            <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Refresh the library" disabled={syncLibrary.isPending || !hasApiConfiguration} onClick={() => syncLibrary.mutate()}><RefreshCw className={syncLibrary.isPending ? "animate-spin" : undefined} /></Button></TooltipTrigger><TooltipContent>Refresh the library</TooltipContent></Tooltip></TooltipProvider>
+            {visibleSessions.length > 0 && <span className="hidden text-sm text-muted-foreground sm:inline">{visibleSessions.length} total</span>}
+            <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label={demoDataEnabled ? "Restore demo library" : "Refresh the library"} disabled={(demoDataEnabled ? syncLibrary.isPending : sessions.isFetching) || !hasApiConfiguration} onClick={() => refreshLibrary()}><RefreshCw className={(demoDataEnabled ? syncLibrary.isPending : sessions.isFetching) ? "animate-spin" : undefined} /></Button></TooltipTrigger><TooltipContent>{demoDataEnabled ? "Restore demo library" : "Refresh the library"}</TooltipContent></Tooltip></TooltipProvider>
             <Button asChild variant="outline" size="sm"><Link to="/tracker">Case tracker</Link></Button>
             <Button asChild variant="outline" size="sm"><Link to="/settings">Settings</Link></Button>
           </div>} />
           {!hasApiConfiguration && <ConnectionError message="Add VITE_API_BASE_URL to connect the HakiScribe frontend to the FastAPI service." />}
           {sessions.error && <ConnectionError message={friendlyErrorMessage(sessions.error)} retry={() => void sessions.refetch()} />}
           {sessions.isLoading && <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-card" />)}</div>}
-          {sessions.data?.length === 0 && syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">Restoring the desk</p><p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p></div>}
-          {sessions.data?.length === 0 && !syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">The library is empty</p><p className="mt-2 text-sm text-muted-foreground">Open the completed Wanjiru client meeting, or start listening.</p><Button className="mt-5" variant="outline" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>{showcase.isPending ? "Building showcase…" : "Load judge demo"}</Button></div>}
-          <div className="grid gap-3">{sessions.data?.map((session) => <SessionRow key={session.id} session={session} />)}</div>
-          <LegalIntelligence matters={matters.data ?? []} />
-          <LibraryMatters matters={matters.data ?? []} contacts={contacts.data ?? []} />
+          {demoDataEnabled && sessions.data?.length === 0 && syncLibrary.isPending && <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center"><p className="font-serif text-xl">Restoring the desk</p><p className="mt-2 text-sm text-muted-foreground">Bringing the seed library back onto this instance.</p></div>}
+          {!sessions.isLoading && visibleSessions.length === 0 && !(demoDataEnabled && syncLibrary.isPending) && (
+            <div className="chamber-card rounded-xl border border-dashed border-border py-14 text-center">
+              <p className="font-serif text-xl">{demoDataEnabled ? "The library is empty" : "No sessions yet"}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {demoDataEnabled
+                  ? "Open the completed Wanjiru client meeting, or start listening."
+                  : "Start a private session to begin capturing work. Demo samples stay hidden while Use Demo Data is off."}
+              </p>
+              {demoDataEnabled ? (
+                <Button className="mt-5" variant="outline" onClick={() => showcase.mutate()} disabled={showcase.isPending || !hasApiConfiguration}>
+                  {showcase.isPending ? "Building showcase…" : "Load judge demo"}
+                </Button>
+              ) : null}
+            </div>
+          )}
+          <div className="grid gap-3">{visibleSessions.map((session) => <SessionRow key={session.id} session={session} />)}</div>
+          <LegalIntelligence matters={visibleMatters} />
+          <LibraryMatters matters={visibleMatters} contacts={visibleContacts} />
         </section>
       </main>
       {health.data?.integrations && <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6"><p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Live integrations: {Object.entries(health.data.integrations).filter(([, on]) => on).map(([name]) => name).join(" · ") || "local-only fallbacks"}</p></div>}
@@ -660,7 +709,7 @@ function SessionRow({ session }: { session: Session }) {
           {" · "}
           {session.source === "omi" ? "Omi wearable" : "Microphone"}
           {session.language_hint === "multilingual" || session.language_hint === "code-switch" || session.detected_language === "code-switch" || session.detected_language === "multilingual"
-            ? " · Sahara / code-switch"
+            ? " · English + Kiswahili"
             : session.language_hint
               ? ` · ${session.language_hint}`
               : ""}

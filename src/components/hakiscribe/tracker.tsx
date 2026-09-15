@@ -4,6 +4,8 @@ import { CalendarClock, ExternalLink, FileText, Flag, RefreshCw, Scale } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDemoMode } from "@/hooks/use-demo-mode";
+import { filterDemoSessions } from "@/lib/demo-mode";
 import { hakiApi, friendlyErrorMessage, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
@@ -81,15 +83,18 @@ function formatDay(value: string) {
 }
 
 export function TrackerPage() {
+  const { enabled: demoDataEnabled } = useDemoMode();
   const sessions = useQuery({
-    queryKey: ["sessions"],
-    queryFn: hakiApi.listSessions,
+    queryKey: ["sessions", { includeDemo: demoDataEnabled }],
+    queryFn: () => hakiApi.listSessions({ includeDemo: demoDataEnabled }),
     refetchInterval: REFRESH_MS,
     retry: false,
   });
 
+  const librarySessions = filterDemoSessions(sessions.data ?? [], demoDataEnabled);
+
   const details = useQueries({
-    queries: (sessions.data ?? []).map((session) => ({
+    queries: librarySessions.map((session) => ({
       queryKey: ["session", session.id],
       queryFn: () => hakiApi.getSession(session.id),
       refetchInterval: REFRESH_MS,

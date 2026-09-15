@@ -406,7 +406,11 @@ export const hakiApi = {
   login: (body: { email: string; password: string }) =>
     request<{ token: string; user: AuthUser }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
   demoCredentials: () => request<DemoCredentials>("/auth/demo"),
-  listSessions: () => request<Session[]>("/sessions"),
+  listSessions: (opts?: { includeDemo?: boolean }) => {
+    const includeDemo = opts?.includeDemo !== false;
+    const query = includeDemo ? "" : "?include_demo=false";
+    return request<Session[]>(`/sessions${query}`);
+  },
   getSession: (id: string) => request<SessionDetail>(`/sessions/${id}`),
   createSession: (body: { title: string; source: SessionSource; language_hint?: string }) =>
     request<Session>("/sessions", { method: "POST", body: JSON.stringify(body) }),

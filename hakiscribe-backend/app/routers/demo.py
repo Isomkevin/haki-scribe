@@ -32,15 +32,14 @@ async def ensure_showcase(rebuild: bool = Query(default=False)):
 
 @router.post("/sahara", response_model=SessionDetail)
 async def ensure_sahara_demo(rebuild: bool = Query(default=False)):
-    """Return a completed multilingual EN–SW court hearing demo.
+    """Seed multilingual / code-switch demo sessions and open the primary court hearing.
 
-    Transcript is seeded as Sahara legal court-hearing output (code-switched),
-    with privilege redaction and a finished Action Tray — no microphone or
-    live Intron key required to walk the CodeSwitch story.
+    Sessions use ordinary desk titles across existing matters; transcripts are
+    seeded as Sahara legal refine output. No microphone or live Intron key required.
     """
     detail, _created = await demo_library.ensure_sahara_demo(rebuild=rebuild)
     if detail is None:
-        raise HTTPException(status_code=500, detail="The Sahara multilingual demo could not be built.")
+        raise HTTPException(status_code=500, detail="The multilingual demo sessions could not be built.")
     return detail
 
 

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from typing import Optional
 
 from app.models.schemas import (
@@ -27,8 +27,9 @@ def create_session(payload: SessionCreate):
 
 
 @router.get("", response_model=list[SessionLibraryItem])
-async def list_sessions():
-    await demo_library.sync_demo_library()
+async def list_sessions(include_demo: bool = Query(default=True)):
+    if include_demo:
+        await demo_library.sync_demo_library()
     return storage.list_library_sessions()
 
 

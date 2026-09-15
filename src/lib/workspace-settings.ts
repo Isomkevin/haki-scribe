@@ -13,7 +13,7 @@ export const PRACTICE_ROLES = [
 
 export const LANGUAGE_OPTIONS = [
   { id: "code-switch", label: "English + Kiswahili" },
-  { id: "multilingual", label: "Multilingual / African code-switch (Sahara)" },
+  { id: "multilingual", label: "Multilingual / African code-switch" },
   { id: "en", label: "English" },
   { id: "sw", label: "Kiswahili" },
 ] as const;
@@ -40,6 +40,8 @@ export interface WorkspaceProfile {
 export interface WorkspaceDefaults {
   defaultLanguage: string;
   defaultSource: SessionSource;
+  /** When true, seeded demo library / showcase CTAs appear. Login demo CTA is separate. */
+  useDemoData: boolean;
 }
 
 export interface WorkspaceSettings {
@@ -59,6 +61,7 @@ export const defaultWorkspaceSettings = (): WorkspaceSettings => ({
   workspace: {
     defaultLanguage: "code-switch",
     defaultSource: "mic",
+    useDemoData: true,
   },
 });
 
@@ -85,6 +88,10 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
         defaultSource: isSessionSource(parsed.workspace?.defaultSource)
           ? parsed.workspace.defaultSource
           : defaults.workspace.defaultSource,
+        useDemoData:
+          typeof parsed.workspace?.useDemoData === "boolean"
+            ? parsed.workspace.useDemoData
+            : defaults.workspace.useDemoData,
       },
     };
   } catch {
@@ -95,4 +102,17 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
 export function saveWorkspaceSettings(settings: WorkspaceSettings) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+/** Sync read for first paint / query keys — defaults to demo ON. */
+export function isDemoDataEnabled(): boolean {
+  return loadWorkspaceSettings().workspace.useDemoData;
+}
+
+export function setDemoDataEnabled(enabled: boolean) {
+  const current = loadWorkspaceSettings();
+  saveWorkspaceSettings({
+    ...current,
+    workspace: { ...current.workspace, useDemoData: enabled },
+  });
 }

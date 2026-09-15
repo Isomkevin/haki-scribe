@@ -26,12 +26,13 @@ from app.models.schemas import (
     TranscriptSegment,
 )
 from app.services import action_detector, action_executor, enrichment, storage, trigger_client
-from app.services.demo_catalog import MATTERS, SESSIONS, SHOWCASE_TITLE, SAHARA_DEMO_TITLE
+from app.services.demo_catalog import MATTERS, SESSIONS, SHOWCASE_TITLE, SAHARA_DEMO_TITLE, SAHARA_DEMO_TITLES
 
 # Re-export for showcase.py and routers
 __all__ = [
     "SHOWCASE_TITLE",
     "SAHARA_DEMO_TITLE",
+    "SAHARA_DEMO_TITLES",
     "SESSIONS",
     "MATTERS",
     "sync_demo_library",
@@ -250,22 +251,32 @@ async def ensure_showcase(rebuild: bool = False):
 
 
 async def ensure_sahara_demo(rebuild: bool = False):
-    """Completed multilingual court session as if refined by Intron Sahara legal mode."""
-    spec = next(item for item in SESSIONS if item["title"] == SAHARA_DEMO_TITLE)
+    """Materialize every Sahara multilingual seed, then return the primary court demo."""
+    specs = {item["title"]: item for item in SESSIONS if item["title"] in SAHARA_DEMO_TITLES}
     async with _lock:
         _ensure_matters()
-        existing = None if rebuild else find_session_by_title(SAHARA_DEMO_TITLE)
-        if existing is not None and (existing.action_results or existing.detected_actions):
-            if missing_workspace_mirror(existing):
-                await complete_session(existing, generate_results=True)
-                return storage.get_session(existing.id), False
-            return existing, False
-        if existing is None:
-            existing = _materialize(spec)
-        if existing is None:
-            return None, True
-        await complete_session(existing, generate_results=True)
-        return storage.get_session(existing.id), True
+        primary = None
+        for title in SAHARA_DEMO_TITLES:
+            spec = specs.get(title)
+            if spec is None:
+                continue
+            existing = None if rebuild and title == SAHARA_DEMO_TITLE else find_session_by_title(title)
+            if existing is None:
+                existing = _materialize(spec)
+            if existing is None:
+                continue
+            if rebuild and title == SAHARA_DEMO_TITLE:
+                # Force re-detect/generate on the primary demo only.
+                pass
+            if not (existing.action_results or existing.detected_actions) or (
+                rebuild and title == SAHARA_DEMO_TITLE
+            ) or missing_workspace_mirror(existing):
+                generate = bool(spec.get("generate", True))
+                await complete_session(existing, generate_results=generate)
+                existing = storage.get_session(existing.id)
+            if title == SAHARA_DEMO_TITLE:
+                primary = existing
+        return primary or find_session_by_title(SAHARA_DEMO_TITLE), True
 
 
 def library_items() -> list[SessionLibraryItem]:

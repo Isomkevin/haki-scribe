@@ -9,16 +9,17 @@ from __future__ import annotations
 from typing import Any
 
 SHOWCASE_TITLE = "Client meeting — Wanjiru Holdings, defective works at Kilimani site"
-SAHARA_DEMO_TITLE = "Sahara multilingual demo — Milimani court hearing (EN–SW code-switch)"
+# Primary multilingual hearing demo (seeded as Sahara legal refine; title blends with library).
+SAHARA_DEMO_TITLE = "Court proceeding — Milimani Commercial Court, Wanjiru Holdings lease arrears"
 
-# All Sahara-seeded demos (primary first). ensure_sahara_demo materializes every title.
+# Multilingual / code-switch seeds mixed through existing matters (primary first).
 SAHARA_DEMO_TITLES: list[str] = [
     SAHARA_DEMO_TITLE,
-    "Sahara refine — Wanjiru Holdings site memo (EN–SW)",
-    "Sahara refine — Otieno ELRC chambers note (EN–SW)",
-    "Sahara refine — Coastal Sacco Nyali recovery call (EN–SW)",
-    "Sahara refine — Githunguri succession intake (EN–SW)",
-    "Sahara refine — Karanja Westlands distress briefing (EN–Sheng)",
+    "Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up",
+    "Client briefing — Otieno, ELRC directions after mention",
+    "Client call — Coastal Sacco, Nyali statutory notice plan",
+    "Follow-up intake — Githunguri succession, revocation advice",
+    "Site briefing — Karanja & Sons, Westlands distress after lock-out",
 ]
 
 
@@ -103,7 +104,7 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": True,
     },
     {
-        "title": "Sahara refine — Wanjiru Holdings site memo (EN–SW)",
+        "title": "Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up",
         "source": "omi",
         "language_hint": "multilingual",
         "detected_language": "code-switch",
@@ -142,7 +143,7 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": True,
     },
     {
-        "title": "Sahara refine — Otieno ELRC chambers note (EN–SW)",
+        "title": "Client briefing — Otieno, ELRC directions after mention",
         "source": "mic",
         "language_hint": "multilingual",
         "detected_language": "code-switch",
@@ -187,7 +188,7 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": False,
     },
     {
-        "title": "Sahara refine — Coastal Sacco Nyali recovery call (EN–SW)",
+        "title": "Client call — Coastal Sacco, Nyali statutory notice plan",
         "source": "omi",
         "language_hint": "multilingual",
         "detected_language": "code-switch",
@@ -226,7 +227,7 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": False,
     },
     {
-        "title": "Sahara refine — Githunguri succession intake (EN–SW)",
+        "title": "Follow-up intake — Githunguri succession, revocation advice",
         "source": "mic",
         "language_hint": "multilingual",
         "detected_language": "code-switch",
@@ -295,7 +296,7 @@ SESSIONS: list[dict[str, Any]] = [
         "generate": True,
     },
     {
-        "title": "Sahara refine — Karanja Westlands distress briefing (EN–Sheng)",
+        "title": "Site briefing — Karanja & Sons, Westlands distress after lock-out",
         "source": "omi",
         "language_hint": "multilingual",
         "detected_language": "code-switch",

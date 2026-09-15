@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BriefcaseBusiness,
@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { useDemoMode } from "@/hooks/use-demo-mode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   apiBaseUrl,
@@ -37,6 +39,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceSettings,
 } from "@/lib/workspace-settings";
+import { filterDemoSessions } from "@/lib/demo-mode";
 import { ConnectorsSection } from "./connectors";
 import { InstallAppButton } from "./pwa-register";
 import { PageShell, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
@@ -209,6 +212,7 @@ function ProfileSection() {
 const RECENT_SESSION_LIMIT = 5;
 
 function ProfileLinkedOverview() {
+  const { enabled: demoDataEnabled } = useDemoMode();
   const integrations = useQuery({
     queryKey: ["integrations"],
     queryFn: hakiApi.listIntegrations,
@@ -216,14 +220,14 @@ function ProfileLinkedOverview() {
     retry: false,
   });
   const sessions = useQuery({
-    queryKey: ["sessions"],
-    queryFn: hakiApi.listSessions,
+    queryKey: ["sessions", { includeDemo: demoDataEnabled }],
+    queryFn: () => hakiApi.listSessions({ includeDemo: demoDataEnabled }),
     enabled: hasApiConfiguration,
     retry: false,
   });
 
   const connected = (integrations.data ?? []).filter((item) => item.connected);
-  const recent = (sessions.data ?? [])
+  const recent = filterDemoSessions(sessions.data ?? [], demoDataEnabled)
     .slice()
     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
     .slice(0, RECENT_SESSION_LIMIT);
@@ -452,6 +456,20 @@ function EmptyLinkedState({ message, action }: { message: string; action?: React
 
 function WorkspaceSection() {
   const { settings, commit } = useStoredSettings();
+  const { enabled: demoEnabled, setEnabled: setDemoEnabled } = useDemoMode();
+  const queryClient = useQueryClient();
+
+  function onDemoToggle(next: boolean) {
+    setDemoEnabled(next);
+    commit({
+      ...settings,
+      workspace: { ...settings.workspace, useDemoData: next },
+    });
+    void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    void queryClient.invalidateQueries({ queryKey: ["matters"] });
+    void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    toast.success(next ? "Demo data is on for this device." : "Demo data is off — showing only your live work.");
+  }
 
   return (
     <section>
@@ -500,9 +518,32 @@ function WorkspaceSection() {
           </select>
         </Field>
       </div>
+
+      <div className="mt-8 rounded-xl border border-border bg-card/60 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Label htmlFor="use-demo-data" className="text-sm font-semibold text-foreground">
+              Use Demo Data
+            </Label>
+            <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              When on, the library can restore seeded sample sessions and show judge-demo shortcuts.
+              Turn off for day-to-day practice — seeded demos disappear from lists and dashboards;
+              only sessions and matters you create remain visible.
+            </p>
+          </div>
+          <Switch
+            id="use-demo-data"
+            checked={demoEnabled}
+            onCheckedChange={onDemoToggle}
+            aria-label="Use Demo Data"
+            className="mt-1 shrink-0"
+          />
+        </div>
+      </div>
+
       <p className="mt-6 text-xs leading-5 text-muted-foreground">
         Timezone for dates on the record is Africa/Nairobi. Session titles, transcripts, and generated work remain in
-        the private workspace, not in these settings.
+        the private workspace, not in these settings. This preference is stored on this device.
       </p>
     </section>
   );
