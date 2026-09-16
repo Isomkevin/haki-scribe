@@ -10,12 +10,12 @@ function readEnvFile(path: string): Record<string, string> {
   }
   const values: Record<string, string> = {};
   for (const raw of readFileSync(path, "utf8").split("\n")) {
-    const line = raw.split("#", 1)[0].trim();
+    const line = (raw.split("#", 1)[0] ?? "").trim();
     if (!line.includes("=")) {
       continue;
     }
     const [key, ...rest] = line.split("=");
-    const name = key.trim();
+    const name = (key ?? "").trim();
     const value = rest.join("=").trim().replace(/^['"]|['"]$/g, "");
     if (name && value) {
       values[name] = value;
