@@ -93,6 +93,7 @@ export const defaultWorkspaceSettings = (): WorkspaceSettings => ({
   workspace: {
     defaultLanguage: "code-switch",
     defaultSource: "mic",
+    useDemoData: true,
   },
 });
 
