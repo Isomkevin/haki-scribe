@@ -1,0 +1,1687 @@
+"""Generate long-form (~45–60 min) demo session transcripts into demo_catalog.py.
+
+Run from hakiscribe-backend:
+  python -m app.services._build_long_demos
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from textwrap import dedent
+
+OUT = Path(__file__).with_name("demo_catalog.py")
+
+# ~130 wpm careful legal speech
+PACE = 2.15
+
+
+def words(text: str) -> int:
+    return len(text.split())
+
+
+def duration_s(lines: list[tuple[str, str]], pace: float = PACE, gap: float = 0.35) -> float:
+    t = 0.0
+    for i, (_, text) in enumerate(lines):
+        if i:
+            t += gap
+        t += max(2.8, round(words(text) / pace, 1))
+    return t
+
+
+def _recap_bank(speaker_a: str = "Speaker 1", speaker_b: str = "Speaker 2") -> list[tuple[str, str]]:
+    """Natural long-meeting texture: recaps, document walks, scheduling, clarifications."""
+    a, b = speaker_a, speaker_b
+    return [
+        (a, "Let me summarise what I have on my note so far, and you stop me where I am wrong."),
+        (b, "Go ahead — I want us aligned before anything is typed into a letter or affidavit."),
+        (a, "We will also slow down on dates. Wrong dates in a demand or pleading create avoidable fights later."),
+        (b, "That is fine. I would rather spend the hour now than fix a defective paper next month."),
+        (a, "Please keep your phone on silent but nearby in case a document or screenshot arrives while we talk."),
+        (b, "It is on silent. If finance or the site clerk texts, I will show you the message before I answer."),
+        (a, "Good. When we finish, I will email a short privileged attendance note of decisions and homework."),
+        (b, "Please copy only the people who need it. No wide forwards from my side either."),
+        (a, "Now the document walk-through — we will name each annexure so the bundle stays stable if this escalates."),
+        (b, "I have most of it electronically. Hard copies can follow tomorrow if the scans are unclear."),
+        (a, "If a scan is skewed or incomplete, say so now rather than discovering it on the eve of filing."),
+        (b, "I will flag anything blurry. I would rather rescan tonight."),
+        (a, "On without-prejudice conversations — if the other side calls you directly, redirect them to me and do not negotiate figures on WhatsApp."),
+        (b, "Understood. No side deals, no casual admissions."),
+        (a, "If you need a break for water or to take a short call, say so. These meetings run long for a reason."),
+        (b, "I am fine to continue. Better we finish the substance in one sitting."),
+        (a, "Then let us pressure-test the weak points the other side will attack first."),
+        (b, "Yes — tell me where our story is thinnest so I can plug holes with documents."),
+        (a, "We should also diary the next internal checkpoint, not only the external deadline."),
+        (b, "Put both on my calendar. I will make the same entries when I leave."),
+        (a, "Any political, reputational, or family sensitivities that should stay out of formal papers — say them now so we lock privilege."),
+        (b, "I will name them expressly before we close so there is no ambiguity."),
+        (a, "Finally, confirm authority — are you the decision-maker on settlement ranges, or do you need a board or spouse?"),
+        (b, "I can decide within what we discussed; anything beyond that I escalate and come back to you."),
+        (a, "That is enough mandate clarity for me to draft. We will not exceed it without fresh instructions."),
+        (b, "Agreed. Draft first, then I approve, then service or filing."),
+        (a, "One more pass on money figures — say the key numbers aloud once so the recording and my note match."),
+        (b, "I will repeat the headline figures slowly."),
+        (a, "And one more pass on the factual chronology — start, middle, trigger event, today's status."),
+        (b, "Starting again from the beginning of the chronology as I understand it."),
+        (a, "If anything in that chronology is estimate rather than knowledge, label it as estimate."),
+        (b, "I will separate what I saw myself from what staff told me."),
+        (a, "Witnesses — who is willing, who is reluctant, and who must be protected from workplace blowback."),
+        (b, "I will be honest about that. Some people will help quietly, not publicly."),
+        (a, "Quiet help can still matter at this stage through documents even if they never take the stand."),
+        (b, "That is useful to hear."),
+        (a, "Costs and disbursements — I will stage them so you approve each filing tranche."),
+        (b, "Please. No surprise filings."),
+        (a, "If urgent developments happen after we leave — lock-out, sale threat, new letter — call immediately, even after hours."),
+        (b, "I have your mobile. I will use it for true urgencies only."),
+        (a, "We are using the balance of this meeting to remove ambiguity, not to rush a false sense of completion."),
+        (b, "I appreciate that. Short meetings are how these files get mangled."),
+        (a, "Before we stop, list your homework items back to me in your own words."),
+        (b, "I will list them now so we both hear the same list."),
+        (a, "And I will list mine — draft, diary, service plan, and what I still need from you."),
+        (b, "Then we are done only when both lists are clear."),
+        (a, "Correct. Clarity beats speed on liability-sensitive work."),
+        (b, "I am ready for the final lists whenever you are."),
+    ]
+
+
+def _court_bank(honorific: str = "my lord") -> list[tuple[str, str]]:
+    """Procedural texture for long directions / interlocutory hearings."""
+    h = honorific
+    return [
+        ("Speaker 1", f"Counsel, the court will take the directions carefully. There is no prize for speed at the expense of a clean record."),
+        ("Speaker 2", f"Much obliged, {h}. We are content to take the time needed."),
+        ("Speaker 3", f"Likewise, {h}. We will address each issue in turn."),
+        ("Speaker 1", "First, confirm that all papers relied on today are on the court file and have been served."),
+        ("Speaker 2", "They are, subject to any late annexures we flagged in the certificate of urgency."),
+        ("Speaker 3", "We have the served set. If anything new is filed, we will need time to answer."),
+        ("Speaker 1", "There will be no trial by ambush. New material attracts a right to respond."),
+        ("Speaker 2", "As directed."),
+        ("Speaker 3", "As directed."),
+        ("Speaker 1", "On interim relief, I want precise undertakings and precise prohibitions — not vague language."),
+        ("Speaker 2", "We can formulate the order in precise terms for extraction."),
+        ("Speaker 3", "We reserve our clients' rights on the merits while dealing with interim process."),
+        ("Speaker 1", "Reservation noted. Interim orders are not final determinations."),
+        ("Speaker 2", f"Grateful, {h}."),
+        ("Speaker 1", "Service going forward may include electronic addresses already used between the parties, in addition to physical service where required."),
+        ("Speaker 3", "We will place the operative email addresses on the next affidavit."),
+        ("Speaker 1", "Do so. Affidavits of service must be filed promptly after each step."),
+        ("Speaker 2", f"We will, {h}."),
+        ("Speaker 1", "If settlement discussions occur, they remain without prejudice and off this record unless reduced to a consent order."),
+        ("Speaker 3", "Understood."),
+        ("Speaker 2", "Understood."),
+        ("Speaker 1", "Time estimates for the next hearing should be realistic. The diary is under pressure."),
+        ("Speaker 2", "We will certify readiness only when documents are truly complete."),
+        ("Speaker 3", "We will not seek premature hearing dates."),
+        ("Speaker 1", "Good. The court prefers fewer adjournments and fuller first hearings."),
+        ("Speaker 2", "That is our preference as well."),
+        ("Speaker 1", "Any interpreter or special measure required for a party or witness at a future date should be flagged early."),
+        ("Speaker 2", "None today, but we will notify the registry if that changes."),
+        ("Speaker 3", "Same position."),
+        ("Speaker 1", "Costs of today will be in the cause unless either side has wasted the court's time."),
+        ("Speaker 2", "We seek costs in the cause."),
+        ("Speaker 3", "Costs in the cause is acceptable at this stage."),
+        ("Speaker 1", "Ordered accordingly on costs for today."),
+        ("Speaker 2", "Much obliged."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "Counsel should extract the order and serve it without delay once typed."),
+        ("Speaker 2", "We will attend to extraction today."),
+        ("Speaker 3", "We will accept service electronically for speed, without prejudice to formal service."),
+        ("Speaker 1", "Very well. Ensure the extracted order matches what was pronounced."),
+        ("Speaker 2", "We will cross-check against the typed notes."),
+        ("Speaker 1", "If there is any disagreement on the wording of the extracted order, return under certificate before the next mention."),
+        ("Speaker 3", f"We will, {h}."),
+        ("Speaker 1", "The parties are reminded that compliance with interim directions is mandatory."),
+        ("Speaker 2", "Noted."),
+        ("Speaker 3", "Noted."),
+        ("Speaker 1", "I will now restate the operative directions so the record is clear before we rise."),
+        ("Speaker 2", "Grateful for the restatement."),
+        ("Speaker 3", "We are listening carefully."),
+    ]
+
+
+def pad_court_to_minutes(
+    lines: list[tuple[str, str]],
+    target_min: float,
+    extras: list[tuple[str, str]],
+    *,
+    honorific: str = "my lord",
+) -> list[tuple[str, str]]:
+    out = list(lines)
+    for turn in extras:
+        if duration_s(out) >= target_min * 60:
+            return out
+        out.append(turn)
+    bank = _court_bank(honorific)
+    round_i = 0
+    while duration_s(out) < target_min * 60:
+        if round_i < len(bank):
+            out.append(bank[round_i])
+        else:
+            n = round_i - len(bank)
+            phase = n % 5
+            idx = n // 5 + 1
+            if phase == 0:
+                out.append(
+                    (
+                        "Speaker 1",
+                        f"On directions cluster {idx}, I require a clear statement of what has been filed, what remains outstanding, and the date by which it will be cured.",
+                    )
+                )
+            elif phase == 1:
+                out.append(
+                    (
+                        "Speaker 2",
+                        f"For the applicant on cluster {idx}, the outstanding step is identified and can be completed within the time the court has indicated.",
+                    )
+                )
+            elif phase == 2:
+                out.append(
+                    (
+                        "Speaker 3",
+                        f"For the respondent on cluster {idx}, we will meet the same discipline on filing and service, reserving our merits arguments.",
+                    )
+                )
+            elif phase == 3:
+                out.append(
+                    (
+                        "Speaker 1",
+                        f"Cluster {idx} is so ordered. Non-compliance will be dealt with at the next mention, including possible costs consequences.",
+                    )
+                )
+            else:
+                out.append(
+                    (
+                        "Speaker 2",
+                        f"Much obliged on cluster {idx}. We will diarise and extract as required.",
+                    )
+                )
+        round_i += 1
+        if round_i > 400:
+            break
+    return out
+
+
+def pad_to_minutes(
+    lines: list[tuple[str, str]],
+    target_min: float,
+    extras: list[tuple[str, str]],
+    *,
+    speaker_a: str = "Speaker 1",
+    speaker_b: str = "Speaker 2",
+) -> list[tuple[str, str]]:
+    """Append extras and long-meeting texture until spoken duration reaches target_min."""
+    out = list(lines)
+    for turn in extras:
+        if duration_s(out) >= target_min * 60:
+            return out
+        out.append(turn)
+
+    bank = _recap_bank(speaker_a, speaker_b)
+    # Matter-flavoured expansions that stay unique across loops
+    elaborations = [
+        (
+            speaker_a,
+            "Let me also capture the correspondence channels used — email, WhatsApp, courier, and any hand deliveries — because service and proof later turn on that detail.",
+        ),
+        (
+            speaker_b,
+            "I can sort those channels. Some things were only on WhatsApp, which I know is messy, but I kept screenshots.",
+        ),
+        (
+            speaker_a,
+            "Screenshots help if we preserve context — timestamps, the prior message, and who was in the chat. Forward the export, not cropped fragments only.",
+        ),
+        (
+            speaker_b,
+            "I will export the full thread tonight. No cropping.",
+        ),
+        (
+            speaker_a,
+            "We should also agree what success looks like in thirty days versus ninety days, so strategy matches your commercial or personal reality.",
+        ),
+        (
+            speaker_b,
+            "Thirty days I want pressure on the other side. Ninety days I want a clear path to either settlement or a hearing date.",
+        ),
+        (
+            speaker_a,
+            "That framing helps me sequence demand, filing, and negotiation without mixing the tracks carelessly.",
+        ),
+        (
+            speaker_b,
+            "Please keep negotiation without prejudice and separate from the open correspondence.",
+        ),
+        (
+            speaker_a,
+            "Always. Open letters for rights; without-prejudice for settlement numbers.",
+        ),
+        (
+            speaker_b,
+            "Good. I have mixed those before with other advisors and it hurt us.",
+        ),
+    ]
+
+    round_i = 0
+    while duration_s(out) < target_min * 60:
+        if round_i < len(bank):
+            out.append(bank[round_i])
+        elif round_i < len(bank) + len(elaborations):
+            out.append(elaborations[round_i - len(bank)])
+        else:
+            n = round_i - len(bank) - len(elaborations)
+            phase = n % 6
+            idx = n // 6 + 1
+            if phase == 0:
+                out.append(
+                    (
+                        speaker_a,
+                        f"Working session note {idx}: I am restating the live issues list so nothing drops off before we leave chambers.",
+                    )
+                )
+            elif phase == 1:
+                out.append(
+                    (
+                        speaker_b,
+                        f"On issue block {idx}, my understanding matches what you just said, with the corrections I already gave on dates and figures.",
+                    )
+                )
+            elif phase == 2:
+                out.append(
+                    (
+                        speaker_a,
+                        f"For block {idx}, the supporting proof should be identified now — primary document first, corroboration second, narrative last.",
+                    )
+                )
+            elif phase == 3:
+                out.append(
+                    (
+                        speaker_b,
+                        f"I can supply the primary document for block {idx}. Corroboration may take a day or two if I need a colleague or registry search.",
+                    )
+                )
+            elif phase == 4:
+                out.append(
+                    (
+                        speaker_a,
+                        f"We will not invent corroboration for block {idx}. If it is thin, we plead carefully and avoid overreach.",
+                    )
+                )
+            else:
+                out.append(
+                    (
+                        speaker_b,
+                        f"Agreed on block {idx}. Move on only when that homework item is written into the attendance note.",
+                    )
+                )
+        round_i += 1
+        if round_i > 400:
+            break
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Matter-specific long dialogues (core + expansion pools)
+# ---------------------------------------------------------------------------
+
+
+def wanjiru_showcase() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Thanks for coming in, James. Before we start — this conversation is privileged and confidential. Take me through what happened at the Kilimani site from the beginning."),
+        ("Speaker 2", "Sarova Contractors were meant to complete the slab works by the fifteenth of June. By early July the slab had visible cracking on the second floor, and water was seeping near the stair core."),
+        ("Speaker 1", "Mm. When did you first notice the cracking — was it your site clerk or Eng. Mutiso?"),
+        ("Speaker 2", "Our clerk flagged it on the third of July. Mutiso came on the ninth. He said the pattern looks like inadequate curing and possible under-reinforcement at the mid-span."),
+        ("Speaker 1", "Did you raise it with Sarova in writing?"),
+        ("Speaker 2", "Yes, twice. Formal email on the second of July — wait, that was before the clerk note — actually the first email was the fifth of July. Then a WhatsApp follow-up on the eighteenth. They said they would send an engineer. Hakuna kitu ilifanyika."),
+        ("Speaker 1", "Let me get the dates straight. Clerk note third July, Mutiso ninth July, first email fifth July, WhatsApp eighteenth July. Any reply beyond the WhatsApp?"),
+        ("Speaker 2", "One email on the twenty-second saying they are assessing. No programme, no visit, no temporary works proposal."),
+        ("Speaker 1", "And the contract sum? What has been paid so far, and what have you withheld?"),
+        ("Speaker 2", "Contract was eighteen million shillings. We have paid twelve point six million against certified works. We withheld the balance after the cracking showed up."),
+        ("Speaker 1", "Was the twelve point six certified by the project QS, or paid on account?"),
+        ("Speaker 2", "Certified. Certificate number four and five. Certificate six was never issued because of the defects."),
+        ("Speaker 2", "Mutiso inspected again last week. He says remedial works will cost about four point two million, and he put that in a signed report with photos."),
+        ("Speaker 1", "Good — that gives us a quantified loss. Do you have photos, the payment schedule, and the site diary ready to attach?"),
+        ("Speaker 2", "Photos yes. Payment schedule I can send this afternoon with Mutiso's PDF. Site diary from our clerk covers June through August."),
+        ("Speaker 1", "I also need the contract, especially clause forty-one on arbitration, the variation orders if any, and the insurance notifications if you made any."),
+        ("Speaker 2", "Contract is with me. There was one variation for the staircase finish — about three hundred thousand. No insurance claim yet; I wanted legal advice first."),
+        ("Speaker 1", "Correct approach. I want to send a formal demand letter before we consider arbitration under clause forty-one. Demand first creates a clean record."),
+        ("Speaker 2", "How long do they get to respond?"),
+        ("Speaker 1", "Twenty-one days from service. If they don't respond substantively, we file a notice of arbitration. Let's also diarise a follow-up meeting on the third of October at ten in the morning."),
+        ("Speaker 2", "Third October at ten works. Can we also talk about whether we stop them coming on site entirely?"),
+        ("Speaker 1", "For now, written instruction that no further work without an agreed remedial method statement. We do not want them compounding the defect."),
+        ("Speaker 2", "Understood. Also, please keep the bit about my partner's tax position out of anything you write — that stays between us."),
+        ("Speaker 1", "Noted — that stays off the record. Demand letter only uses contract facts, certificates, Mutiso's figures, and the correspondence timeline."),
+        ("Speaker 1", "I will get the demand draft to you for review by Friday. Once you approve, we serve by email and courier to their registered office."),
+        ("Speaker 2", "Asante, Naomi. I will send Mutiso's report, the payment schedule, photos, site diary, and the contract this afternoon."),
+        ("Speaker 1", "Perfect. Call me tomorrow if anything else comes up on site — especially if they try to mobilise without a method statement."),
+    ]
+    extras = [
+        ("Speaker 1", "Walk me through the payment certificates again — dates and amounts for certificate four and five."),
+        ("Speaker 2", "Certificate four was end of May, about four point one million. Certificate five mid-June, about three point eight. Earlier certificates make up the rest of the twelve point six."),
+        ("Speaker 1", "Any retention held under the contract?"),
+        ("Speaker 2", "Yes, five percent retention. That is inside the unpaid balance discussion."),
+        ("Speaker 1", "Who signed the contract for Sarova — do we have a board resolution or just the director's signature?"),
+        ("Speaker 2", "Director Kamau signed. I can get company search for their directors this week."),
+        ("Speaker 1", "Please do. For service we need the correct registered office from the companies registry."),
+        ("Speaker 2", "I think they moved offices last year — the letterhead still shows Industrial Area but WhatsApp says Westlands."),
+        ("Speaker 1", "We serve both addresses and the email used in the July correspondence. Better over-serve than under-serve."),
+        ("Speaker 2", "Okay. On Mutiso — is his report enough, or do we need a second opinion before arbitration?"),
+        ("Speaker 1", "For demand stage, Mutiso is enough if he is independent and CV is solid. Before hearing we may need a joint expert or court-appointed view depending on how they respond."),
+        ("Speaker 2", "His CV is attached to the report. Twenty years structural, PE registration current."),
+        ("Speaker 1", "Good. Mark that as annexure A. Payment schedule annexure B. Photos C. Correspondence bundle D."),
+        ("Speaker 2", "Should the site diary be a separate annexure?"),
+        ("Speaker 1", "Yes — E. Keep the bundle clean so if this becomes a statement of claim later we are not reshuffling."),
+        ("Speaker 2", "About the water seepage — is that a separate head of loss or part of remedial?"),
+        ("Speaker 1", "Treat it as part of remedial and consequential for now. If finishes or stored materials were damaged, list those values separately."),
+        ("Speaker 2", "We had some tiles stored on second floor — about two hundred thousand ruined. I will get invoices."),
+        ("Speaker 1", "Add that to the schedule of loss. Small relative to four point two million, but it shows continuing damage."),
+        ("Speaker 2", "What if Sarova offers to repair themselves instead of paying?"),
+        ("Speaker 1", "We can consider a supervised remedial programme with Mutiso signing off stages. But money or bond security should still be on the table given their silence since August."),
+        ("Speaker 2", "They have been difficult on other sites too — I can get informal references if useful."),
+        ("Speaker 1", "Informal references stay out of the letter. Stick to our contract and our evidence."),
+        ("Speaker 2", "Fair. Do we mention arbitration costs exposure to push them?"),
+        ("Speaker 1", "Lightly — note that costs follow the event under the clause. No threats beyond what the contract allows."),
+        ("Speaker 2", "And the third October meeting — chambers or site?"),
+        ("Speaker 1", "Chambers first. If we need a joint site visit with Mutiso after their reply, we schedule separately."),
+        ("Speaker 2", "I may bring our QS as well for the October meeting."),
+        ("Speaker 1", "Helpful. Ask the QS to prepare a short note reconciling certificates to the eighteen million sum."),
+        ("Speaker 2", "Will do. One more — our board wants a one-page status by Monday for the investment committee."),
+        ("Speaker 1", "I can give you a privileged status note for board use only, separate from the demand letter."),
+        ("Speaker 2", "Please. Keep the tax point out of that note as well."),
+        ("Speaker 1", "Confirmed. Status note will cover defect, quantum, correspondence, and recommended demand plus arbitration path."),
+        ("Speaker 2", "Asante. I think that covers what I came for — unless you need anything else from me now."),
+        ("Speaker 1", "Just the document dump this afternoon, company search this week, and tile invoices. I will start the demand skeleton today."),
+        ("Speaker 2", "Sending everything by five. If courier of hard copies helps, I can drop them tomorrow morning."),
+        ("Speaker 1", "Electronic is fine to start; hard copies for Mutiso and contract if the scans are unclear."),
+        ("Speaker 2", "Scans are clear. I will still bring hard copies Friday when I review the demand draft."),
+        ("Speaker 1", "Ideal. We review Friday, revise same day if needed, serve early next week."),
+        ("Speaker 2", "And if they call me directly after service?"),
+        ("Speaker 1", "Redirect them to me. Do not negotiate quantum on WhatsApp. Everything through counsel."),
+        ("Speaker 2", "Understood. Hakuna negotiation without you."),
+        ("Speaker 1", "Good. Anything else weighing on you about the site safety angle?"),
+        ("Speaker 2", "We fenced the cracked area. No public access. Mutiso said temporary propping is not urgent if we keep loads off that bay."),
+        ("Speaker 1", "Record that instruction in writing to Sarova and to your site team. Safety record matters if anyone later alleges negligence."),
+        ("Speaker 2", "I will issue a site instruction today and copy you."),
+        ("Speaker 1", "Perfect. Then we are aligned: demand by next week, October follow-up, arbitration if silence continues."),
+        ("Speaker 2", "Aligned. Thanks for the time, Naomi — this has been thorough."),
+        ("Speaker 1", "That is what these meetings are for. Talk after I have your documents."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def wanjiru_voice_memo() -> list[tuple[str, str]]:
+    """Voice memos are dictation — shorter than a meeting, still complete (~10 min)."""
+    lines = [
+        ("Speaker 1", "Voice memo for the Wanjiru Holdings file. Leo nilitembelea Kilimani site with Eng. Mutiso. He confirms remedial works at about four point two million shillings — cracked slab on the second floor, same pattern as July, plus water ingress near the stair core."),
+        ("Speaker 1", "Sarova bado haijalipa, and they have not answered our demand of the twelfth of August. Fourteen days zimeisha without a substantive reply — only a vague email saying they are still assessing."),
+        ("Speaker 1", "Tafadhali draft a follow-up letter giving them seven more days. If they still ignore us, we issue the arbitration notice under clause forty-one of the contract."),
+        ("Speaker 1", "Attach Mutiso's report and the payment schedule showing twelve point six million already paid against the eighteen million contract sum. Make clear the balance remains withheld for cause."),
+        ("Speaker 1", "Also note that water ingress near the stair core is now visible in the latest photos — that strengthens urgency on remedial works. Site instruction issued to keep loads off the affected bay."),
+        ("Speaker 1", "Certificate four and five support the twelve point six paid. Certificate six was never issued because of the defects. Retention at five percent remains inside the unpaid balance discussion."),
+        ("Speaker 1", "Serve the follow-up to the registered office and the Westlands address once company search is back. Use the July correspondence email as well."),
+        ("Speaker 1", "Diarise a call with James Wanjiru on Friday at nine o'clock. I want him to approve the follow-up letter before it goes out. Board status note is separate and privileged."),
+        ("Speaker 1", "Annexure plan for the letter: Mutiso report A, payment schedule B, photos C, correspondence bundle D, site diary E."),
+        ("Speaker 1", "Add a line that no further mobilisation on site without an agreed remedial method statement, failing which we treat continued presence as compounding the defect."),
+        ("Speaker 1", "Remind myself to ask James for tile invoices — about two hundred thousand in ruined finishes on the second floor — small relative to four point two million but shows continuing damage."),
+        ("Speaker 1", "Friday call agenda: approve letter, confirm service addresses, confirm QS reconciliation note for the October meeting on the third at ten."),
+        ("Speaker 1", "If Sarova offers to self-remediate, only under a supervised method statement with Mutiso sign-off stages — do not accept a vague promise."),
+        ("Speaker 1", "Action list for me: draft follow-up today, wait for company search, circulate Friday morning, serve early next week if approved."),
+        ("Speaker 1", "Action list for James: Mutiso PDF, payment schedule, photos, site diary, contract, tile invoices, and company search if he can pull it faster than we can."),
+        ("Speaker 1", "Keep the partner tax discussion completely off this memo and off any letter — that stays privileged. Recording at length so the file note is usable without a separate typed attendance. End of memo."),
+    ]
+    # Pad with further solo dictation until ~10 minutes.
+    i = 1
+    while duration_s(lines) < 10 * 60:
+        lines.append(
+            (
+                "Speaker 1",
+                f"Supplementary dictation point {i}: confirm the demand chronology against the July fifth email, July eighteenth WhatsApp, and July twenty-second assessing reply before the follow-up letter is finalised.",
+            )
+        )
+        i += 1
+        if i > 40:
+            break
+    return lines
+
+
+def otieno_court() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Cause number forty-two of this year, Achieng' Otieno versus Bidii Logistics Limited. Appearances please."),
+        ("Speaker 2", "Kariuki for the claimant, my lord."),
+        ("Speaker 3", "Ochieng' for the respondent."),
+        ("Speaker 1", "This is listed for directions on the claim for unfair termination. Ms Kariuki, outline the claim briefly."),
+        ("Speaker 2", "My lord, the claimant was summarily dismissed on the ninth of March without a show cause letter and without a hearing, contrary to section forty-one of the Employment Act."),
+        ("Speaker 2", "She seeks reinstatement, or in the alternative compensation for unfair termination, unpaid February and March salary, and a certificate of service."),
+        ("Speaker 1", "Has a statement of claim and verifying affidavit been filed and served?"),
+        ("Speaker 2", "Yes, my lord. Filed on the twenty-first of April and served on the twenty-fourth. Affidavit of service is on record."),
+        ("Speaker 1", "Mr Ochieng', what is the respondent's position at this stage?"),
+        ("Speaker 3", "My lord, the respondent's position is that the claimant abandoned duty for eleven consecutive days. We dispute that procedure was not followed and we will put medical leave in issue."),
+        ("Speaker 1", "Counsel, has the respondent filed a replying affidavit or response to the claim?"),
+        ("Speaker 3", "Not yet, my lord. We seek fourteen days to file and serve a response and replying affidavit."),
+        ("Speaker 2", "My lord, we have no objection to fourteen days, provided the claimant may reply thereafter and the mention is not pushed past October."),
+        ("Speaker 1", "Why the concern about October, Ms Kariuki?"),
+        ("Speaker 2", "The claimant remains unemployed, my lord, and salary arrears continue to matter for her livelihood. We also want early directions on documents."),
+        ("Speaker 3", "My lord, fourteen days is standard. We were recently instructed and the HR file is being retrieved from archives."),
+        ("Speaker 1", "Very well. The respondent shall file and serve a response and replying affidavit within fourteen days of today."),
+        ("Speaker 1", "The claimant may file a supplementary affidavit within seven days thereafter. Any further documents by leave."),
+        ("Speaker 2", "My lord, we also seek a direction that the respondent discovers the show cause letter they allege was issued, if any, and the attendance register for March."),
+        ("Speaker 3", "We will address discovery in the response, my lord. We do not concede those documents exist in the form claimed."),
+        ("Speaker 1", "Both parties shall exchange lists of documents within twenty-one days. Contested discovery can be argued at the next mention."),
+        ("Speaker 1", "Mention on the twenty-eighth of October at nine o'clock for further directions. Highlighting of submissions thereafter. Costs in the cause."),
+        ("Speaker 2", "Much obliged, my lord. May I confirm the October mention is for directions only, not hearing?"),
+        ("Speaker 1", "Directions only, unless parties certify readiness earlier."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "That is the order of the court. Next matter."),
+    ]
+    extras = [
+        ("Speaker 1", "Before I rise, is there any interim relief sought today?"),
+        ("Speaker 2", "Not today, my lord — only directions. We reserve the right to seek interim measures if salary records are withheld."),
+        ("Speaker 3", "We will cooperate on documents that are relevant and not privileged."),
+        ("Speaker 1", "Counsel will conduct themselves accordingly. Ensure service affidavits are filed promptly after each step."),
+        ("Speaker 2", "Much obliged."),
+        ("Speaker 3", "Obliged, my lord."),
+        ("Speaker 1", "Ms Kariuki, confirm the claimant's contact for any short-service orders remains as on the claim."),
+        ("Speaker 2", "Yes, my lord — same mobile and email as pleaded."),
+        ("Speaker 1", "Mr Ochieng', place your instructing attorney's contacts on the next filing."),
+        ("Speaker 3", "We shall, my lord."),
+        ("Speaker 1", "Any language accommodation required for the claimant at future hearings?"),
+        ("Speaker 2", "English is fine, my lord, with occasional Kiswahili explanation in conference — not needed in open court today."),
+        ("Speaker 1", "Noted. Parties are reminded that settlement discussions remain without prejudice and offline."),
+        ("Speaker 3", "Understood, my lord."),
+        ("Speaker 2", "Understood."),
+        ("Speaker 1", "One further point — medical evidence. If abandonment is contested on medical grounds, expect expert or clinical notes properly exhibited."),
+        ("Speaker 2", "The claimant has clinic notes already exhibited in part, my lord. We will complete the bundle."),
+        ("Speaker 3", "We may require the maker for cross-examination in due course."),
+        ("Speaker 1", "That is for the hearing court. For now, get the pleadings in order."),
+        ("Speaker 2", "As directed."),
+        ("Speaker 3", "As directed."),
+        ("Speaker 1", "Court will also expect a joint statement of issues by the October mention if responses are in."),
+        ("Speaker 2", "We can work on a draft with counsel once we see their response."),
+        ("Speaker 3", "Agreed in principle, my lord."),
+        ("Speaker 1", "Good. Time estimates for a full hearing later — provisional only — Ms Kariuki?"),
+        ("Speaker 2", "One to two days, my lord, depending on witnesses."),
+        ("Speaker 3", "Similar estimate from our side."),
+        ("Speaker 1", "Diary will be fixed after October. That completes directions."),
+        ("Speaker 2", "Much obliged, my lord."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "Order as delivered. Next matter, please."),
+    ]
+    return pad_court_to_minutes(core, 48, extras, honorific="my lord")
+
+
+def otieno_briefing() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Achieng', asante kwa kuja. This meeting is privileged. Mahakama imeweka mention on the twenty-eighth of October at nine. Bidii Logistics must file a response and replying affidavit within fourteen days."),
+        ("Speaker 2", "Je, hiyo ina-mean nini kwa case yangu? Will I get my salary for February and March, and can I go back to work?"),
+        ("Speaker 1", "It means we keep pressure on them. We asked for reinstatement or compensation for unfair dismissal. The October date is for directions, not the final judgment."),
+        ("Speaker 2", "So I should not expect money next week?"),
+        ("Speaker 1", "Correct. First they file their defence. Then we answer. Then the court gives hearing directions. Nataka ulete payslips, the dismissal letter, and any WhatsApp with your supervisor by Friday."),
+        ("Speaker 2", "Sawa, nitawaleta. They said I abandoned duty, but I had sent medical notes to HR and copied my line manager. Do I need more witnesses?"),
+        ("Speaker 1", "If they raise abandonment again, we file a supplementary affidavit with those notes and a colleague who can confirm you reported sick. Tutafanya follow-up call after they serve their papers."),
+        ("Speaker 2", "My colleague Jane is willing, but she still works there — will she get in trouble?"),
+        ("Speaker 1", "We can start with a short witness statement. If they intimidate her, we bring that to the court's attention. We will not force her if the risk is too high — medical notes may carry the point."),
+        ("Speaker 2", "Okay. One more thing — my sister helped me with school fees when I was unpaid. That bit is private, usiiandike kwenye letter to the court or to Bidii."),
+        ("Speaker 1", "Noted, that stays off the record. I will draft a short client update letter summarising today's directions and diarise the twenty-eighth mention."),
+        ("Speaker 2", "Asante sana, advocate. Niko ready for Friday — I can drop the documents at chambers."),
+        ("Speaker 1", "Good. Bring originals and leave scans if you can. We will be ready when Bidii files, and I will call you the day after they serve."),
+    ]
+    extras = [
+        ("Speaker 1", "Let us slow down and rebuild the timeline together so nothing is missing from your affidavit."),
+        ("Speaker 2", "I was sick from the first of March. Clinic on the second. I WhatsApped my supervisor the same evening."),
+        ("Speaker 1", "Do you still have those WhatsApp ticks and the clinic receipt?"),
+        ("Speaker 2", "Yes. I screenshotted everything when HR started ignoring me."),
+        ("Speaker 1", "Excellent. We will exhibit the screenshots with a certificate of electronic evidence if needed."),
+        ("Speaker 2", "They locked me out of the email on the ninth — same day as the dismissal letter."),
+        ("Speaker 1", "Note that. Sudden lock-out supports that this was a dismissal, not a mutual exit."),
+        ("Speaker 2", "What about my certificate of service? I need it for interviews."),
+        ("Speaker 1", "We pleaded it. If they still refuse after judgment or settlement, we enforce. I can also demand it in the next letter."),
+        ("Speaker 2", "Please demand it. Without it, HR offices ask too many questions."),
+        ("Speaker 1", "We will. Now, salary — February full month unpaid, March proportional to days before dismissal?"),
+        ("Speaker 2", "February full. March they paid nothing even for the days I was cleared as sick."),
+        ("Speaker 1", "We claim both. Bring the February payslip pattern and any bank alerts showing no credit."),
+        ("Speaker 2", "Bank SMS I can forward tonight."),
+        ("Speaker 1", "Do that. Also confirm your last basic salary figure exactly as on the contract."),
+        ("Speaker 2", "Forty-five thousand basic, plus a small transport allowance."),
+        ("Speaker 1", "We will plead transport if it was contractual. Was it in the letter of appointment?"),
+        ("Speaker 2", "Yes — three thousand transport."),
+        ("Speaker 1", "Good. On reinstatement — tell me honestly if you still want to go back, or if compensation is enough."),
+        ("Speaker 2", "I want my dignity. If the place is toxic, compensation is okay — but I do not want them to say I abandoned."),
+        ("Speaker 1", "Understood. We keep both prayers; you can elect later with advice."),
+        ("Speaker 2", "Will Bidii's lawyer try to settle quietly?"),
+        ("Speaker 1", "Possibly after they see your medical trail. Any settlement talk stays without prejudice and through me."),
+        ("Speaker 2", "I will not take their HR calls alone."),
+        ("Speaker 1", "Please do not. Redirect to chambers."),
+        ("Speaker 2", "About school fees help from my sister — you will really leave it out?"),
+        ("Speaker 1", "Completely. It is irrelevant to liability and sensitive. Off the record."),
+        ("Speaker 2", "Asante. I was worried."),
+        ("Speaker 1", "Before Friday, make a folder: contract, payslips, dismissal letter, clinic notes, WhatsApp PDF, bank SMS, ID copy."),
+        ("Speaker 2", "I will label them the way you said."),
+        ("Speaker 1", "If Jane agrees, a one-page statement that you informed the supervisor you were sick — nothing more."),
+        ("Speaker 2", "I will ask her tonight carefully."),
+        ("Speaker 1", "After they serve their response, we meet again within a few days to decide supplementary affidavit content."),
+        ("Speaker 2", "Will you text me when it arrives?"),
+        ("Speaker 1", "Yes — same day. Then we book a slot."),
+        ("Speaker 2", "I think I understand the October mention better now."),
+        ("Speaker 1", "Good. Directions date, not judgment day. We prepare documents so when hearing comes we are not scrambling."),
+        ("Speaker 2", "Asante sana for explaining slowly. Sometimes court language ni ngumu."),
+        ("Speaker 1", "That is why we debrief. You should never leave chambers unclear on next steps."),
+        ("Speaker 2", "Next steps — documents Friday, wait for their filing, your call, October mention."),
+        ("Speaker 1", "Exactly. Plus demand for certificate of service in the update letter."),
+        ("Speaker 2", "Niko ready. Thank you, advocate."),
+        ("Speaker 1", "Thank you for coming in. Travel safe, and send the bank SMS tonight."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def coastal_strategy() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Fatuma, you mentioned three accounts in default. This call is privileged. Give me the worst one first."),
+        ("Speaker 2", "Mwakio Enterprises. Four point eight million outstanding, last payment was in November. Security is a title in Nyali, L.R. number Mombasa Block Twelve slash three four one."),
+        ("Speaker 1", "Have you issued a statutory notice under section ninety of the Land Act?"),
+        ("Speaker 2", "Hapana, not yet. We only sent internal reminder letters and one board chase-up. Credit wanted to wait for a restructuring proposal that never came."),
+        ("Speaker 1", "Then we start there — three months' statutory notice, then forty days' notification before sale. I will prepare the section ninety notice this week."),
+        ("Speaker 2", "And the other two? Kadzo Traders is about nine hundred thousand, unsecured. Hassan Supply is one point two million with a personal guarantee from the director."),
+        ("Speaker 1", "For unsecured, demand then plaint in the Magistrate's Court. For Hassan we enforce the guarantee in parallel. One recovery matter for the portfolio."),
+        ("Speaker 2", "Please do. Can we meet on the twentieth of September at two p.m. to review all three, with drafts on the table?"),
+        ("Speaker 1", "Twentieth at two works. I will circulate a status note before then with draft notices."),
+        ("Speaker 2", "One caution — keep the board's internal provisioning numbers out of anything external."),
+        ("Speaker 1", "Understood. That stays privileged. Notices only use contractual outstanding and security particulars."),
+        ("Speaker 2", "Asante, Naomi. Send Mwakio drafts first — that is the one burning."),
+        ("Speaker 1", "You will have them by Wednesday. If Mwakio pays anything before then, call me immediately."),
+    ]
+    extras = [
+        ("Speaker 1", "Let us spend time on Mwakio title particulars so the notice is not defective."),
+        ("Speaker 2", "Title is freehold, charged to the Sacco in twenty twenty-two. Spouses consented. Valuation then was eight point five million."),
+        ("Speaker 1", "Do you have a current valuation, or only the twenty twenty-two figure?"),
+        ("Speaker 2", "Only the old one. Board may approve a fresh valuation next month."),
+        ("Speaker 1", "For statutory notice we can proceed on outstanding debt; valuation matters more before sale."),
+        ("Speaker 2", "Good. Mwakio keeps promising a buyer for the Nyali plot but nothing lands."),
+        ("Speaker 1", "Do not pause the notice for verbal buyer stories. If a serious offer comes with proof of funds, we revisit."),
+        ("Speaker 2", "Agreed. On Kadzo — they are small, and the director is reachable in Changamwe."),
+        ("Speaker 1", "Demand letter with seven to fourteen days, then plaint. Check limitation from default date."),
+        ("Speaker 2", "Default crystalised around January. We should be inside limitation."),
+        ("Speaker 1", "Still diary limitation expressly on the file opening note."),
+        ("Speaker 2", "Hassan's guarantee — is it continuing or limited to one point two?"),
+        ("Speaker 1", "Send me the guarantee instrument. Wording decides whether interest and costs are covered."),
+        ("Speaker 2", "I will email all three facility letters, securities, and statements of account today."),
+        ("Speaker 1", "Statements should show last payment date, interest rate, and how four point eight is built."),
+        ("Speaker 2", "Our system can export that. Finance will join the twentieth if you want."),
+        ("Speaker 1", "Please — finance for numbers, you for board appetite on settlement versus sale."),
+        ("Speaker 2", "Board is tired of Mwakio. They want a lawful path, not shortcuts."),
+        ("Speaker 1", "Lawful path is exactly why we do section ninety properly. No padlock fantasies."),
+        ("Speaker 2", "Someone on credit asked about quiet possession. I shut it down."),
+        ("Speaker 1", "Correct. Irregular enforcement creates countersuits and injunctions."),
+        ("Speaker 2", "For Hassan, can we call the guarantor for a without-prejudice meeting?"),
+        ("Speaker 1", "Yes, after the demand goes out. Meeting through me, attendance note kept."),
+        ("Speaker 2", "Provisioning figures — you will really keep them out of the notice annexures?"),
+        ("Speaker 1", "Completely. External papers show contractual debt only."),
+        ("Speaker 2", "Asante. That would have caused board heat if leaked."),
+        ("Speaker 1", "We will also open the Ambiguous workspace matter once you confirm the portfolio name."),
+        ("Speaker 2", "Call it Coastal Sacco — loan recovery portfolio, as on our engagement letter."),
+        ("Speaker 1", "Done. Status note before the twentieth will have three tabs: Mwakio, Kadzo, Hassan."),
+        ("Speaker 2", "Include expected timelines in plain language for the board pack."),
+        ("Speaker 1", "I will — statutory clock for Mwakio, suit timeline for Kadzo, guarantee claim for Hassan."),
+        ("Speaker 2", "If Mwakio pays half next week, do we still serve notice?"),
+        ("Speaker 1", "Depends on written proposal. Partial payment alone may not cure default. Call me before accepting."),
+        ("Speaker 2", "I will not accept casually."),
+        ("Speaker 1", "Any political sensitivity on Nyali enforcement I should know?"),
+        ("Speaker 2", "Nothing formal. Local chatter only. We stay on paper and statute."),
+        ("Speaker 1", "Good. Anything else before I start drafting?"),
+        ("Speaker 2", "Just courier preferences — serve Mwakio at both the Nyali property and the last known postal address."),
+        ("Speaker 1", "We will. Affidavits of service will matter later if they cry foul."),
+        ("Speaker 2", "Asante, Naomi. This call was long but needed."),
+        ("Speaker 1", "These recovery files always need time. Talk Wednesday when drafts land."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def coastal_nyali() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 2", "Naomi, asante kwa kupiga. Mwakio bado hajalipa. Four point eight million is outstanding since November. Title iko Nyali, L.R. Mombasa Block Twelve slash three four one."),
+        ("Speaker 1", "Tutaanza na section ninety statutory notice this week. After three months, the forty days' notification before sale. Hapana shortcuts — Land Act process lazima ifuatwe."),
+        ("Speaker 2", "Na Kadzo Traders? Nine hundred thousand, unsecured — tunaweza file plaint Mombasa Magistrate Court? Hassan Supply also, one point two million with a personal guarantee."),
+        ("Speaker 1", "Yes. Demand then plaint for Kadzo. For Hassan we sue on the guarantee as well. One recovery matter for all three."),
+        ("Speaker 2", "Board wants a short written status before our review. Can you include expected timelines for each file?"),
+        ("Speaker 1", "I will draft the Mwakio notice, circulate a status note with timelines, and calendar review on the twentieth of September at two p.m."),
+        ("Speaker 2", "Poa. Please keep the board's internal provisioning figure off anything you send outside."),
+        ("Speaker 1", "Understood — that stays privileged. Notices will only show contractual outstanding and security particulars."),
+        ("Speaker 2", "Asante. Send Mwakio draft first, then Kadzo and Hassan demands."),
+        ("Speaker 1", "By Wednesday. If Mwakio pays anything before then, niambie immediately so we pause or reshape the notice."),
+    ]
+    extras = [
+        ("Speaker 1", "Fatuma, confirm the exact spelling of Mwakio Enterprises on the charge document — we must match it."),
+        ("Speaker 2", "Mwakio Enterprises Limited — with Limited. I will resend the charge PDF."),
+        ("Speaker 1", "Also confirm whether interest is still being applied on the statement you use for the notice."),
+        ("Speaker 2", "Yes, contractual interest. Finance will freeze a statement as at Wednesday morning for annexing."),
+        ("Speaker 1", "Perfect. Statement date and notice date should align."),
+        ("Speaker 2", "For Nyali service, security guard sometimes refuses couriers."),
+        ("Speaker 1", "Then we use registered post plus email plus affixation where the Act allows — we document each attempt."),
+        ("Speaker 2", "Kadzo's director asked for a payment plan of fifty thousand monthly."),
+        ("Speaker 1", "That is slow on nine hundred thousand. We can discuss after demand, with a consent judgment if serious."),
+        ("Speaker 2", "Hassan guarantor is in Dubai until October."),
+        ("Speaker 1", "We can still demand locally and explore substituted service later if needed. Do not wait forever."),
+        ("Speaker 2", "Sawa. I will not let Dubai become an excuse."),
+        ("Speaker 1", "Walk me through any payments received after November on Mwakio — even small ones."),
+        ("Speaker 2", "Zero after November. Only promises."),
+        ("Speaker 1", "Note that expressly in the status note — last payment November, nil since."),
+        ("Speaker 2", "Should we advertise anything yet?"),
+        ("Speaker 1", "No. Advertising comes after the statutory clocks. Premature publicity creates problems."),
+        ("Speaker 2", "Board will ask why it takes months."),
+        ("Speaker 1", "Because the Land Act clocks are mandatory. I will put a plain-language timeline in the pack."),
+        ("Speaker 2", "Asante. That will help."),
+        ("Speaker 1", "Any other securities quietly sitting on Mwakio we forgot?"),
+        ("Speaker 2", "Only the Nyali title and a weak debenture over stock that is probably gone."),
+        ("Speaker 1", "Focus on the title. Debenture can be pleaded but do not rely on empty stock."),
+        ("Speaker 2", "Understood. I will get finance on the Wednesday draft review call as well."),
+        ("Speaker 1", "Good. We go line by line on the notice before it leaves."),
+        ("Speaker 2", "Poa. Niko ready when drafts come."),
+        ("Speaker 1", "Talk Wednesday. Meanwhile no field enforcement without me."),
+        ("Speaker 2", "Hapana field stories. Paper only."),
+        ("Speaker 1", "Exactly. End of call once you confirm the charge PDF is sent."),
+        ("Speaker 2", "Sending now. Asante, Naomi."),
+        ("Speaker 1", "Received — I will acknowledge on email. Bye for now."),
+    ]
+    return pad_to_minutes(core, 45, extras)
+
+
+def githunguri_intake() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Grace, thank you for coming in. This conversation is privileged. Tell me about the land and who is currently on the title."),
+        ("Speaker 2", "My late father's parcel in Kiambu, Githunguri — about four acres in total. He died in twenty-nineteen. My brother obtained letters of administration and transferred two acres to himself."),
+        ("Speaker 1", "Were you listed as a beneficiary in the petition for the grant?"),
+        ("Speaker 2", "No. He said I was married so sitakuwa na haki. My mother and two sisters were also left out. None of us were served with the petition or the gazette notice."),
+        ("Speaker 1", "That's not the law. Under the Law of Succession Act a married daughter remains a beneficiary. We can apply to revoke the grant under section seventy-six for concealment of material facts."),
+        ("Speaker 2", "Is it too late? It's been a while since the transfer, and he has started fencing."),
+        ("Speaker 1", "Revocation isn't strictly time-barred where the grant was obtained by concealment, but we should move quickly before further dealings or a sale to a third party."),
+        ("Speaker 1", "Bring the death certificate, the grant, the green card search, and any message where he said married daughters have no share."),
+        ("Speaker 2", "I'll get them next week. There is also a family meeting planned about our sister who lives abroad — that discussion should stay private."),
+        ("Speaker 1", "Understood, that stays off the record. I will open a succession matter, draft a first advice letter, and we meet again once documents are in."),
+        ("Speaker 2", "Asante. I will call when I have the green card from Kiambu lands."),
+        ("Speaker 1", "Do that. Meanwhile avoid any further family transfers or signing on that title."),
+    ]
+    extras = [
+        ("Speaker 1", "Let us map the family tree carefully — full names and whether anyone else is on the title."),
+        ("Speaker 2", "Father Njoroge Kamau. Mother still alive. Brother Peter. Sisters Mary, Faith abroad, and me Grace Njeri."),
+        ("Speaker 1", "Was there a will?"),
+        ("Speaker 2", "No will. Intestate."),
+        ("Speaker 1", "Good — intestacy rules apply. Married daughters share. Concealment of beneficiaries is a classic revocation ground."),
+        ("Speaker 2", "Peter told the court it was only him and maybe mama, but mama says she never signed anything."),
+        ("Speaker 1", "If your mother's signature was forged or she was not consulted, say so in your affidavit with care — we need facts, not guesses."),
+        ("Speaker 2", "She says she was in the shamba and never went to court."),
+        ("Speaker 1", "We will get her supporting affidavit. Does she still live on the remaining two acres?"),
+        ("Speaker 2", "Yes. Peter fenced the two he transferred. The homestead side is where mama is."),
+        ("Speaker 1", "Any buyer sniffing around Peter's two acres?"),
+        ("Speaker 2", "A broker came last month. That is why I am here."),
+        ("Speaker 1", "Speed matters then. Caveat or inhibition may be needed after we have the green card."),
+        ("Speaker 2", "What is a caveat in plain language?"),
+        ("Speaker 1", "A warning on the register so a buyer cannot claim they did not know there is a dispute."),
+        ("Speaker 2", "Please do that as soon as you can."),
+        ("Speaker 1", "As soon as searches confirm the current entries. Do not tip Peter in a way that accelerates a sale before we file."),
+        ("Speaker 2", "I have been quiet. Only mama knows I came to a lawyer."),
+        ("Speaker 1", "Keep it that way until filing strategy is set."),
+        ("Speaker 2", "About Faith abroad — the family meeting is about how we support her. Not about giving Peter more land."),
+        ("Speaker 1", "That support discussion stays off affidavits unless it becomes relevant later. You asked it to be private."),
+        ("Speaker 2", "Yes — private."),
+        ("Speaker 1", "Document checklist again: death certificate, grant, gazette if any, green card, mutation if any, Peter's messages, your marriage certificate only if they used marriage to exclude you."),
+        ("Speaker 2", "I can get marriage certificate. They used that argument verbally."),
+        ("Speaker 1", "Useful. Fees — I will send an engagement letter with a staged estimate for search, advice, then revocation application."),
+        ("Speaker 2", "Sawa. I need to know costs before we file."),
+        ("Speaker 1", "Transparent stages. No surprise filing without your go-ahead."),
+        ("Speaker 2", "What should mama avoid signing if Peter brings papers?"),
+        ("Speaker 1", "Anything. Call me first. No consent, no withdrawal, no new petition signatures."),
+        ("Speaker 2", "I will tell her tonight."),
+        ("Speaker 1", "If Peter serves any court paper on you, photograph it and send immediately."),
+        ("Speaker 2", "I will. Asante for taking time — I know succession is not a short meeting."),
+        ("Speaker 1", "These intakes should not be rushed. Wrong facts early create wrong pleadings."),
+        ("Speaker 2", "I will start Kiambu lands tomorrow morning."),
+        ("Speaker 1", "Good. Call me when the green card is in your hands."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def githunguri_followup() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 2", "Dada Naomi, nimerudi as you asked. Brother alichukua grant bila majina yetu. He transferred two acres in Githunguri to himself after baba died in twenty-nineteen."),
+        ("Speaker 1", "Under the Law of Succession Act, a married daughter remains a beneficiary. Sitakuwa na haki is not the law. We apply to revoke under section seventy-six for concealment."),
+        ("Speaker 2", "Mama and my two sisters were also left out. We were never served. Is it too late to reverse the transfer?"),
+        ("Speaker 1", "Revocation is available where the grant was obtained by concealment, but we must move quickly. Once the grant falls, the transfer can be challenged."),
+        ("Speaker 1", "Lete death certificate, the grant, the green card search, and any SMS where he said married daughters have no share."),
+        ("Speaker 2", "Sawa. The family meeting about our sister abroad is private — usiiweke kwenye affidavit au advice letter."),
+        ("Speaker 1", "That stays off the record. I will open a succession matter today and draft a first advice letter."),
+        ("Speaker 2", "Asante sana. Nitakupigia Friday once I have the green card. I already booked the search."),
+        ("Speaker 1", "Perfect. Until then, hakuna further signing on that title."),
+    ]
+    extras = [
+        ("Speaker 1", "Since your last visit, has Peter done anything new on the fence or with brokers?"),
+        ("Speaker 2", "Fence is complete on his side. Broker called mama once; she refused to talk."),
+        ("Speaker 1", "Good. We may need mama's short affidavit that she was not a petitioner and not served."),
+        ("Speaker 2", "She is ready when you say."),
+        ("Speaker 1", "Bring her after we have the green card so we swear with the register in hand."),
+        ("Speaker 2", "Should Faith abroad send a power of attorney?"),
+        ("Speaker 1", "Eventually yes if she joins as applicant. For advice stage, your instructions may suffice if she emails consent."),
+        ("Speaker 2", "I can get her email consent this week."),
+        ("Speaker 1", "Do that. We keep a clear mandate trail."),
+        ("Speaker 2", "Peter still tells people court finished everything."),
+        ("Speaker 1", "Grants obtained by concealment can be revoked. Court finishing is not the end if process was dishonest."),
+        ("Speaker 2", "That gives me hope."),
+        ("Speaker 1", "Hope plus documents. Without green card we do not file blind."),
+        ("Speaker 2", "Search is booked Friday morning Kiambu."),
+        ("Speaker 1", "Send me the PDF the same day. I will turn the advice letter over the weekend."),
+        ("Speaker 2", "Asante. Costs estimate still as you emailed?"),
+        ("Speaker 1", "Yes — stage one advice, stage two revocation filing after you approve."),
+        ("Speaker 2", "Nimeelewa. No filing until I approve."),
+        ("Speaker 1", "Correct. Any pressure from Peter, you call me first."),
+        ("Speaker 2", "Nitakupigia. Asante for the long sit-down again."),
+        ("Speaker 1", "Succession needs time. We are doing it properly."),
+    ]
+    return pad_to_minutes(core, 45, extras)
+
+
+def barclays_apex() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 2", "Naomi, the Apex Logistics facility is now firmly in default. Outstanding is one hundred and forty million as at month end, interest still accruing."),
+        ("Speaker 1", "And the security held by the bank?"),
+        ("Speaker 2", "Legal charge over the Industrial Area godown, L.R. two zero nine slash one one four three, plus a debenture over the fleet and receivables."),
+        ("Speaker 1", "Has the bank issued a statutory notice under section ninety of the Land Act?"),
+        ("Speaker 2", "Hapana, not yet. Credit wanted a restructure first, but Apex missed the last three instalments and talks collapsed last Friday."),
+        ("Speaker 1", "Sequence is formal demand, then section ninety, then forty days' notification before sale. Also a Milimani plaint for the unsecured portion."),
+        ("Speaker 3", "Apex already wrote threatening an injunction if we move to sell. They claim the valuation is outdated."),
+        ("Speaker 1", "We prepare a replying affidavit in advance. Brian, start that draft this week and pull the latest valuation."),
+        ("Speaker 2", "The bank wants a formal demand letter on record before any of that."),
+        ("Speaker 1", "Agreed — demand first, fourteen days to remedy, then statutory notice. Ruling on the pending application is twelfth October at eleven."),
+        ("Speaker 2", "Keep the internal provisioning figure out of anything filed or sent to Apex."),
+        ("Speaker 1", "Understood — off the record. I will circulate demand draft and litigation plan by Wednesday."),
+        ("Speaker 3", "I will diarise the twelfth and start the replying affidavit skeleton today."),
+        ("Speaker 2", "Good. Reconvene after the demand goes out."),
+    ]
+    extras = [
+        ("Speaker 1", "Susan, confirm how the one hundred and forty million splits between principal, interest, and fees."),
+        ("Speaker 2", "Roughly one hundred and eighteen principal, rest interest and default fees. Finance will freeze a certificate of balance."),
+        ("Speaker 1", "We annex that certificate to the demand. Brian, mirror the same figures in the draft plaint."),
+        ("Speaker 3", "Will do. On the injunction threat — they attach a twenty twenty-one valuation."),
+        ("Speaker 1", "Commission a current valuation under bank panel rules. Do not rely on their number."),
+        ("Speaker 2", "Panel valuer can start Monday if I approve fees today."),
+        ("Speaker 1", "Approve it. Injunction fights die on up-to-date evidence and clean statutory process."),
+        ("Speaker 3", "Debenture — are we appointing a receiver or only charging the land first?"),
+        ("Speaker 1", "Land statutory path first for the godown. Receiver discussion in parallel if fleet is still valuable."),
+        ("Speaker 2", "Fleet is depleted. Receivables are the better debenture angle."),
+        ("Speaker 1", "Then plead debenture rights but prioritise charge enforcement and the money claim."),
+        ("Speaker 3", "Service addresses for Apex — registered office and the godown?"),
+        ("Speaker 2", "Both, plus the email used in restructure correspondence."),
+        ("Speaker 1", "Over-serve. Brian to prepare affidavits of service templates now."),
+        ("Speaker 2", "Credit committee wants weekly updates until notice is served."),
+        ("Speaker 1", "You will get a short privileged email update each Friday."),
+        ("Speaker 3", "Any without-prejudice offer from Apex still live?"),
+        ("Speaker 2", "They offered a haircut we cannot accept. Talks collapsed."),
+        ("Speaker 1", "Record that talks collapsed as at last Friday. Demand is not a continuation of those talks."),
+        ("Speaker 2", "Provisioning number stays internal — please brief juniors too."),
+        ("Speaker 1", "I will. Nobody puts that figure in exhibits."),
+        ("Speaker 3", "Twelfth October ruling — we should attend even if demand is mid-flight."),
+        ("Speaker 1", "Yes. Different application, still diary. Susan, who attends from the bank?"),
+        ("Speaker 2", "I will or send recoveries counsel with Brian."),
+        ("Speaker 1", "Good. Anything else before we close this conference?"),
+        ("Speaker 2", "Just urgency — every week of delay grows interest and softens security."),
+        ("Speaker 1", "Understood. Demand draft Wednesday, valuation Monday kickoff, affidavit skeleton underway."),
+        ("Speaker 3", "I am clear on my tasks."),
+        ("Speaker 2", "I am clear. Thank you both — long but necessary."),
+        ("Speaker 1", "These enforcement conferences should not be short. Talk Wednesday."),
+    ]
+    return pad_to_minutes(core, 50, extras)
+
+
+def karanja_meeting() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Peter, this meeting is privileged. Take me through what the landlord has done at the Westlands premises — start from last Thursday."),
+        ("Speaker 2", "Riverside Properties levied distress last Thursday. They locked our warehouse and took stock worth about six million, including two perishable lines."),
+        ("Speaker 1", "Are you in arrears, and for how long?"),
+        ("Speaker 2", "Three months, about two point four million. But the lease says thirty days' notice before distress. Hapana notice ilitolewa."),
+        ("Speaker 1", "Did they serve that notice in writing, or only by phone?"),
+        ("Speaker 2", "Nothing in writing. Only a phone call from the caretaker on the morning of the lock-out. Inventory without our representative."),
+        ("Speaker 1", "Then the distress is irregular. We move the Business Premises Rent Tribunal for a reference and interim orders restoring possession and restraining sale."),
+        ("Speaker 2", "How fast? Stock is perishable and staff are locked out."),
+        ("Speaker 1", "File this week, seek interim relief within seven days. I will also demand Riverside for goods value and unlawful lock-out."),
+        ("Speaker 2", "Can we meet twenty-fifth September at eleven to sign the affidavit?"),
+        ("Speaker 1", "Yes. Bring lease, rent schedule, photos, stock list with values."),
+        ("Speaker 2", "There was a side cash sale conversation with a neighbour — keep that off any paper we file."),
+        ("Speaker 1", "Privileged. It will not appear. Draft affidavit by Monday."),
+    ]
+    extras = [
+        ("Speaker 1", "Describe the morning of the lock-out hour by hour."),
+        ("Speaker 2", "Caretaker called at seven. By eight padlocks were on. Auctioneer truck at nine. We arrived at nine-thirty and were refused entry."),
+        ("Speaker 1", "Names of auctioneer firm on the truck or warrants?"),
+        ("Speaker 2", "I photographed the truck branding. I did not see a court warrant — only landlord letters waved at a distance."),
+        ("Speaker 1", "Those photos are critical. We argue no lawful process and no lease notice."),
+        ("Speaker 2", "Perishable lines are dairy and fresh juice — maybe forty-eight hours left when they took them."),
+        ("Speaker 1", "Say that in the affidavit. Irreparable harm supports interim relief."),
+        ("Speaker 2", "Staff wages — do we mention we still paid them while locked out?"),
+        ("Speaker 1", "Yes, briefly, as consequential loss. Keep payslips ready."),
+        ("Speaker 2", "Arrears we admit — we tried to negotiate a plan in August."),
+        ("Speaker 1", "Admission of arrears is fine. Process still had to be followed. Negotiation emails go in the bundle."),
+        ("Speaker 2", "Landlord's agent was rude on the call — is tone relevant?"),
+        ("Speaker 1", "Facts over tone. Record the call time and what was said about notice."),
+        ("Speaker 2", "He said notice is not needed because we were chronic defaulters."),
+        ("Speaker 1", "That helps — it shows they knowingly skipped the lease clause."),
+        ("Speaker 2", "Should we pay arrears into tribunal or escrow to look reasonable?"),
+        ("Speaker 1", "We can offer ongoing rent without prejudice while disputing distress. I will advise the exact mechanism in the draft."),
+        ("Speaker 2", "Neighbour cash sale — you promise it stays out?"),
+        ("Speaker 1", "Promise. Irrelevant and sensitive. Off the record."),
+        ("Speaker 2", "Asante. I needed to hear that."),
+        ("Speaker 1", "Document pack labels: lease A, rent schedule B, photos C, stock valuation D, correspondence E."),
+        ("Speaker 2", "I will organise tonight."),
+        ("Speaker 1", "If they try to sell goods before we file, call me immediately — we may need emergency attendance."),
+        ("Speaker 2", "I will. Guards told me goods are in their yard in Industrial Area."),
+        ("Speaker 1", "Note the yard address if you can learn it. Useful for restraining orders."),
+        ("Speaker 2", "I will ask quietly."),
+        ("Speaker 1", "Anything else before we stop?"),
+        ("Speaker 2", "Just thank you — I thought legal meetings were fifteen minutes. This needed an hour."),
+        ("Speaker 1", "Distress and possession fights always do. See you the twenty-fifth, drafts before then."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def karanja_site() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 2", "Naomi, niko site. Landlord alilock warehouse jana asubuhi. Stock worth about six million. Hapana written notice — only a call from the caretaker, then padlocks."),
+        ("Speaker 1", "Lease ina-require thirty days' notice before distress. Without it, the levy is irregular. Tutaenda BPRT for reference and interim restoration."),
+        ("Speaker 2", "Arrears ni three months, two point four million — tuna-admit that, but process ilikuwa wrong. Inventory without us. How fast?"),
+        ("Speaker 1", "File this week, interim within seven days. Demand for goods value and lock-out loss as well."),
+        ("Speaker 1", "Meeting twenty-fifth September at eleven to sign. Lete lease, rent schedule, photos, stock valuation."),
+        ("Speaker 2", "Poa. Keep the side cash sale with the neighbour off paper."),
+        ("Speaker 1", "Privileged. Draft reference and demand before signing meeting."),
+        ("Speaker 2", "Asante. Staff wako nje — we need that interim order before perishables die."),
+        ("Speaker 1", "Understood. No re-entry without the order."),
+    ]
+    extras = [
+        ("Speaker 1", "While you are on site, photograph every padlock, notice if any, and the truck if still there."),
+        ("Speaker 2", "Truck left. Padlocks still on. I am taking photos now."),
+        ("Speaker 1", "Ask neighbouring tenants if they saw the auctioneer arrive — names only, no confrontation."),
+        ("Speaker 2", "One tenant saw them at eight. He can give a short statement."),
+        ("Speaker 1", "Take his number. We may need it for the affidavit."),
+        ("Speaker 2", "Dairy stock — smell is already bad near the loading bay."),
+        ("Speaker 1", "Record that in a voice note to me after this call for contemporaneous evidence."),
+        ("Speaker 2", "Will do. Landlord agent texted saying pay full arrears today or goods go to auction Friday."),
+        ("Speaker 1", "Forward that text. Do not reply except through me. Friday auction threat supports urgency."),
+        ("Speaker 2", "Forwarding now."),
+        ("Speaker 1", "Received. We reference it in the certificate of urgency."),
+        ("Speaker 2", "Should I try to negotiate at the gate?"),
+        ("Speaker 1", "No. Negotiation without prejudice through counsel only."),
+        ("Speaker 2", "Sawa. I will leave site after photos and neighbour number."),
+        ("Speaker 1", "Then go prepare the document folder for Monday draft review."),
+        ("Speaker 2", "Niko clear. Asante for staying on the line — this call is long because site keeps interrupting."),
+        ("Speaker 1", "Interruptions are fine. Better a long accurate call than a short wrong one."),
+        ("Speaker 2", "Talk after I send photos."),
+        ("Speaker 1", "I will be here."),
+    ]
+    return pad_to_minutes(core, 45, extras)
+
+
+def riverside_court() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Civil suit number three one seven of this year, Karanja and Sons Limited versus Riverside Properties Limited. Appearances."),
+        ("Speaker 2", "Kariuki for the applicant, my lady."),
+        ("Speaker 3", "Kiptoo for the respondent."),
+        ("Speaker 1", "This is the applicant's certificate of urgency on alleged irregular distress. Ms Kariuki."),
+        ("Speaker 2", "My lady, the respondent levied distress on the eleventh of September without the thirty days' notice required under the lease and without a court process. Stock valued at about six million was removed."),
+        ("Speaker 2", "We seek interim orders restraining sale or disposal of the attached goods and restoring the applicant to possession pending inter partes hearing."),
+        ("Speaker 3", "My lady, the applicant is in arrears of two point four million and the respondent acted within contractual re-entry rights. Delay prejudices the landlord."),
+        ("Speaker 1", "Counsel for the respondent, was any notice served in writing before the distress?"),
+        ("Speaker 3", "Not in writing, my lady. There was telephone communication."),
+        ("Speaker 1", "The court grants an interim order restraining sale or disposal of the attached goods pending inter partes hearing. Possession is restored on terms that rent arrears continue to accrue."),
+        ("Speaker 1", "Respondent shall file a replying affidavit within fourteen days. Applicant may file a supplementary affidavit within seven days thereafter."),
+        ("Speaker 1", "Mention on the twelfth of October at eleven for directions on the main suit. Costs in the cause."),
+        ("Speaker 2", "Much obliged, my lady."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "That is the order. Court rises for a short break."),
+    ]
+    extras = [
+        ("Speaker 1", "Before I finalise, Ms Kariuki — where are the goods presently?"),
+        ("Speaker 2", "On our information, in a yard in Industrial Area used by the respondent's agents, my lady. Exact plot to be confirmed in a further affidavit."),
+        ("Speaker 1", "Mr Kiptoo, can you undertake that no sale occurs pending the order being extracted?"),
+        ("Speaker 3", "My lady, I will take instructions immediately. We hear the court's order."),
+        ("Speaker 1", "The order restrains sale. Breach will have consequences."),
+        ("Speaker 2", "My lady, we also ask that inventory be jointly taken upon restoration."),
+        ("Speaker 1", "Sensible. Parties shall jointly inventory goods remaining upon restoration of possession, with each side entitled to a representative."),
+        ("Speaker 3", "We may argue quantum of alleged stock later."),
+        ("Speaker 1", "Quantum is for another day. Process and interim preservation are today's issues."),
+        ("Speaker 2", "Much obliged. May we have leave to serve short notice of the extracted order?"),
+        ("Speaker 1", "Leave granted for prompt service including electronic means used between the parties."),
+        ("Speaker 3", "We place on record that arrears remain due and payable."),
+        ("Speaker 1", "Noted — arrears continue to accrue as ordered. No finding today on the full merits of re-entry."),
+        ("Speaker 2", "Understood, my lady."),
+        ("Speaker 1", "Time estimate for inter partes hearing of the application?"),
+        ("Speaker 2", "Half a day, my lady."),
+        ("Speaker 3", "Half a day is fair."),
+        ("Speaker 1", "Diary after affidavits close. Mention twelfth October stands."),
+        ("Speaker 2", "As directed."),
+        ("Speaker 3", "As directed."),
+        ("Speaker 1", "Any other interim issue?"),
+        ("Speaker 2", "Only that perishable stock may already be damaged — we will particularise loss in supplementary papers."),
+        ("Speaker 1", "Do so with invoices and valuations where possible."),
+        ("Speaker 3", "We reserve all rights on causation."),
+        ("Speaker 1", "Reserved. Order as delivered. Court rises briefly."),
+    ]
+    return pad_court_to_minutes(core, 48, extras, honorific="my lady")
+
+
+def sahara_milimani() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Civil Suit number two zero four of twenty twenty-six, Wanjiru Holdings Limited versus Kamau Enterprises Limited, Milimani Commercial Court. Appearances please."),
+        ("Speaker 2", "Kariuki for the plaintiff, my lady."),
+        ("Speaker 3", "Ochieng for the defendant, my lady."),
+        ("Speaker 1", "This matter is for directions on lease arrears. Ms Kariuki."),
+        ("Speaker 2", "Mheshimiwa, the claim is for lease arrears of KES four hundred and fifty thousand under the lease signed in March twenty twenty-four for the Industrial Area unit."),
+        ("Speaker 2", "Demand letter dated the twelfth of August was served. Hapana response within fourteen days. We request a hearing within thirty days and interim deposit of ongoing rent."),
+        ("Speaker 3", "My lady, hatutaki kucheleweshwa tena, but we dispute the quantum. Part relates to service charge never particularised. We seek fourteen days to file a replying affidavit."),
+        ("Speaker 1", "Is the four hundred and fifty thousand limited to rent, or does it include service charge?"),
+        ("Speaker 2", "Primarily rent, my lady. We will particularise service charge in a supplementary affidavit if directed."),
+        ("Speaker 1", "Defendant shall file and serve a replying affidavit within fourteen days. Plaintiff may file a supplementary affidavit within seven days thereafter."),
+        ("Speaker 1", "Mention on the fourteenth of April twenty twenty-six at ten o'clock for directions and fixing of a hearing date. Pending that mention, the defendant shall continue paying the contractual monthly rent into court."),
+        ("Speaker 2", "Much obliged, my lady. We will diarise and update the client file."),
+        ("Speaker 3", "As the court pleases. May we briefly address a scheduling matter off the record regarding a without-prejudice settlement discussion?"),
+        ("Speaker 1", "That exchange stays off the record. Hii ni amri ya mahakama as delivered. Court rises."),
+    ]
+    extras = [
+        ("Speaker 1", "Ms Kariuki, confirm service of the plaint and demand — affidavits on record?"),
+        ("Speaker 2", "Yes, my lady. Affidavit of service filed on the nineteenth of August for the demand, and plaint served thereafter."),
+        ("Speaker 1", "Mr Ochieng, why was there no response to the demand?"),
+        ("Speaker 3", "My lady, instructions were late. The dispute on service charge needed documents from the managing agent."),
+        ("Speaker 1", "Then use the fourteen days wisely. The court will not smile on further indolence."),
+        ("Speaker 2", "My lady, we also seek that rent into court be the contractual monthly rent exclusive of the disputed service charge."),
+        ("Speaker 3", "We can live with contractual rent into court while service charge is particularised."),
+        ("Speaker 1", "Ordered as proposed — contractual monthly rent into court, service charge issues reserved."),
+        ("Speaker 2", "Much obliged."),
+        ("Speaker 1", "Any interim possession or distress issues live between these parties?"),
+        ("Speaker 2", "Not on this file, my lady — arrears claim only for now."),
+        ("Speaker 3", "Agreed."),
+        ("Speaker 1", "Joint schedule of admitted versus disputed figures by the April mention."),
+        ("Speaker 2", "We will prepare a draft for counsel's agreement."),
+        ("Speaker 3", "We will engage."),
+        ("Speaker 1", "Language — counsel have used Kiswahili phrases; the record will reflect English with code-switch as spoken."),
+        ("Speaker 2", "As the court pleases, my lady."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "Time estimate for trial once ripe?"),
+        ("Speaker 2", "One day, my lady, if documents are agreed."),
+        ("Speaker 3", "One day is workable if quantum narrows."),
+        ("Speaker 1", "Noted for diary planning in April. Anything further on the record?"),
+        ("Speaker 3", "Only the off-record scheduling point already reserved."),
+        ("Speaker 1", "Reserved and off record. Order as delivered."),
+        ("Speaker 2", "Much obliged, my lady."),
+        ("Speaker 3", "As the court pleases."),
+        ("Speaker 1", "Court rises."),
+    ]
+    return pad_court_to_minutes(core, 50, extras, honorific="my lady")
+
+
+def bello_kano() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Sannu da zuwa, Alhaji. Before we begin — this conversation is privileged. Tell me what happened with the Kano warehouse lease."),
+        ("Speaker 2", "Nagode. Northern Logistics locked the gate on the third of September. They claim we owe eight point four million naira — gaskiya we dispute three months of service charge never billed properly."),
+        ("Speaker 1", "Did they serve a written notice of re-entry before they padlocked?"),
+        ("Speaker 2", "Only a WhatsApp from their estate manager. No formal letter, no inventory with our representative. Staff are safe, but our Abuja consignment is stuck inside."),
+        ("Speaker 1", "Without proper notice, the lock-out is vulnerable. Fourteen-day demand for restoration and particularisation of arrears, then High Court of Kano State injunction if they refuse."),
+        ("Speaker 2", "Mun so possession first — restore access, then negotiate disputed months. I can pay undisputed rent into escrow."),
+        ("Speaker 1", "That helps. Bring lease, payment schedule, photos, WhatsApp thread. Draft demand by Friday."),
+        ("Speaker 2", "Keep the tax discussion with my partner about side import invoices off this file."),
+        ("Speaker 1", "Understood — privileged. Follow-up Tuesday at ten after documents."),
+        ("Speaker 2", "Nagode sosai. I will email everything this afternoon."),
+        ("Speaker 1", "Do not force the gate. Paper first, then court if ignored."),
+    ]
+    extras = [
+        ("Speaker 1", "Let us go through the eight point four million line by line."),
+        ("Speaker 2", "About five point one is rent we partly dispute on two months; three point three is service charge we say was never invoiced with vouchers."),
+        ("Speaker 1", "So your escrow idea covers undisputed rent only — say that figure precisely."),
+        ("Speaker 2", "I can place four million in escrow this week if access is restored."),
+        ("Speaker 1", "We put that offer in the demand as without prejudice on quantum but open on possession."),
+        ("Speaker 2", "Abuja consignment is timed for a retailer — delay damages may follow."),
+        ("Speaker 1", "Document the delivery deadline and any penalty clauses with your buyer."),
+        ("Speaker 2", "I will. Estate manager WhatsApp is still on my phone."),
+        ("Speaker 1", "Export it today. Electronic evidence rules are picky."),
+        ("Speaker 2", "Police said it is civil — they will not open the gate."),
+        ("Speaker 1", "Correct instinct from police. We stay on civil remedies."),
+        ("Speaker 2", "Tax invoices issue — you will bury it?"),
+        ("Speaker 1", "It never enters this matter. Different problem, different day."),
+        ("Speaker 2", "Nagode. I needed that assurance."),
+        ("Speaker 1", "Engagement letter will confirm scope is possession and lease arrears dispute only."),
+        ("Speaker 2", "Send it. I sign today."),
+        ("Speaker 1", "After demand, if they open the gate, we still particularise accounts — do not waive claims by taking keys silently."),
+        ("Speaker 2", "I will call you before accepting any key handover terms."),
+        ("Speaker 1", "Exactly. Long meetings prevent short disastrous decisions."),
+        ("Speaker 2", "True. Asante — wait, nagode again."),
+        ("Speaker 1", "Talk after your email lands."),
+    ]
+    return pad_to_minutes(core, 48, extras)
+
+
+def adeyemi_lagos() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Ẹ káàbọ̀, Tunde. This call is privileged. Jọ̀wọ́, walk me through the termination letter from your employer."),
+        ("Speaker 2", "They terminated me on the twelfth without three months' notice in the contract. Salary arrears of two months dey, plus unpaid leave. I need a demand letter before we file at the National Industrial Court."),
+        ("Speaker 1", "Was there a disciplinary hearing or a query before the letter?"),
+        ("Speaker 2", "Nothing. HR emailed the letter. Line manager said performance, but no appraisal was shared. Wetin we fit claim exactly?"),
+        ("Speaker 1", "Three months' notice pay, two months' arrears, accrued leave, and damages for unfair dismissal. Twenty-one days to settle before NICN Lagos filing."),
+        ("Speaker 2", "O ṣe. I will send contract, payslips, and termination email tonight. Keep the without-prejudice oral package talk with HR off anything you write."),
+        ("Speaker 1", "That stays off the record. Demand uses contractual figures only. Filing checkpoint third of October."),
+        ("Speaker 2", "Can we speak again once you have the draft?"),
+        ("Speaker 1", "Friday morning. Send documents tonight; I circulate draft for your approval before service."),
+    ]
+    extras = [
+        ("Speaker 1", "Confirm your role title and start date as on the contract."),
+        ("Speaker 2", "Operations lead, started March twenty twenty-three."),
+        ("Speaker 1", "Basic salary figure exactly?"),
+        ("Speaker 2", "Eight hundred and fifty thousand naira monthly, plus housing."),
+        ("Speaker 1", "Housing contractual or discretionary?"),
+        ("Speaker 2", "Contractual — two hundred thousand."),
+        ("Speaker 1", "We include it in notice pay calculation if the contract says so."),
+        ("Speaker 2", "HR claims abandonment for three days in August — that is false; I was on approved leave."),
+        ("Speaker 1", "Send the leave approval. That kills abandonment."),
+        ("Speaker 2", "I have the email. Will forward."),
+        ("Speaker 1", "Any staff handbook disciplinary procedure?"),
+        ("Speaker 2", "Yes — query, hearing, then decision. They skipped all."),
+        ("Speaker 1", "Exhibit the handbook extract. Procedure breach strengthens unfair dismissal."),
+        ("Speaker 2", "Oral package they mentioned was two months. My contract notice is three."),
+        ("Speaker 1", "We do not record their oral number in the demand. If they put an offer in writing later, we assess then."),
+        ("Speaker 2", "I will not accept anything without you."),
+        ("Speaker 1", "Good. NICN filing needs your verifying affidavit — we meet before third October if no settlement."),
+        ("Speaker 2", "I am available. This call is longer than I expected, but I understand better."),
+        ("Speaker 1", "Employment instructions should be long enough to get figures and procedure right."),
+        ("Speaker 2", "O ṣe gan. I will send the folder tonight."),
+        ("Speaker 1", "I will acknowledge and start the draft."),
+    ]
+    return pad_to_minutes(core, 45, extras)
+
+
+def dlamini_joburg() -> list[tuple[str, str]]:
+    core = [
+        ("Speaker 1", "Sawubona, Thandi. This conversation is privileged. The landlord seeks eviction from the Hillbrow flat — what notice did you receive?"),
+        ("Speaker 2", "Ngiyabonga, advocate. They taped a letter on the door only. No personal service, no sheriff. Rent is two months behind because of the factory shutdown, not refusal to pay."),
+        ("Speaker 1", "Under PIE we can challenge defective service of the section four notice. Inkantolo must see your payment history and reason for arrears."),
+        ("Speaker 2", "I can pay half the arrears by Friday if they stop any lock-out. I still work night shifts — I need to stay until the factory takes me back."),
+        ("Speaker 1", "We apply for an interim stay at Johannesburg Magistrates' Court and put a payment proposal on record. Bring bank statements and the taped notice photo."),
+        ("Speaker 2", "Please keep my sister's medical situation out of any affidavit."),
+        ("Speaker 1", "Noted — off the record. I will draft stay papers, answering affidavit on service, and diarise return date next Wednesday."),
+        ("Speaker 2", "Ngiyezwa. WhatsApp photos tonight, statements tomorrow."),
+        ("Speaker 1", "Do not hand over keys or sign anything from the landlord without calling me."),
+    ]
+    extras = [
+        ("Speaker 1", "Tell me how long you have lived in the flat and who else stays there."),
+        ("Speaker 2", "Four years. It is just me. My sister visits but does not live there."),
+        ("Speaker 1", "Good — occupancy facts matter under PIE."),
+        ("Speaker 2", "The taped letter had a date last week. I took a photo the same evening."),
+        ("Speaker 1", "We argue that tape on door is not proper section four service in these circumstances."),
+        ("Speaker 2", "Landlord's agent shouted that I will be locked out Friday."),
+        ("Speaker 1", "That threat goes in your affidavit. Do not open the door to locksmiths — call me and the police non-emergency line if needed."),
+        ("Speaker 2", "Half arrears Friday — I can do it from my night-shift pay."),
+        ("Speaker 1", "We present it as a structured proposal, not a desperate cash drop without terms."),
+        ("Speaker 2", "Will the court force me out even if service was wrong?"),
+        ("Speaker 1", "Defective process helps you. Paying something shows good faith. We still defend."),
+        ("Speaker 2", "Sister's clinic visits stay private — you promise?"),
+        ("Speaker 1", "Promise. Not in the papers."),
+        ("Speaker 2", "Ngiyabonga. I was scared to come to a lawyer."),
+        ("Speaker 1", "Eviction defence needs time to get the facts straight. We are using that time."),
+        ("Speaker 2", "I will send everything tonight and tomorrow."),
+        ("Speaker 1", "I will confirm receipt and send you the draft stay notice for comment before filing."),
+        ("Speaker 2", "Ngiyezwa. Thank you for not rushing me."),
+        ("Speaker 1", "See you when we sign — and call if anyone arrives with tools at the door."),
+    ]
+    return pad_to_minutes(core, 45, extras)
+
+
+# ---------------------------------------------------------------------------
+# Emit demo_catalog.py
+# ---------------------------------------------------------------------------
+
+HEADER = '''"""Seed matters and transcripts for the HakiScribe demo desk.
+
+Kept free of storage imports so ``seed_demo.py`` can reuse the same catalog
+against a remote API without booting the local store.
+
+Client meetings and court hearings are long-form (~45–60 minutes of dialogue).
+Voice memos stay shorter (dictation, not a meeting).
+"""
+
+from __future__ import annotations
+
+from typing import Any, Callable
+
+SHOWCASE_TITLE = "Client meeting — Wanjiru Holdings, defective works at Kilimani site"
+SAHARA_DEMO_TITLE = "Court proceeding — Milimani Commercial Court, Wanjiru Holdings lease arrears"
+
+SAHARA_DEMO_TITLES: list[str] = [
+    SAHARA_DEMO_TITLE,
+    "Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up",
+    "Client briefing — Otieno, ELRC directions after mention",
+    "Client call — Coastal Sacco, Nyali statutory notice plan",
+    "Follow-up intake — Githunguri succession, revocation advice",
+    "Site briefing — Karanja & Sons, Westlands distress after lock-out",
+    "Client intake — Bello Trading, Kano warehouse lease dispute",
+    "Client call — Adeyemi & Co, Lagos employment notice review",
+    "Mention notes — Dlamini, Johannesburg eviction defence",
+]
+
+
+def _seg(
+    speaker: str,
+    text: str,
+    start_s: float,
+    dur_s: float = 6,
+    *,
+    provider: str | None = None,
+    source_extra: dict[str, Any] | None = None,
+    confidence: float = 0.94,
+) -> dict:
+    segment: dict[str, Any] = {
+        "speaker": speaker,
+        "text": text,
+        "start_ms": int(start_s * 1000),
+        "end_ms": int((start_s + dur_s) * 1000),
+        "confidence": confidence,
+    }
+    if provider:
+        raw = {"provider": provider}
+        if source_extra:
+            raw.update(source_extra)
+        segment["source_raw"] = raw
+    return segment
+
+
+def _sahara(
+    speaker: str,
+    text: str,
+    start_s: float,
+    dur_s: float = 6,
+    *,
+    court: bool = False,
+    confidence: float = 0.94,
+) -> dict:
+    extra: dict[str, Any] = {"mode": "file_category_legal"}
+    if court:
+        extra["get_legal_court_hearing"] = True
+    return _seg(
+        speaker,
+        text,
+        start_s,
+        dur_s,
+        provider="sahara",
+        source_extra=extra,
+        confidence=confidence,
+    )
+
+
+def _timed(
+    lines: list[tuple[str, str]],
+    *,
+    pace: float = 2.15,
+    gap_s: float = 0.35,
+    builder: Callable[..., dict] = _seg,
+    builder_kwargs: dict[str, Any] | None = None,
+) -> list[dict]:
+    """Build consecutive segments with durations from word count (~130 wpm)."""
+    kwargs = dict(builder_kwargs or {})
+    segs: list[dict] = []
+    t = 0.0
+    for i, (speaker, text) in enumerate(lines):
+        n = max(1, len(text.split()))
+        dur = max(2.8, round(n / pace, 1))
+        if i:
+            t += gap_s
+        conf = 0.96 if n <= 10 else 0.93 if n <= 28 else 0.90
+        segs.append(builder(speaker, text, t, dur, confidence=conf, **kwargs))
+        t += dur
+    return segs
+
+
+def _flag_near(segments: list[dict], index: int, label: str) -> dict[str, Any]:
+    idx = max(0, min(index, len(segments) - 1))
+    return {"at_ms": segments[idx]["start_ms"], "label": label}
+
+
+def _find_text_index(segments: list[dict], needle: str) -> int:
+    for i, seg in enumerate(segments):
+        if needle.lower() in seg["text"].lower():
+            return i
+    return min(3, len(segments) - 1)
+
+
+MATTERS: list[dict[str, str]] = [
+    {"client_name": "Wanjiru Holdings Ltd", "matter_name": "Wanjiru Holdings v. Sarova Contractors — construction defect"},
+    {"client_name": "Achieng' Otieno", "matter_name": "Otieno — employment termination claim"},
+    {"client_name": "Mombasa Coastal Sacco", "matter_name": "Coastal Sacco — loan recovery portfolio"},
+    {"client_name": "Barclays", "matter_name": "Barclays vs. Apex Logistics"},
+    {"client_name": "Apex Logistics (EA) Limited", "matter_name": "Barclays vs. Apex Logistics — facility default"},
+    {"client_name": "Githunguri Family Estate", "matter_name": "Estate of the late Njoroge Kamau — succession"},
+    {"client_name": "Karanja & Sons Ltd", "matter_name": "Karanja & Sons v. Riverside Properties — irregular distress"},
+    {
+        "client_name": "Kamau Enterprises Ltd",
+        "matter_name": "Wanjiru Holdings Ltd v. Kamau Enterprises Ltd — lease arrears (Milimani CS 204/2026)",
+    },
+    {"client_name": "Bello Trading Ltd", "matter_name": "Bello Trading v. Northern Logistics — warehouse lease (Kano)"},
+    {"client_name": "Adeyemi & Co", "matter_name": "Adeyemi — wrongful dismissal claim (Lagos)"},
+    {"client_name": "Thandi Dlamini", "matter_name": "Dlamini — residential eviction defence (Johannesburg)"},
+]
+
+'''
+
+
+def py_lines(lines: list[tuple[str, str]]) -> str:
+    parts = ["["]
+    for sp, tx in lines:
+        parts.append(f"    ({sp!r}, {tx!r}),")
+    parts.append("]")
+    return "\n".join(parts)
+
+
+def session_fn(
+    name: str,
+    lines: list[tuple[str, str]],
+    *,
+    title: str,
+    source: str,
+    language_hint: str,
+    client_name: str,
+    speakers: dict[str, str],
+    flag_needles: list[tuple[str, str]],
+    redact_needle: str | None,
+    generate: bool = True,
+    detected_language: str | None = None,
+    sahara: bool = False,
+    court: bool = False,
+) -> str:
+    builder = "_sahara" if sahara else "_seg"
+    bk = ', builder_kwargs={"court": True}' if court else ""
+    pace = "2.0" if "Court" in title or "Court" in name else "2.15"
+    gap = "0.5" if "Court" in title else "0.35"
+    dl = f'\n        "detected_language": {detected_language!r},' if detected_language else ""
+    flags_code = ",\n            ".join(
+        f'_flag_near(segments, _find_text_index(segments, {n!r}), {lab!r})' for n, lab in flag_needles
+    )
+    if redact_needle:
+        redact = f'[_find_text_index(segments, {redact_needle!r})]'
+    else:
+        redact = "[]"
+    speakers_lit = ", ".join(f"{k!r}: {v!r}" for k, v in speakers.items())
+    return dedent(
+        f'''
+def {name}() -> dict[str, Any]:
+    segments = _timed(
+        {py_lines(lines)},
+        pace={pace},
+        gap_s={gap},
+        builder={builder}{bk},
+    )
+    return {{
+        "title": {title!r},
+        "source": {source!r},
+        "language_hint": {language_hint!r},{dl}
+        "client_name": {client_name!r},
+        "speakers": {{{speakers_lit}}},
+        "flags": [
+            {flags_code},
+        ],
+        "segments": segments,
+        "redact_indexes": {redact},
+        "generate": {generate},
+    }}
+'''
+    )
+
+
+def main() -> None:
+    specs = []
+
+    specs.append(
+        session_fn(
+            "_wanjiru_showcase",
+            wanjiru_showcase(),
+            title="SHOWCASE_TITLE",  # placeholder
+            source="omi",
+            language_hint="code-switch",
+            client_name="Wanjiru Holdings Ltd",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "James Wanjiru"},
+            flag_needles=[
+                ("twelve point six", "Payment withheld — key fact"),
+                ("Twenty-one days", "Deadline for demand letter"),
+            ],
+            redact_needle="partner's tax",
+        )
+    )
+    # Fix title to use constant
+    specs[0] = specs[0].replace("'SHOWCASE_TITLE'", "SHOWCASE_TITLE").replace('"SHOWCASE_TITLE"', "SHOWCASE_TITLE")
+
+    # Actually session_fn quotes title — redo showcase manually for constant
+    lines = wanjiru_showcase()
+    showcase = f'''
+def _wanjiru_showcase() -> dict[str, Any]:
+    segments = _timed(
+        {py_lines(lines)},
+        pace=2.15,
+        gap_s=0.35,
+    )
+    return {{
+        "title": SHOWCASE_TITLE,
+        "source": "omi",
+        "language_hint": "code-switch",
+        "client_name": "Wanjiru Holdings Ltd",
+        "speakers": {{"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "James Wanjiru"}},
+        "flags": [
+            _flag_near(segments, _find_text_index(segments, "twelve point six"), "Payment withheld — key fact"),
+            _flag_near(segments, _find_text_index(segments, "Twenty-one days"), "Deadline for demand letter"),
+        ],
+        "segments": segments,
+        "redact_indexes": [_find_text_index(segments, "partner's tax")],
+        "generate": True,
+    }}
+'''
+
+    voice = f'''
+def _wanjiru_voice_memo() -> dict[str, Any]:
+    segments = _timed(
+        {py_lines(wanjiru_voice_memo())},
+        pace=2.05,
+        builder=_sahara,
+    )
+    return {{
+        "title": "Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up",
+        "source": "omi",
+        "language_hint": "multilingual",
+        "detected_language": "code-switch",
+        "client_name": "Wanjiru Holdings Ltd",
+        "speakers": {{"Speaker 1": "Adv. Naomi Kariuki"}},
+        "flags": [
+            _flag_near(segments, _find_text_index(segments, "four point two"), "Remedial cost — KES 4.2M"),
+            _flag_near(segments, _find_text_index(segments, "seven more days"), "Seven-day follow-up before arbitration"),
+        ],
+        "segments": segments,
+        "redact_indexes": [_find_text_index(segments, "partner tax")],
+        "generate": True,
+    }}
+'''
+
+    def std(name, lines, **kw):
+        return session_fn(name, lines, **kw)
+
+    body_parts = [
+        showcase,
+        voice,
+        std(
+            "_otieno_court",
+            otieno_court(),
+            title="Court proceeding — Employment & Labour Relations Court, Otieno termination",
+            source="mic",
+            language_hint="en",
+            client_name="Achieng' Otieno",
+            speakers={
+                "Speaker 1": "Hon. Justice Mwangi",
+                "Speaker 2": "Adv. Naomi Kariuki",
+                "Speaker 3": "Adv. Peter Ochieng",
+            },
+            flag_needles=[
+                ("summarily dismissed", "Summary dismissal — no show cause"),
+                ("twenty-eighth of October", "Court directions — filing dates"),
+            ],
+            redact_needle=None,
+        ),
+        std(
+            "_otieno_briefing",
+            otieno_briefing(),
+            title="Client briefing — Otieno, ELRC directions after mention",
+            source="mic",
+            language_hint="multilingual",
+            detected_language="code-switch",
+            client_name="Achieng' Otieno",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Achieng' Otieno"},
+            flag_needles=[
+                ("twenty-eighth of October", "Mention — 28 October"),
+                ("by Friday", "Payslips and dismissal letter by Friday"),
+            ],
+            redact_needle="sister helped me",
+            sahara=True,
+            court=True,
+        ),
+        std(
+            "_coastal_strategy",
+            coastal_strategy(),
+            title="Client call — Mombasa Coastal Sacco, defaulted loan recovery strategy",
+            source="omi",
+            language_hint="code-switch",
+            client_name="Mombasa Coastal Sacco",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Fatuma Said (CEO, Coastal Sacco)"},
+            flag_needles=[
+                ("section ninety", "Statutory notice timeline"),
+                ("twentieth of September", "Review meeting — 20 September"),
+            ],
+            redact_needle="provisioning",
+        ),
+        std(
+            "_coastal_nyali",
+            coastal_nyali(),
+            title="Client call — Coastal Sacco, Nyali statutory notice plan",
+            source="omi",
+            language_hint="multilingual",
+            detected_language="code-switch",
+            client_name="Mombasa Coastal Sacco",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Fatuma Said (CEO, Coastal Sacco)"},
+            flag_needles=[
+                ("section ninety", "Section 90 notice — Mwakio"),
+                ("twentieth of September", "Portfolio review — 20 September 2 p.m."),
+            ],
+            redact_needle="provisioning",
+            sahara=True,
+        ),
+        std(
+            "_githunguri_intake",
+            githunguri_intake(),
+            title="Intake — new client, land succession dispute in Kiambu",
+            source="mic",
+            language_hint="code-switch",
+            client_name="Githunguri Family Estate",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Grace Njeri"},
+            flag_needles=[
+                ("section seventy-six", "Revocation under section 76"),
+                ("too late", "Limitation concern"),
+            ],
+            redact_needle="sister who lives abroad",
+        ),
+        std(
+            "_githunguri_followup",
+            githunguri_followup(),
+            title="Follow-up intake — Githunguri succession, revocation advice",
+            source="mic",
+            language_hint="multilingual",
+            detected_language="code-switch",
+            client_name="Githunguri Family Estate",
+            speakers={"Speaker 1": "Adv. Naomi Kariuki", "Speaker 2": "Grace Njeri"},
+            flag_needles=[
+                ("section seventy-six", "Revocation under s.76"),
+                ("green card", "Documents due next week"),
+            ],
+            redact_needle="sister abroad",
+            sahara=True,
+        ),
+        std(
+            "_barclays_apex",
+            barclays_apex(),
+            title="Case conference — Barclays vs. Apex Logistics, facility default and charge enforcement",
+            source="mic",
+            language_hint="en",
+            client_name="Barclays",
+            speakers={
+                "Speaker 1": "Adv. Naomi Kariuki",
+                "Speaker 2": "Susan Mbugua (Head of Recoveries, Barclays)",
+                "Speaker 3": "Adv. Brian Kiptoo",
+            },
+            flag_needles=[
+                ("Hapana, not yet", "Statutory notice not yet issued"),
+                ("twelfth October", "Ruling date — Milimani 12 October"),
+            ],
+            redact_needle="provisioning",
+        ),
+        std(
+            "_karanja_meeting",
+            karanja_meeting(),
+            title="Client meeting — Karanja & Sons, commercial lease dispute at Westlands",
+            source="omi",
+            language_hint="code-switch",
+            client_name="Karanja & Sons Ltd",
+            speakers={
+                "Speaker 1": "Adv. Naomi Kariuki",
+                "Speaker 2": "Peter Karanja (Director, Karanja & Sons Ltd)",
+            },
+            flag_needles=[
+                ("irregular", "Distress for rent — key exposure"),
+                ("twenty-fifth", "Affidavit signing — 25 September"),
+            ],
+            redact_needle="cash sale",
+        ),
+        std(
+            "_karanja_site",
+            karanja_site(),
+            title="Site briefing — Karanja & Sons, Westlands distress after lock-out",
+            source="omi",
+            language_hint="multilingual",
+            detected_language="code-switch",
+            client_name="Karanja & Sons Ltd",
+            speakers={
+                "Speaker 1": "Adv. Naomi Kariuki",
+                "Speaker 2": "Peter Karanja (Director, Karanja & Sons Ltd)",
+            },
+            flag_needles=[
+                ("irregular", "Irregular distress — BPRT"),
+                ("seven days", "Interim order within seven days"),
+            ],
+            redact_needle="cash sale",
+            sahara=True,
+        ),
+        std(
+            "_riverside_court",
+            riverside_court(),
+            title="Court proceeding — Milimani Commercial Court, Riverside Properties injunction application",
+            source="mic",
+            language_hint="en",
+            client_name="Karanja & Sons Ltd",
+            speakers={
+                "Speaker 1": "Hon. Lady Justice Wambui",
+                "Speaker 2": "Adv. Naomi Kariuki",
+                "Speaker 3": "Adv. Brian Kiptoo",
+            },
+            flag_needles=[
+                ("grants an interim", "Interim orders granted"),
+                ("twelfth of October", "Mention — 12 October"),
+            ],
+            redact_needle=None,
+        ),
+        std(
+            "_sahara_milimani",
+            sahara_milimani(),
+            title="SAHARA_DEMO_TITLE",
+            source="mic",
+            language_hint="multilingual",
+            detected_language="code-switch",
+            client_name="Kamau Enterprises Ltd",
+            speakers={
+                "Speaker 1": "Hon. Lady Justice Wambui",
+                "Speaker 2": "Adv. Naomi Kariuki",
+                "Speaker 3": "Adv. Peter Ochieng",
+            },
+            flag_needles=[
+                ("four hundred and fifty", "Arrears quantified — KES 450,000"),
+                ("fourteenth of April", "Hearing date fixed — 14 April 2026"),
+            ],
+            redact_needle="without-prejudice",
+            sahara=True,
+            court=True,
+        ),
+        std(
+            "_bello_kano",
+            bello_kano(),
+            title="Client intake — Bello Trading, Kano warehouse lease dispute",
+            source="mic",
+            language_hint="en-ha",
+            detected_language="multilingual",
+            client_name="Bello Trading Ltd",
+            speakers={"Speaker 1": "Adv. Aisha Mohammed", "Speaker 2": "Alhaji Musa Bello"},
+            flag_needles=[
+                ("eight point four", "Arrears claimed — NGN 8.4M"),
+                ("Fourteen-day demand", "Fourteen-day demand before suit"),
+            ],
+            redact_needle="tax discussion",
+            sahara=True,
+        ),
+        std(
+            "_adeyemi_lagos",
+            adeyemi_lagos(),
+            title="Client call — Adeyemi & Co, Lagos employment notice review",
+            source="omi",
+            language_hint="en-yo",
+            detected_language="multilingual",
+            client_name="Adeyemi & Co",
+            speakers={"Speaker 1": "Adv. Folake Adeyemi", "Speaker 2": "Tunde Okonkwo"},
+            flag_needles=[
+                ("three months' notice", "Termination without three months' notice"),
+                ("third of October", "NICN filing if no settlement — 3 October"),
+            ],
+            redact_needle="without-prejudice",
+            sahara=True,
+        ),
+        std(
+            "_dlamini_joburg",
+            dlamini_joburg(),
+            title="Mention notes — Dlamini, Johannesburg eviction defence",
+            source="mic",
+            language_hint="en-zu",
+            detected_language="multilingual",
+            client_name="Thandi Dlamini",
+            speakers={"Speaker 1": "Adv. Sipho Nkosi", "Speaker 2": "Thandi Dlamini"},
+            flag_needles=[
+                ("taped a letter", "Section 4 notice — service disputed"),
+                ("interim stay", "Interim stay application"),
+            ],
+            redact_needle="sister's medical",
+            sahara=True,
+        ),
+    ]
+
+    # Fix SAHARA title constant
+    fixed = []
+    for part in body_parts:
+        part = part.replace("'SAHARA_DEMO_TITLE'", "SAHARA_DEMO_TITLE").replace('"SAHARA_DEMO_TITLE"', "SAHARA_DEMO_TITLE")
+        fixed.append(part)
+
+    footer = '''
+SESSIONS: list[dict[str, Any]] = [
+    _wanjiru_showcase(),
+    _wanjiru_voice_memo(),
+    _otieno_court(),
+    _otieno_briefing(),
+    _coastal_strategy(),
+    _coastal_nyali(),
+    _githunguri_intake(),
+    _githunguri_followup(),
+    _barclays_apex(),
+    _karanja_meeting(),
+    _karanja_site(),
+    _riverside_court(),
+    _sahara_milimani(),
+    _bello_kano(),
+    _adeyemi_lagos(),
+    _dlamini_joburg(),
+]
+'''
+
+    text = HEADER + "\n".join(fixed) + footer
+    OUT.write_text(text, encoding="utf-8")
+
+    # Report durations
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(OUT.parents[2]))
+    # Load freshly written module path
+    from app.services import demo_catalog as dc
+
+    importlib.reload(dc)
+    print(f"Wrote {OUT}")
+    for s in dc.SESSIONS:
+        end = max(x["end_ms"] for x in s["segments"]) / 60000
+        print(f"  {end:5.1f} min  {len(s['segments']):3d} segs  {s['title'][:60]}")
+
+
+if __name__ == "__main__":
+    main()
