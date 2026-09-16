@@ -73,6 +73,7 @@ export interface WorkspaceProfile {
 export interface WorkspaceDefaults {
   defaultLanguage: string;
   defaultSource: SessionSource;
+  useDemoData: boolean;
 }
 
 export interface WorkspaceSettings {
