@@ -178,6 +178,22 @@ const OTHER_HINTS = new Set([
   "pidgin",
   "bonjour",
   "merci",
+  "sannu",
+  "nagode",
+  "lahiya",
+  "gaskiya",
+  "alkali",
+  "jowo",
+  "sawubona",
+  "ngiyabonga",
+  "inkantolo",
+  "muraho",
+  "murakoze",
+  "webale",
+  "abi",
+  "wetin",
+  "dey",
+  "una",
 ]);
 
 export type DetectedLanguageMode = "en" | "sw" | "code-switch" | "multilingual" | "unknown";
@@ -298,7 +314,23 @@ export function needsSaharaRefine(
   languageHint: string | null | undefined,
   detectedMode?: DetectedLanguageMode | null,
 ): boolean {
-  if (languageHint === "code-switch" || languageHint === "multilingual") return true;
+  // Lazy import avoided — duplicate of workspace-settings.usesSaharaRefine for tree purity.
+  const pairs = new Set([
+    "code-switch",
+    "multilingual",
+    "en-sw",
+    "en-ha",
+    "en-yo",
+    "en-ig",
+    "en-zu",
+    "en-xh",
+    "en-rw",
+    "en-lg",
+    "en-pcm",
+    "fr-rw",
+  ]);
+  const africanMono = new Set(["sw", "ha", "yo", "ig", "zu", "xh", "rw", "lg", "pcm", "am", "fr"]);
+  if (languageHint && (pairs.has(languageHint) || africanMono.has(languageHint))) return true;
   return detectedMode === "code-switch" || detectedMode === "multilingual";
 }
 

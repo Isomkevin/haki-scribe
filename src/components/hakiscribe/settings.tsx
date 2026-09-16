@@ -492,11 +492,20 @@ function WorkspaceSection() {
             }}
             className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
           >
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
+            <optgroup label="Code-switch / pairs">
+              {LANGUAGE_OPTIONS.filter((o) => o.group === "pairs").map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Monolingual">
+              {LANGUAGE_OPTIONS.filter((o) => o.group === "mono").map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </Field>
         <Field label="Default capture source" htmlFor="default-source">
@@ -619,7 +628,7 @@ function AboutSection() {
       <dl className="grid gap-4 sm:grid-cols-2">
         <AboutItem term="Product" detail="HakiScribe" />
         <AboutItem term="Studio" detail="HakiChain · Nairobi" />
-        <AboutItem term="Languages" detail="English · Kiswahili · code-switch" />
+        <AboutItem term="Languages" detail="African pairs + monolingual · Sahara refine" />
         <AboutItem term="Record" detail="Privilege stays in the room" />
       </dl>
       <p className="mt-6 max-w-2xl text-sm leading-6 text-muted-foreground">

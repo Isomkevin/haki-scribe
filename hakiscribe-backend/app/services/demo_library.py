@@ -80,6 +80,37 @@ def _link_matter(session_id, client_name: str | None) -> None:
         storage.link_matter_to_session(session_id, matter.id)
 
 
+def _catalog_texts(spec: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(str(item.get("text") or "") for item in spec.get("segments") or [])
+
+
+def _session_texts(detail) -> tuple[str, ...]:
+    return tuple(seg.text for seg in detail.transcript or [])
+
+
+def _apply_spec_body(session_id, spec: dict[str, Any]) -> None:
+    """Write catalog transcript, flags, speakers, and privilege locks onto a session."""
+    segments = [
+        TranscriptSegment(session_id=session_id, **raw)
+        for raw in spec.get("segments") or []
+    ]
+    storage.replace_transcript(session_id, segments)
+    storage.replace_flags(
+        session_id,
+        [FlaggedMoment(session_id=session_id, **flag) for flag in (spec.get("flags") or [])],
+    )
+    storage.relabel_speakers(session_id, spec.get("speakers") or {})
+    detail = storage.get_session(session_id)
+    if detail:
+        for index in spec.get("redact_indexes") or []:
+            if index < len(detail.transcript):
+                storage.update_segment(session_id, detail.transcript[index].id, redacted=True)
+    if spec.get("detected_language"):
+        storage.update_session_fields(session_id, detected_language=spec.get("detected_language"))
+    storage.update_session_status(session_id, SessionStatus.ready)
+    _link_matter(session_id, spec.get("client_name"))
+
+
 def _materialize(spec: dict[str, Any]):
     session = storage.create_session(
         Session(
@@ -89,19 +120,15 @@ def _materialize(spec: dict[str, Any]):
             detected_language=spec.get("detected_language"),
         )
     )
-    for raw in spec["segments"]:
-        storage.append_segment(session.id, TranscriptSegment(session_id=session.id, **raw))
-    for flag in spec.get("flags") or []:
-        storage.add_flag(session.id, FlaggedMoment(session_id=session.id, **flag))
-    storage.relabel_speakers(session.id, spec.get("speakers") or {})
-    detail = storage.get_session(session.id)
-    if detail:
-        for index in spec.get("redact_indexes") or []:
-            if index < len(detail.transcript):
-                storage.update_segment(session.id, detail.transcript[index].id, redacted=True)
-    storage.update_session_status(session.id, SessionStatus.ready)
-    _link_matter(session.id, spec.get("client_name"))
+    _apply_spec_body(session.id, spec)
     return storage.get_session(session.id)
+
+
+def _refresh_session(existing, spec: dict[str, Any]):
+    """Replace an outdated demo transcript so sync picks up catalog edits."""
+    storage.clear_action_pipeline(existing.id)
+    _apply_spec_body(existing.id, spec)
+    return storage.get_session(existing.id)
 
 
 def _ensure_records() -> tuple[int, int]:
@@ -111,8 +138,12 @@ def _ensure_records() -> tuple[int, int]:
     for spec in SESSIONS:
         existing = find_session_by_title(spec["title"])
         if existing is not None:
-            _link_matter(existing.id, spec.get("client_name"))
-            reused += 1
+            if _session_texts(existing) != _catalog_texts(spec):
+                _refresh_session(existing, spec)
+                created += 1
+            else:
+                _link_matter(existing.id, spec.get("client_name"))
+                reused += 1
             continue
         _materialize(spec)
         created += 1
@@ -237,7 +268,10 @@ async def ensure_showcase(rebuild: bool = False):
     async with _lock:
         _ensure_matters()
         existing = None if rebuild else find_session_by_title(SHOWCASE_TITLE)
-        if existing is not None and (existing.action_results or existing.detected_actions):
+        if existing is not None and _session_texts(existing) != _catalog_texts(spec):
+            existing = _refresh_session(existing, spec)
+            rebuild = True
+        if existing is not None and (existing.action_results or existing.detected_actions) and not rebuild:
             if missing_workspace_mirror(existing):
                 await complete_session(existing, generate_results=True)
                 return storage.get_session(existing.id), False
@@ -260,17 +294,16 @@ async def ensure_sahara_demo(rebuild: bool = False):
             spec = specs.get(title)
             if spec is None:
                 continue
-            existing = None if rebuild and title == SAHARA_DEMO_TITLE else find_session_by_title(title)
+            existing = find_session_by_title(title)
+            force = rebuild and title == SAHARA_DEMO_TITLE
+            if existing is not None and (_session_texts(existing) != _catalog_texts(spec) or force):
+                existing = _refresh_session(existing, spec)
+                force = True
             if existing is None:
                 existing = _materialize(spec)
             if existing is None:
                 continue
-            if rebuild and title == SAHARA_DEMO_TITLE:
-                # Force re-detect/generate on the primary demo only.
-                pass
-            if not (existing.action_results or existing.detected_actions) or (
-                rebuild and title == SAHARA_DEMO_TITLE
-            ) or missing_workspace_mirror(existing):
+            if not (existing.action_results or existing.detected_actions) or force or missing_workspace_mirror(existing):
                 generate = bool(spec.get("generate", True))
                 await complete_session(existing, generate_results=generate)
                 existing = storage.get_session(existing.id)

@@ -18,7 +18,7 @@ HakiScribe includes a **privilege / off-record control**: transcript segments ca
 
 Benchmark clips are a **small, consented sample** (templates in-repo; audio recorded locally). Comparisons between Sahara and global Whisper models are **indicative**, not a comprehensive evaluation of every African language pair Sahara supports. We report WER/CER and required legal-term accuracy transparently and avoid overclaiming from n≈6 clips.
 
-**Automatic language detection** in-product uses a **lexicon heuristic** on live Whisper captions (English / Kiswahili / mix cues). It can miss rare languages or false-positive early in a recording; Sahara refine still requires the Intron connector and can be forced via the Multilingual / English+Kiswahili session options.
+**Automatic language detection** in-product uses a **lexicon heuristic** on live Whisper captions (English / Kiswahili / other African language cues). It can miss rare languages or false-positive early in a recording; Sahara refine still requires the Intron connector and can be forced via session language options (pairs such as EN–SW, EN–Hausa, EN–Yoruba, EN–Zulu, multilingual, and African monolingual modes).
 
 ## Safety
 

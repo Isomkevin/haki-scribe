@@ -1,7 +1,9 @@
-"""Heuristic language-mix detection for Kenyan legal speech.
+"""Heuristic language-mix detection for African legal speech.
 
 Used to decide when to refine with Intron Sahara after a Whisper live pass.
-This is indicative (lexicon + script cues), not a full LID model.
+This is indicative (lexicon + script cues), not a full LID model — covers
+Kiswahili plus high-signal Hausa, Yoruba, Zulu/Xhosa, Kinyarwanda, Luganda,
+Pidgin, and French cues.
 """
 
 from __future__ import annotations
@@ -176,7 +178,7 @@ _EN_MARKERS = frozenset(
     }
 )
 
-# Tokens that often appear in other African languages / non-Latin scripts → multilingual.
+# Tokens that often appear in other African languages / Romance → multilingual.
 _OTHER_HINTS = frozenset(
     {
         "yoruba",
@@ -197,6 +199,35 @@ _OTHER_HINTS = frozenset(
         "s'il",
         "vous",
         "n'est",
+        # Hausa high-signal
+        "sannu",
+        "nagode",
+        "lahiya",
+        "gaskiya",
+        "sharia",
+        "alkali",
+        # Yoruba high-signal
+        "eekaabo",
+        "jowo",
+        "oabo",
+        "ewa",
+        "ile",
+        # Zulu / Xhosa
+        "sawubona",
+        "ngiyabonga",
+        "inkantolo",
+        "umthetho",
+        # Kinyarwanda / Luganda
+        "muraho",
+        "murakoze",
+        "webale",
+        "ssente",
+        # Nigerian Pidgin
+        "abi",
+        "wetin",
+        "dey",
+        "naf",
+        "una",
     }
 )
 
@@ -266,8 +297,10 @@ def needs_sahara_refine(
     detected_mode: Optional[str] = None,
     transcript_text: Optional[str] = None,
 ) -> bool:
-    """True when user opted in OR live captions look code-switched / multilingual."""
-    if language_hint in ("code-switch", "multilingual"):
+    """True when user opted into an African/pair mode OR captions look mixed."""
+    from app.services.languages import uses_sahara_refine
+
+    if uses_sahara_refine(language_hint):
         return True
     mode = detected_mode
     if mode is None and transcript_text is not None:
@@ -281,8 +314,10 @@ def effective_language_hint(
     detected_mode: Optional[str] = None,
     transcript_text: Optional[str] = None,
 ) -> Optional[str]:
-    """Prefer explicit multilingual/code-switch; else promote detected mix for Sahara."""
-    if language_hint in ("code-switch", "multilingual"):
+    """Prefer explicit pair/multilingual; else promote detected mix for Sahara."""
+    from app.services.languages import uses_sahara_refine
+
+    if uses_sahara_refine(language_hint):
         return language_hint
     mode = detected_mode
     if mode is None and transcript_text is not None:

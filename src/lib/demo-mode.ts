@@ -16,6 +16,9 @@ export const DEMO_SESSION_TITLES = [
   "Site briefing — Karanja & Sons, Westlands distress after lock-out",
   "Court proceeding — Milimani Commercial Court, Riverside Properties injunction application",
   "Court proceeding — Milimani Commercial Court, Wanjiru Holdings lease arrears",
+  "Client intake — Bello Trading, Kano warehouse lease dispute",
+  "Client call — Adeyemi & Co, Lagos employment notice review",
+  "Mention notes — Dlamini, Johannesburg eviction defence",
   // Legacy / alternate titles that may still exist on older instances
   "Sahara multilingual demo — Milimani court hearing (EN–SW code-switch)",
   "Sahara refine — Wanjiru Holdings site memo (EN–SW)",
@@ -30,6 +33,9 @@ export const DEMO_MATTER_NAMES = [
   "Estate of the late Njoroge Kamau — succession",
   "Karanja & Sons v. Riverside Properties — irregular distress",
   "Wanjiru Holdings Ltd v. Kamau Enterprises Ltd — lease arrears (Milimani CS 204/2026)",
+  "Bello Trading v. Northern Logistics — warehouse lease (Kano)",
+  "Adeyemi — wrongful dismissal claim (Lagos)",
+  "Dlamini — residential eviction defence (Johannesburg)",
 ] as const;
 
 export const DEMO_CLIENT_NAMES = [
@@ -41,6 +47,9 @@ export const DEMO_CLIENT_NAMES = [
   "Githunguri Family Estate",
   "Karanja & Sons Ltd",
   "Kamau Enterprises Ltd",
+  "Bello Trading Ltd",
+  "Adeyemi & Co",
+  "Thandi Dlamini",
 ] as const;
 
 const demoTitleSet = new Set<string>(DEMO_SESSION_TITLES);

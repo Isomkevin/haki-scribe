@@ -85,7 +85,7 @@ import {
   whatsappShareUrl,
   websocketUrl,
 } from "@/lib/hakiscribe";
-import { LANGUAGE_OPTIONS, loadWorkspaceSettings, shouldAutoSaharaRefine, usesSaharaRefine } from "@/lib/workspace-settings";
+import { LANGUAGE_OPTIONS, languageLabel, loadWorkspaceSettings, shouldAutoSaharaRefine, usesSaharaRefine } from "@/lib/workspace-settings";
 import { useDemoMode } from "@/hooks/use-demo-mode";
 import { filterDemoContacts, filterDemoMatters, filterDemoSessions } from "@/lib/demo-mode";
 import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
@@ -134,7 +134,7 @@ const lawyerPersonas = [
     icon: BriefcaseBusiness,
     role: "Advocates",
     title: "Leave the client meeting with the next document begun",
-    copy: "Capture intakes and strategy calls in English, Kiswahili, or both. Flag dates and admissions, lock privilege, then choose letters, matters, contacts, and billable time from the Action Tray.",
+    copy: "Capture intakes and strategy calls across African languages and English code-switch. Flag dates and admissions, lock privilege, then choose letters, matters, contacts, and billable time from the Action Tray.",
   },
   {
     icon: Scale,
@@ -547,7 +547,7 @@ export function NewSessionPage() {
                 <div className="mt-6 flex flex-wrap gap-2">
                   <Badge variant="outline"><LockKeyhole /> Private record</Badge>
                   <Badge variant="outline"><ShieldCheck /> Source traceable</Badge>
-                  <Badge variant="outline">English + Kiswahili</Badge>
+                  <Badge variant="outline">African languages</Badge>
                 </div>
               </div>
               <div className="desk-card relative overflow-hidden rounded-lg border border-border p-4 sm:p-6">
@@ -592,9 +592,16 @@ export function NewSessionPage() {
                 ) : null}
                 <label className="mt-5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor="language">Language</label>
                 <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring">
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
+                  <optgroup label="Code-switch / pairs">
+                    {LANGUAGE_OPTIONS.filter((o) => o.group === "pairs").map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Monolingual">
+                    {LANGUAGE_OPTIONS.filter((o) => o.group === "mono").map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </optgroup>
                 </select>
                 {wantsSaharaRefine && !intronLinked ? (
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">
@@ -602,17 +609,17 @@ export function NewSessionPage() {
                     <Link to="/settings" search={{ section: "connectors" }} className="underline underline-offset-2">
                       Settings → Connectors
                     </Link>
-                    . Code-switching is also auto-detected from live captions even if you start in English or Kiswahili.
+                    . African code-switching is also auto-detected from live captions.
                   </p>
                 ) : null}
                 {wantsSaharaRefine && intronLinked ? (
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    Intron Sahara is connected — live Whisper captions refine to a legal court-hearing transcript when you Stop (keep recordings under ~90 seconds). Mixed English/Kiswahili is also auto-detected mid-session.
+                    Intron Sahara is connected — live Whisper captions refine to a legal court-hearing transcript when you Stop (keep recordings under ~90 seconds). Mixed African/English speech is also auto-detected mid-session.
                   </p>
                 ) : null}
                 {!wantsSaharaRefine && intronLinked ? (
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    Intron Sahara is connected. If live captions show English–Kiswahili mixing, HakiScribe will refine with Sahara automatically on Stop.
+                    Intron Sahara is connected. If live captions show African–English mixing, HakiScribe will refine with Sahara automatically on Stop.
                   </p>
                 ) : null}
                 {source === "omi" && omiLinked ? (
@@ -708,11 +715,9 @@ function SessionRow({ session }: { session: Session }) {
           {new Date(session.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
           {" · "}
           {session.source === "omi" ? "Omi wearable" : "Microphone"}
-          {session.language_hint === "multilingual" || session.language_hint === "code-switch" || session.detected_language === "code-switch" || session.detected_language === "multilingual"
-            ? " · English + Kiswahili"
-            : session.language_hint
-              ? ` · ${session.language_hint}`
-              : ""}
+          {languageLabel(session.language_hint) || languageLabel(session.detected_language)
+            ? ` · ${languageLabel(session.language_hint) || languageLabel(session.detected_language)}`
+            : ""}
         </span>
         {(matterNames.length > 0 || contactNames.length > 0 || (session.generated_types?.length ?? 0) > 0) && (
           <span className="mt-2 flex flex-wrap gap-1.5">
@@ -942,7 +947,7 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
             setRefiningSahara(false);
           }
         } else {
-          toast.info("Connect Intron Sahara in Settings to refine code-switched transcripts.");
+          toast.info("Connect Intron Sahara in Settings to refine African / code-switched transcripts.");
           detail = await hakiApi.getSession(session.id);
         }
       } else {

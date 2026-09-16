@@ -211,8 +211,26 @@ def add_flag(session_id: uuid.UUID, flag: FlaggedMoment) -> None:
     _persist()
 
 
+def replace_flags(session_id: uuid.UUID, flags: list[FlaggedMoment]) -> list[FlaggedMoment]:
+    """Replace flagged moments for a session (used when refreshing demo seeds)."""
+    if session_id not in _sessions:
+        return []
+    _flags[session_id] = list(flags)
+    _persist()
+    return _flags[session_id]
+
+
 def get_flags(session_id: uuid.UUID) -> list[FlaggedMoment]:
     return _flags.get(session_id, [])
+
+
+def clear_action_pipeline(session_id: uuid.UUID) -> None:
+    """Drop detect/generate outputs so a refreshed demo can re-run completion."""
+    if session_id not in _sessions:
+        return
+    _actions[session_id] = []
+    _results[session_id] = []
+    _persist()
 
 
 def relabel_speakers(session_id: uuid.UUID, mapping: dict[str, str]) -> list[TranscriptSegment]:

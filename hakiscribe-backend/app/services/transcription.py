@@ -52,24 +52,22 @@ SAHARA_STATUS_URL = "https://infer.voice.intron.io/file/v1/status"
 
 
 def whisper_language(language_hint: Optional[str]) -> Optional[str]:
-    return language_hint if language_hint in ("en", "sw") else None
+    from app.services.languages import whisper_iso_language
+
+    return whisper_iso_language(language_hint)
 
 
 def whisper_prompt(language_hint: Optional[str]) -> Optional[str]:
-    return CODE_SWITCH_PROMPT if language_hint in ("code-switch", "multilingual") else None
+    from app.services.languages import whisper_code_switch_prompt
+
+    return whisper_code_switch_prompt(language_hint)
 
 
 def sahara_language(language_hint: Optional[str]) -> str:
     """Map HakiScribe session hints to Sahara use_language_asr_input codes."""
-    if language_hint == "sw":
-        return "sw"
-    if language_hint == "en":
-        return "en"
-    # code-switch / multilingual: Kenyan EN–SW pair; Sahara handles mixing when hint is sw or en.
-    # Prefer sw for Kenyan court/client speech so Kiswahili tokens are not English-forced.
-    if language_hint in ("code-switch", "multilingual"):
-        return "sw"
-    return "en"
+    from app.services.languages import sahara_asr_code
+
+    return sahara_asr_code(language_hint)
 
 
 def intron_api_key() -> Optional[str]:
@@ -90,7 +88,7 @@ def should_refine_with_sahara(
     detected_mode: Optional[str] = None,
     transcript_text: Optional[str] = None,
 ) -> bool:
-    """Sahara refine when user opted in or captions look code-switched / multilingual."""
+    """Sahara refine for African / pair sessions or detected code-switching."""
     if not intron_configured():
         return False
     from app.services.language_detect import needs_sahara_refine

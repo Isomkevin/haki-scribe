@@ -11,15 +11,48 @@ export const PRACTICE_ROLES = [
   { id: "other", label: "Other" },
 ] as const;
 
+/** Session language modes — pairs map to Sahara ASR codes on refine. */
 export const LANGUAGE_OPTIONS = [
-  { id: "code-switch", label: "English + Kiswahili" },
-  { id: "multilingual", label: "Multilingual / African code-switch" },
-  { id: "en", label: "English" },
-  { id: "sw", label: "Kiswahili" },
+  { id: "code-switch", label: "English + Kiswahili", group: "pairs" },
+  { id: "en-ha", label: "English + Hausa", group: "pairs" },
+  { id: "en-yo", label: "English + Yoruba", group: "pairs" },
+  { id: "en-ig", label: "English + Igbo", group: "pairs" },
+  { id: "en-zu", label: "English + Zulu", group: "pairs" },
+  { id: "en-xh", label: "English + Xhosa", group: "pairs" },
+  { id: "en-rw", label: "English + Kinyarwanda", group: "pairs" },
+  { id: "en-lg", label: "English + Luganda", group: "pairs" },
+  { id: "en-pcm", label: "English + Nigerian Pidgin", group: "pairs" },
+  { id: "fr-rw", label: "French + Kinyarwanda", group: "pairs" },
+  { id: "multilingual", label: "Multilingual / African code-switch", group: "pairs" },
+  { id: "en", label: "English", group: "mono" },
+  { id: "sw", label: "Kiswahili", group: "mono" },
+  { id: "ha", label: "Hausa", group: "mono" },
+  { id: "yo", label: "Yoruba", group: "mono" },
+  { id: "ig", label: "Igbo", group: "mono" },
+  { id: "zu", label: "Zulu", group: "mono" },
+  { id: "xh", label: "Xhosa", group: "mono" },
+  { id: "rw", label: "Kinyarwanda", group: "mono" },
+  { id: "lg", label: "Luganda", group: "mono" },
+  { id: "pcm", label: "Nigerian Pidgin", group: "mono" },
+  { id: "fr", label: "French", group: "mono" },
 ] as const;
 
+const PAIR_OR_MULTI = new Set(
+  LANGUAGE_OPTIONS.filter((o) => o.group === "pairs").map((o) => o.id),
+);
+const AFRICAN_MONO = new Set(
+  LANGUAGE_OPTIONS.filter((o) => o.group === "mono" && o.id !== "en").map((o) => o.id),
+);
+
+export function languageLabel(languageHint: string | null | undefined): string {
+  if (!languageHint) return "";
+  const hit = LANGUAGE_OPTIONS.find((o) => o.id === languageHint);
+  return hit?.label ?? languageHint;
+}
+
 export function usesSaharaRefine(languageHint: string | null | undefined): boolean {
-  return languageHint === "code-switch" || languageHint === "multilingual";
+  if (!languageHint) return false;
+  return PAIR_OR_MULTI.has(languageHint as (typeof LANGUAGE_OPTIONS)[number]["id"]) || AFRICAN_MONO.has(languageHint as (typeof LANGUAGE_OPTIONS)[number]["id"]);
 }
 
 /** Explicit opt-in or auto-detected code-switch / multilingual captions. */
@@ -40,8 +73,6 @@ export interface WorkspaceProfile {
 export interface WorkspaceDefaults {
   defaultLanguage: string;
   defaultSource: SessionSource;
-  /** When true, seeded demo library / showcase CTAs appear. Login demo CTA is separate. */
-  useDemoData: boolean;
 }
 
 export interface WorkspaceSettings {
@@ -61,7 +92,6 @@ export const defaultWorkspaceSettings = (): WorkspaceSettings => ({
   workspace: {
     defaultLanguage: "code-switch",
     defaultSource: "mic",
-    useDemoData: true,
   },
 });
 
@@ -88,10 +118,6 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
         defaultSource: isSessionSource(parsed.workspace?.defaultSource)
           ? parsed.workspace.defaultSource
           : defaults.workspace.defaultSource,
-        useDemoData:
-          typeof parsed.workspace?.useDemoData === "boolean"
-            ? parsed.workspace.useDemoData
-            : defaults.workspace.useDemoData,
       },
     };
   } catch {
@@ -102,17 +128,4 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
 export function saveWorkspaceSettings(settings: WorkspaceSettings) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-}
-
-/** Sync read for first paint / query keys — defaults to demo ON. */
-export function isDemoDataEnabled(): boolean {
-  return loadWorkspaceSettings().workspace.useDemoData;
-}
-
-export function setDemoDataEnabled(enabled: boolean) {
-  const current = loadWorkspaceSettings();
-  saveWorkspaceSettings({
-    ...current,
-    workspace: { ...current.workspace, useDemoData: enabled },
-  });
 }

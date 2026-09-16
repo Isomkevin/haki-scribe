@@ -6,13 +6,16 @@ Record screen + mic. Use a consented code-switched legal snippet (under 90 secon
 
 1. Private workspace → **New session** screen  
 2. Click **Open multilingual court & client demos**  
-3. Library gains six EN–SW / Sheng sessions mixed among existing matters (titles look like normal desk work):
+3. Library gains multilingual sessions mixed among existing matters (EN–SW plus Hausa, Yoruba, Zulu intakes; titles look like normal desk work):
    - Court proceeding — Milimani Commercial Court, Wanjiru Holdings lease arrears
    - Voice memo — Wanjiru Holdings, Kilimani remedial works follow-up
    - Client briefing — Otieno, ELRC directions after mention
    - Client call — Coastal Sacco, Nyali statutory notice plan
    - Follow-up intake — Githunguri succession, revocation advice
-   - Site briefing — Karanja & Sons, Westlands distress after lock-out  
+   - Site briefing — Karanja & Sons, Westlands distress after lock-out
+   - Client intake — Bello Trading, Kano warehouse lease dispute (EN–Hausa)
+   - Client call — Adeyemi & Co, Lagos employment notice review (EN–Yoruba)
+   - Mention notes — Dlamini, Johannesburg eviction defence (EN–Zulu)  
 4. Walk Action Tray on any of them; optional: connect Intron and record live for the video
 
 ---
@@ -27,7 +30,7 @@ Record screen + mic. Use a consented code-switched legal snippet (under 90 secon
 ## 2. New multilingual session (20s)
 
 1. **New session** → source **Microphone**
-2. Language: **English + Kiswahili** or **Multilingual / African code-switch (Sahara)**
+2. Language: any African pair (e.g. **English + Kiswahili**, **English + Hausa**) or **Multilingual / African code-switch**
 3. Note the inline hint that Sahara refines on Stop
 4. **Start recording**
 

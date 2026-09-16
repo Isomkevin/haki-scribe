@@ -49,8 +49,8 @@ async def finalize_asr_with_sahara(
 ):
     """Replace live Whisper captions with Intron Sahara (legal court-hearing mode).
 
-    Triggered when language_hint is code-switch/multilingual, or when live captions
-    were auto-detected as code-switched / multilingual. Default live ASR unchanged.
+    Triggered for African pair/monolingual hints, code-switch/multilingual, or when
+    live captions were auto-detected as mixed. Default live ASR unchanged.
     """
     from app.services import language_detect
 
@@ -67,13 +67,26 @@ async def finalize_asr_with_sahara(
     transcript_text = " ".join(seg.text for seg in prior if (seg.text or "").strip())
     mix = language_detect.detect_language_mix(transcript_text)
     mode = (detected_mode or "").strip() or mix.mode
-    if mode in ("code-switch", "multilingual", "en", "sw"):
+    if mode in ("code-switch", "multilingual") or (mode and "-" in mode) or mode in (
+        "en",
+        "sw",
+        "ha",
+        "yo",
+        "ig",
+        "zu",
+        "xh",
+        "rw",
+        "lg",
+        "pcm",
+        "fr",
+        "am",
+    ):
         storage.update_session_fields(session_id, detected_language=mode)
 
     if not language_detect.needs_sahara_refine(detail.language_hint, detected_mode=mode, transcript_text=transcript_text):
         raise HTTPException(
             status_code=400,
-            detail="Sahara refine is only used for code-switched or multilingual sessions (explicit or auto-detected).",
+            detail="Sahara refine is for African language / code-switch sessions (explicit or auto-detected).",
         )
 
     audio_bytes = await audio.read()

@@ -163,7 +163,7 @@ export function WorkspaceFooter() {
             <p className="text-xs text-muted-foreground">A listening instrument of HakiChain · Nairobi</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">English · Kiswahili · code-switch · privilege stays in the room</p>
+        <p className="text-xs text-muted-foreground">African languages · code-switch · privilege stays in the room</p>
       </div>
     </footer>
   );
