@@ -10,12 +10,12 @@ function readEnvFile(path: string): Record<string, string> {
   }
   const values: Record<string, string> = {};
   for (const raw of readFileSync(path, "utf8").split("\n")) {
-    const line = raw.split("#", 1)[0].trim();
+    const line = (raw.split("#", 1)[0] ?? "").trim();
     if (!line.includes("=")) {
       continue;
     }
     const [key, ...rest] = line.split("=");
-    const name = key.trim();
+    const name = (key ?? "").trim();
     const value = rest.join("=").trim().replace(/^['"]|['"]$/g, "");
     if (name && value) {
       values[name] = value;
@@ -31,11 +31,11 @@ function backendRelayEnv(): Record<string, string> {
   const merged = { ...backendEnv, ...rootEnv };
   const values: Record<string, string> = {
     BACKEND_INTERNAL_URL:
-      merged.BACKEND_INTERNAL_URL || "https://hakiscribe-backend.onrender.com",
+      merged['BACKEND_INTERNAL_URL'] || "https://hakiscribe-backend.onrender.com",
   };
   // Never sync an empty secret — that would wipe a valid dashboard value.
-  if (merged.BACKEND_INTERNAL_SECRET) {
-    values.BACKEND_INTERNAL_SECRET = merged.BACKEND_INTERNAL_SECRET;
+  if (merged['BACKEND_INTERNAL_SECRET']) {
+    values['BACKEND_INTERNAL_SECRET'] = merged['BACKEND_INTERNAL_SECRET'];
   }
   return values;
 }

@@ -37,10 +37,10 @@ export const LANGUAGE_OPTIONS = [
   { id: "fr", label: "French", group: "mono" },
 ] as const;
 
-const PAIR_OR_MULTI = new Set(
+const PAIR_OR_MULTI = new Set<string>(
   LANGUAGE_OPTIONS.filter((o) => o.group === "pairs").map((o) => o.id),
 );
-const AFRICAN_MONO = new Set(
+const AFRICAN_MONO = new Set<string>(
   LANGUAGE_OPTIONS.filter((o) => o.group === "mono" && o.id !== "en").map((o) => o.id),
 );
 
@@ -73,6 +73,7 @@ export interface WorkspaceProfile {
 export interface WorkspaceDefaults {
   defaultLanguage: string;
   defaultSource: SessionSource;
+  useDemoData: boolean;
 }
 
 export interface WorkspaceSettings {
@@ -92,6 +93,7 @@ export const defaultWorkspaceSettings = (): WorkspaceSettings => ({
   workspace: {
     defaultLanguage: "code-switch",
     defaultSource: "mic",
+    useDemoData: true,
   },
 });
 
@@ -118,6 +120,10 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
         defaultSource: isSessionSource(parsed.workspace?.defaultSource)
           ? parsed.workspace.defaultSource
           : defaults.workspace.defaultSource,
+        useDemoData:
+          typeof parsed.workspace?.useDemoData === "boolean"
+            ? parsed.workspace.useDemoData
+            : defaults.workspace.useDemoData,
       },
     };
   } catch {
@@ -128,4 +134,17 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
 export function saveWorkspaceSettings(settings: WorkspaceSettings) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+/** Whether seeded demo desk data should be shown on this device. */
+export function isDemoDataEnabled(): boolean {
+  return loadWorkspaceSettings().workspace.useDemoData;
+}
+
+export function setDemoDataEnabled(enabled: boolean) {
+  const settings = loadWorkspaceSettings();
+  saveWorkspaceSettings({
+    ...settings,
+    workspace: { ...settings.workspace, useDemoData: enabled },
+  });
 }
