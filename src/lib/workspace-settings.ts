@@ -37,10 +37,10 @@ export const LANGUAGE_OPTIONS = [
   { id: "fr", label: "French", group: "mono" },
 ] as const;
 
-const PAIR_OR_MULTI = new Set(
+const PAIR_OR_MULTI = new Set<string>(
   LANGUAGE_OPTIONS.filter((o) => o.group === "pairs").map((o) => o.id),
 );
-const AFRICAN_MONO = new Set(
+const AFRICAN_MONO = new Set<string>(
   LANGUAGE_OPTIONS.filter((o) => o.group === "mono" && o.id !== "en").map((o) => o.id),
 );
 
