@@ -31,11 +31,11 @@ function backendRelayEnv(): Record<string, string> {
   const merged = { ...backendEnv, ...rootEnv };
   const values: Record<string, string> = {
     BACKEND_INTERNAL_URL:
-      merged.BACKEND_INTERNAL_URL || "https://hakiscribe-backend.onrender.com",
+      merged['BACKEND_INTERNAL_URL'] || "https://hakiscribe-backend.onrender.com",
   };
   // Never sync an empty secret — that would wipe a valid dashboard value.
-  if (merged.BACKEND_INTERNAL_SECRET) {
-    values.BACKEND_INTERNAL_SECRET = merged.BACKEND_INTERNAL_SECRET;
+  if (merged['BACKEND_INTERNAL_SECRET']) {
+    values['BACKEND_INTERNAL_SECRET'] = merged['BACKEND_INTERNAL_SECRET'];
   }
   return values;
 }
