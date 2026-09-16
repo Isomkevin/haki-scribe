@@ -120,6 +120,10 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
         defaultSource: isSessionSource(parsed.workspace?.defaultSource)
           ? parsed.workspace.defaultSource
           : defaults.workspace.defaultSource,
+        useDemoData:
+          typeof parsed.workspace?.useDemoData === "boolean"
+            ? parsed.workspace.useDemoData
+            : defaults.workspace.useDemoData,
       },
     };
   } catch {
@@ -130,4 +134,17 @@ export function loadWorkspaceSettings(): WorkspaceSettings {
 export function saveWorkspaceSettings(settings: WorkspaceSettings) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+/** Whether seeded demo desk data should be shown on this device. */
+export function isDemoDataEnabled(): boolean {
+  return loadWorkspaceSettings().workspace.useDemoData;
+}
+
+export function setDemoDataEnabled(enabled: boolean) {
+  const settings = loadWorkspaceSettings();
+  saveWorkspaceSettings({
+    ...settings,
+    workspace: { ...settings.workspace, useDemoData: enabled },
+  });
 }
