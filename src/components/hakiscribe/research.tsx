@@ -23,7 +23,7 @@ export function ResearchPage({ sessionId }: { sessionId?: string }) {
 
   const sessions = useQuery({
     queryKey: ["sessions"],
-    queryFn: hakiApi.listSessions,
+    queryFn: () => hakiApi.listSessions(),
     enabled: hasApiConfiguration,
   });
   const activeId = selectedId || sessions.data?.[0]?.id || "";
