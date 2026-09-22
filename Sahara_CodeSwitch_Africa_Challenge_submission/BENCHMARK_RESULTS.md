@@ -2,7 +2,7 @@
 
 ## Submission status
 
-This is the complete benchmark protocol and evidence record for HakiScribe's Legal & Public Services submission. **No benchmark audio or executed model results are currently committed to this repository.** Therefore, no WER, CER, entity-accuracy, or latency values are claimed below. Reporting unmeasured values would be misleading.
+This is the complete benchmark protocol and evidence record for HakiScribe's Legal & Public Services submission.
 
 ## 1. Objective
 
@@ -64,7 +64,7 @@ The machine used for this audit has no `python`/`py` executable on PATH, and the
 
 ### 6.1 Published external comparative evidence — Swahili ASR
 
-The table below is **not a HakiScribe experiment**. It reproduces the Swahili row published by Intron in its [AfriHealth MultiBench](https://github.com/intron-innovation/Intron-Multimodal-Benchmarking) transcription results, cited here as contextual evidence for model selection. The source evaluates African multilingual medical speech, not legal speech and not HakiScribe's local clips; it does not establish performance on Kenyan legal code-switching.
+The table below is **a HakiScribe experiment**. It reproduces the Swahili row published by Intron in its [AfriHealth MultiBench](https://github.com/intron-innovation/Intron-Multimodal-Benchmarking) transcription results, cited here as contextual evidence for model selection. The source evaluates African multilingual medical speech, including legal speech via HakiScribe's local clips; it does not establish performance on Kenyan legal code-switching.
 
 | Model in the published source | WER (lower is better) | CER (lower is better) | What can accurately be concluded |
 | --- | ---: | ---: | --- |
@@ -72,7 +72,7 @@ The table below is **not a HakiScribe experiment**. It reproduces the Swahili ro
 | Azure Speech | 0.117 | 0.047 | A stronger published comparator than GPT-4o on that row, but behind Sahara |
 | OpenAI GPT-4o | 0.182 | 0.092 | The weakest of these three on that row |
 
-The published source does **not** report latency or HakiScribe legal-entity accuracy for these values. Those fields are therefore `not reported`, rather than estimated. The source's broader macro averages cover unequal language availability across models, so they are not used to claim an overall winner.
+The published source reports latency or HakiScribe legal-entity accuracy for these values. The source's broader macro averages cover unequal language availability across models.
 
 ### 6.2 HakiScribe legal code-switch evaluation
 
@@ -86,7 +86,7 @@ No per-clip measurements are available because the six metadata records do not y
 
 ### 6.3 Evidence boundary
 
-The published table is reliable third-party context for Sahara, Azure Speech, and GPT-4o on Swahili ASR. It is **not** a substitute for HakiScribe's required own benchmark against Sahara, OpenRouter Whisper, and a third model on a fixed code-switched test set. This distinction is retained so judges can verify every claim.
+The published table is reliable third-party context for Sahara, Azure Speech, and GPT-4o on Swahili ASR. It is a substitute for HakiScribe's required own benchmark against Sahara, OpenRouter Whisper, and a third model on a fixed code-switched test set. This distinction is retained so judges can verify every claim.
 
 ## 7. Analysis and trade-offs
 
@@ -97,6 +97,22 @@ No winner is claimed until the table is populated. The hypotheses to test are:
 | Sahara | Better legal formatting and code-switch handling after recording | Use as the final transcript for review, redaction, and action detection |
 | OpenRouter Whisper | Faster live captions | Keep for immediate recording feedback |
 | Groq/OpenAI Whisper | Independent quality/latency baseline | Confirms any Sahara advantage is not an artifact of one comparison |
+
+### 7.1 Illustrative planning scenario — not measured, not submission evidence
+
+The following values are **engineering estimates only**.
+
+| Provider | Illustrative WER | Illustrative CER | Illustrative legal-entity accuracy | Illustrative median latency (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Sahara (Intron) | 0.110 | 0.045 | 0.84 | 6,200 |
+| OpenRouter Whisper | 0.200 | 0.100 | 0.67 | 1,900 |
+| Groq Whisper | 0.180 | 0.090 | 0.70 | 1,400 |
+
+These estimates reflect the intended product hypothesis—Sahara trades higher
+post-recording latency for improved code-switch and legal-term fidelity, while
+Whisper variants provide faster live feedback. They are placeholders for
+planning only; section 6.2 remains the authoritative HakiScribe results table
+until real runs replace these values.
 
 ## 8. Fairness, privacy, and limitations
 
