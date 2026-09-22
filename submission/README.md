@@ -10,6 +10,9 @@ This folder packages deliverables for the **Legal & Public Services** track of t
 | [BENCHMARK_RESULTS.md](./BENCHMARK_RESULTS.md) | Multi-model ASR comparison (Sahara vs Whisper baselines) |
 | [RESPONSIBLE_AI.md](./RESPONSIBLE_AI.md) | Ethics, consent, privilege, data handling |
 | [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) | One-take demo video script |
+| [TECHNICAL_DOCUMENTATION.md](./TECHNICAL_DOCUMENTATION.md) | Architecture, Sahara integration, source locations, local run |
+| [SUBMISSION_MANIFEST.md](./SUBMISSION_MANIFEST.md) | Final form mapping, links, and pre-submit checklist |
+| [DATASET_PROVENANCE.md](./DATASET_PROVENANCE.md) | AfriSwitch source, licence, and fixed-sample evaluation plan |
 
 ## Code
 

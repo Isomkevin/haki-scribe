@@ -1,39 +1,115 @@
-# HakiScribe ASR Benchmark — Sahara CodeSwitch Africa Challenge
+# HakiScribe ASR Benchmark Report — Sahara CodeSwitch Africa Challenge
 
-Generated: run `python -m benchmarking.run_benchmark` from `hakiscribe-backend/` after recording clips.
+## Submission status
 
-## Models compared
+This is the complete benchmark protocol and evidence record for HakiScribe's Legal & Public Services submission. **No benchmark audio or executed model results are currently committed to this repository.** Therefore, no WER, CER, entity-accuracy, or latency values are claimed below. Reporting unmeasured values would be misleading.
 
-| Provider | Role |
-|----------|------|
-| **sahara-intron** | Intron Sahara v2.5 — legal court-hearing mode (`file_category_legal`) |
-| **openrouter-whisper** | Default HakiScribe live ASR (`openai/whisper-large-v3`) |
-| **groq-whisper** / **openai-whisper** | Third baseline — Groq if `GROQ_API_KEY` set, else OpenAI |
+## 1. Objective
 
-## Metrics
+Evaluate whether Intron Sahara improves transcription of English–Kiswahili code-switched legal speech for HakiScribe. HakiScribe turns a reviewed transcript into source-grounded legal work: draft letters, calendar events, matter updates, CRM updates, time entries, and private notes.
 
-- **WER / CER** — Levenshtein vs hand-written reference transcript
-- **Entity accuracy** — share of `key_terms` from clip metadata found in hypothesis
-- **Latency (ms)** — wall time per provider per clip
+## 2. Models compared
 
-## Initial run (audio pending)
+| ID | System | Role in HakiScribe | Record when run |
+| --- | --- | --- | --- |
+| `sahara-intron` | Intron Sahara v2.5 | Final code-switch/legal refinement after recording | API model/version, legal-mode settings, run date |
+| `openrouter-whisper` | OpenRouter `openai/whisper-large-v3` | Live-caption baseline | model identifier and run date |
+| `groq-whisper` or `openai-whisper` | Groq Whisper or OpenAI Whisper | Independent third baseline | provider, model identifier, and run date |
 
-Clip templates and reference transcripts live in `hakiscribe-backend/benchmarking/test-clips/`. Until consented `.webm` files are recorded locally, the harness reports **skipped: audio missing** for each clip × provider.
+The comparison meets the required Sahara-plus-two-other-model design once all three return results on identical audio.
 
-| Clip | Provider | WER | CER | Entity acc. | Latency (ms) | Notes |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| clip_01 | sahara-intron | — | — | — | — | skipped: audio missing: clip_01.webm |
-| clip_01 | openrouter-whisper | — | — | — | — | skipped: audio missing: clip_01.webm |
-| clip_01 | groq-whisper | — | — | — | — | skipped: audio missing: clip_01.webm |
-| … | … | … | … | … | … | (repeat for clip_02–clip_06) |
+## 3. Evaluation data
 
-After recording, re-run the harness; copy fresh output from `benchmarking/out/BENCHMARK_RESULTS.md` over this file for submission.
+The repository contains six de-identified test specifications under `hakiscribe-backend/benchmarking/test-clips/`. Each has a language pair, legal domain, Kenyan accent/country, capture device, noise condition, key legal terms, and human reference transcript.
 
-## How to run
+| Item | Current repository evidence |
+| --- | --- |
+| Clip specifications | 6 (`clip_01`–`clip_06`) |
+| Reference transcripts | 6 |
+| Metadata files | 6 |
+| Audio files | 0 |
+| Executed provider rows | 0 |
 
-```bash
-cd hakiscribe-backend
-python -m benchmarking.run_benchmark
-```
+Add a consented, de-identified `.webm` or `.wav` file per metadata record before running the benchmark. The optional public-data extension must report its dataset version, licence, language pair, sample IDs, split, and preprocessing separately from the local legal set.
 
-Requires: `INTRON_API_KEY` (or Intron connector), `OPENROUTER_API_KEY`, and `GROQ_API_KEY` or `OPENAI_API_KEY`.
+### Public benchmark source and licence
+
+The challenge's recommended public evaluation resource, [Intron AfriSwitch](https://huggingface.co/datasets/intronhealth/AfriSwitch), is an evaluation-only benchmark of 16,602 human-transcribed, in-the-wild English–African-language code-switch utterances. Its `swahili` configuration contains 650 English–Swahili utterances (3.89 hours) with audio, verbatim transcription, code-mixing index, switch-point count, and duration. It is licensed **CC BY-NC-SA 4.0**. HakiScribe may use it for a non-commercial evaluation only with attribution and under its ShareAlike terms; the dataset must not be copied into this repository or redistributed without complying with that licence.
+
+For HakiScribe's own reproducible run, sample identifiers must be selected before inference (for example, a stratified sample across code-mixing index and duration), then frozen and reported. This prevents cherry-picking. No AfriSwitch audio was downloaded or evaluated in this repository during this audit.
+
+## 4. Measures
+
+| Measure | Definition | Relevance |
+| --- | --- | --- |
+| WER | Word-error rate against the human reference | Overall transcript fidelity |
+| CER | Character-error rate against the human reference | Names, case numbers, and amounts |
+| Legal entity accuracy | Share of metadata `key_terms` found in the hypothesis | Critical legal entities survive transcription |
+| Latency | Wall-clock transcription time in milliseconds | Fits an in-room workflow |
+
+Report per-clip values and macro averages. Do not compare models on different clip sets.
+
+## 5. Reproducible procedure
+
+1. Obtain explicit consent; do not use real client audio.
+2. Add audio beside each record in `hakiscribe-backend/benchmarking/test-clips/`.
+3. Configure `INTRON_API_KEY`, `OPENROUTER_API_KEY`, and either `GROQ_API_KEY` or `OPENAI_API_KEY` outside version control.
+4. From `hakiscribe-backend/`, run `python -m benchmarking.run_benchmark`.
+5. Preserve `benchmarking/out/benchmark_report.json`; copy generated results into this report.
+6. Disclose skipped, failed, and retried runs; require all three providers on every included clip.
+
+The machine used for this audit has no `python`/`py` executable on PATH, and the test directory contains no audio. Numerical results cannot be generated from the current repository state.
+
+## 6. Results
+
+### 6.1 Published external comparative evidence — Swahili ASR
+
+The table below is **not a HakiScribe experiment**. It reproduces the Swahili row published by Intron in its [AfriHealth MultiBench](https://github.com/intron-innovation/Intron-Multimodal-Benchmarking) transcription results, cited here as contextual evidence for model selection. The source evaluates African multilingual medical speech, not legal speech and not HakiScribe's local clips; it does not establish performance on Kenyan legal code-switching.
+
+| Model in the published source | WER (lower is better) | CER (lower is better) | What can accurately be concluded |
+| --- | ---: | ---: | --- |
+| Intron Sahara | 0.068 | 0.028 | Best WER and CER of the three listed models on that source's Swahili row |
+| Azure Speech | 0.117 | 0.047 | A stronger published comparator than GPT-4o on that row, but behind Sahara |
+| OpenAI GPT-4o | 0.182 | 0.092 | The weakest of these three on that row |
+
+The published source does **not** report latency or HakiScribe legal-entity accuracy for these values. Those fields are therefore `not reported`, rather than estimated. The source's broader macro averages cover unequal language availability across models, so they are not used to claim an overall winner.
+
+### 6.2 HakiScribe legal code-switch evaluation
+
+| Provider | Clips completed / eligible | WER | CER | Legal entity accuracy | Median latency (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sahara (Intron) | 0 / 0 | Not measured | Not measured | Not measured | Not measured |
+| OpenRouter Whisper | 0 / 0 | Not measured | Not measured | Not measured | Not measured |
+| Groq/OpenAI Whisper | 0 / 0 | Not measured | Not measured | Not measured | Not measured |
+
+No per-clip measurements are available because the six metadata records do not yet have their referenced audio files.
+
+### 6.3 Evidence boundary
+
+The published table is reliable third-party context for Sahara, Azure Speech, and GPT-4o on Swahili ASR. It is **not** a substitute for HakiScribe's required own benchmark against Sahara, OpenRouter Whisper, and a third model on a fixed code-switched test set. This distinction is retained so judges can verify every claim.
+
+## 7. Analysis and trade-offs
+
+No winner is claimed until the table is populated. The hypotheses to test are:
+
+| System | Hypothesis | Product implication if confirmed |
+| --- | --- | --- |
+| Sahara | Better legal formatting and code-switch handling after recording | Use as the final transcript for review, redaction, and action detection |
+| OpenRouter Whisper | Faster live captions | Keep for immediate recording feedback |
+| Groq/OpenAI Whisper | Independent quality/latency baseline | Confirms any Sahara advantage is not an artifact of one comparison |
+
+## 8. Fairness, privacy, and limitations
+
+- The local set is small and indicative, not a claim about every African language pair or legal setting.
+- All models must receive the same audio and reference transcript per clip.
+- Local test audio must be consented and de-identified; privileged client recordings never belong in the repository or public submission.
+- Break outcomes down by scenario, noise condition, and language mixing where sample size allows.
+- HakiScribe requires speaker naming, privilege redaction, source review, and human approval before generated work leaves the workspace.
+
+## 9. Artifacts
+
+- Harness: `hakiscribe-backend/benchmarking/run_benchmark.py`
+- Providers: `hakiscribe-backend/benchmarking/providers.py`
+- Test specifications: `hakiscribe-backend/benchmarking/test-clips/`
+- Machine-readable output after a run: `hakiscribe-backend/benchmarking/out/benchmark_report.json`
+- Responsible-use note: `submission/RESPONSIBLE_AI.md`
