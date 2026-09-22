@@ -2,11 +2,13 @@
 
 **The conversation is the work. The transcript is only the witness.**
 
+> Sahara CodeSwitch Africa demo: [watch the HakiScribe walkthrough](https://youtu.be/FjsZqMBsCfs)
+
 A legal work agent for the rooms where justice is spoken — client meetings, chambers, court. It listens from a phone, a laptop, or an [Omi](https://omi.me) wearable, then returns not a wall of text, but a tray of ready artifacts: a demand letter, a hearing date, a matter, a billable hour, a private note that will still be true on Monday.
 
 Built for [AI Tinkerers Nairobi — Agents, Everywhere](https://nairobi.aitinkerers.org/). Built for lawyers, judges, and clerks. Built as the listening instrument of [HakiChain](https://hakichain.com).
 
-[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Sahara CodeSwitch](./submission/README.md) · [Architecture / SPEC](./SPEC.md) · [Roadmap](./roadmap.md)
+[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Sahara CodeSwitch](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) · [Sahara demo video](https://youtu.be/FjsZqMBsCfs) · [Architecture / SPEC](./SPEC.md) · [Roadmap](./roadmap.md)
 
 ---
 
@@ -234,7 +236,7 @@ Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: 
 | [`SPEC.md`](./SPEC.md) | Architecture, data model, API contract |
 | [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md) | Google / Dropbox / Microsoft / Gemini OAuth on Render |
 | [`SUBMISSION.md`](./SUBMISSION.md) | AI Tinkerers Nairobi judge path |
-| [`submission/`](./submission/README.md) | Sahara CodeSwitch Africa challenge packet |
+| [`Sahara_CodeSwitch_Africa_Challenge_submission/`](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) | Sahara CodeSwitch Africa challenge packet |
 | [`hakiscribe-backend/benchmarking/README.md`](./hakiscribe-backend/benchmarking/README.md) | ASR benchmark harness |
 | [`roadmap.md`](./roadmap.md) | Done checklist + remaining external setup |
 
