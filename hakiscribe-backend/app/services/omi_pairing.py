@@ -317,7 +317,8 @@ def status_payload() -> dict[str, Any]:
     uid = linked_uid()
     conn = integrations.get_connection(PROVIDER_ID)
     return {
-        "linked": bool(uid) or bool(creds.get("api_key")),
+        "linked": bool(uid),
+        "connected": bool(uid) or bool(creds.get("api_key")),
         "app_linked": bool(uid),
         "api_key_connected": bool(creds.get("api_key")),
         "uid": uid,
