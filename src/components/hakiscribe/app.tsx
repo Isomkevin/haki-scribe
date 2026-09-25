@@ -69,6 +69,7 @@ import {
   formatBillableHours,
   formatDuration,
   friendlyErrorMessage,
+  reauthProvider,
   friendlyModelName,
   friendlyStatusNote,
   hakiApi,
