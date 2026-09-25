@@ -17,6 +17,8 @@ import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
+import { Route as SessionsSessionIdChatIndexRouteImport } from './routes/sessions_.$sessionId.chat.index'
+import { Route as SessionsSessionIdChatThreadIdRouteImport } from './routes/sessions_.$sessionId.chat.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,6 +60,18 @@ const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   path: '/sessions/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsSessionIdChatIndexRoute =
+  SessionsSessionIdChatIndexRouteImport.update({
+    id: '/sessions_/$sessionId/chat/',
+    path: '/sessions/$sessionId/chat/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const SessionsSessionIdChatThreadIdRoute =
+  SessionsSessionIdChatThreadIdRouteImport.update({
+    id: '/sessions_/$sessionId/chat/$threadId',
+    path: '/sessions/$sessionId/chat/$threadId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -68,6 +82,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
+  '/sessions/$sessionId/chat/': typeof SessionsSessionIdChatIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +94,8 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
+  '/sessions/$sessionId/chat': typeof SessionsSessionIdChatIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +107,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions_/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
+  '/sessions_/$sessionId/chat/': typeof SessionsSessionIdChatIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +121,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
+    | '/sessions/$sessionId/chat/$threadId'
+    | '/sessions/$sessionId/chat/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +133,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
+    | '/sessions/$sessionId/chat/$threadId'
+    | '/sessions/$sessionId/chat'
   id:
     | '__root__'
     | '/'
@@ -121,6 +145,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tracker'
     | '/sessions/$sessionId'
+    | '/sessions_/$sessionId/chat/$threadId'
+    | '/sessions_/$sessionId/chat/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,6 +158,8 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   TrackerRoute: typeof TrackerRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  SessionsSessionIdChatThreadIdRoute: typeof SessionsSessionIdChatThreadIdRoute
+  SessionsSessionIdChatIndexRoute: typeof SessionsSessionIdChatIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -192,6 +220,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions_/$sessionId/chat/': {
+      id: '/sessions_/$sessionId/chat/'
+      path: '/sessions/$sessionId/chat'
+      fullPath: '/sessions/$sessionId/chat/'
+      preLoaderRoute: typeof SessionsSessionIdChatIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sessions_/$sessionId/chat/$threadId': {
+      id: '/sessions_/$sessionId/chat/$threadId'
+      path: '/sessions/$sessionId/chat/$threadId'
+      fullPath: '/sessions/$sessionId/chat/$threadId'
+      preLoaderRoute: typeof SessionsSessionIdChatThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -204,6 +246,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   TrackerRoute: TrackerRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
+  SessionsSessionIdChatThreadIdRoute: SessionsSessionIdChatThreadIdRoute,
+  SessionsSessionIdChatIndexRoute: SessionsSessionIdChatIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

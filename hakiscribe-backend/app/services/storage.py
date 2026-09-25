@@ -21,6 +21,7 @@ from app.services import db, object_store
 from app.models.schemas import (
     ActionResult,
     ActionStatus,
+    ChatThread,
     Contact,
     DetectedAction,
     FlaggedMoment,
@@ -40,6 +41,33 @@ _contacts: dict[uuid.UUID, Contact] = {}
 _results: dict[uuid.UUID, list[ActionResult]] = {}
 _session_matter_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
 _session_contact_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
+_chats: dict[uuid.UUID, list[ChatThread]] = {}
+
+
+def list_chats(session_id: uuid.UUID) -> list[ChatThread]:
+    return sorted(_chats.get(session_id, []), key=lambda t: t.updated_at, reverse=True)
+
+
+def get_chat(session_id: uuid.UUID, thread_id: uuid.UUID) -> Optional[ChatThread]:
+    return next((t for t in _chats.get(session_id, []) if t.id == thread_id), None)
+
+
+def save_chat(thread: ChatThread) -> ChatThread:
+    items = [t for t in _chats.get(thread.session_id, []) if t.id != thread.id]
+    items.append(thread)
+    _chats[thread.session_id] = items
+    _persist()
+    return thread
+
+
+def delete_chat(session_id: uuid.UUID, thread_id: uuid.UUID) -> bool:
+    items = _chats.get(session_id, [])
+    kept = [t for t in items if t.id != thread_id]
+    if len(kept) == len(items):
+        return False
+    _chats[session_id] = kept
+    _persist()
+    return True
 
 
 def _session_matters(session_id: uuid.UUID) -> list[Matter]:
@@ -354,6 +382,7 @@ def _snapshot() -> dict:
             "integrations": integrations.connections_snapshot(),
             "session_matter_ids": {str(key): [str(item) for item in value] for key, value in _session_matter_ids.items()},
             "session_contact_ids": {str(key): [str(item) for item in value] for key, value in _session_contact_ids.items()},
+            "chats": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _chats.items()},
     }
 
 
@@ -402,6 +431,8 @@ def _restore(payload: dict) -> None:
     _contacts.update({item.id: item for item in (Contact(**raw) for raw in payload.get("contacts", []))})
     _session_matter_ids.update(_uuid_map(payload.get("session_matter_ids", {})))
     _session_contact_ids.update(_uuid_map(payload.get("session_contact_ids", {})))
+    for key, value in payload.get("chats", {}).items():
+        _chats[uuid.UUID(key)] = [ChatThread(**item) for item in value]
     integrations.restore_connections(payload.get("integrations", []))
 
 

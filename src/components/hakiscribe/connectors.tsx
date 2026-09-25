@@ -384,6 +384,9 @@ export function ConnectorsSection() {
                   key={provider.provider_id}
                   provider={provider}
                   status={omiStatus.data}
+                  health={healthFor(provider)}
+                  checking={checkingOne === provider.provider_id || (health.isFetching && provider.connected)}
+                  onCheck={() => void checkOne(provider.provider_id)}
                   onOpen={() => openConnect(provider)}
                   onDisconnect={() => disconnect.mutate(provider.provider_id)}
                   isDisconnecting={disconnect.isPending && disconnect.variables === provider.provider_id}
@@ -543,6 +546,7 @@ function OmiSetupDialog({
             Link uid
           </Button>
         </div>
+        <OmiApiKeySection connected={Boolean(status?.api_key_connected)} />
         {error ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>
         ) : null}
@@ -553,6 +557,49 @@ function OmiSetupDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function OmiApiKeySection({ connected }: { connected: boolean }) {
+  const queryClient = useQueryClient();
+  const [key, setKey] = useState("");
+  const save = useMutation({
+    mutationFn: async () => {
+      await hakiApi.connectIntegration("omi", { api_key: key.trim() });
+      return hakiApi.checkIntegration("omi");
+    },
+    onSuccess: (result) => {
+      setKey("");
+      void queryClient.invalidateQueries({ queryKey: ["omi-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      void queryClient.invalidateQueries({ queryKey: ["integrations-health"] });
+      if (result.health !== "valid") toast.error(result.health_error || "Omi did not accept that key.");
+      else toast.success("Omi developer key saved and verified");
+    },
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
+  });
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Omi developer API key</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {connected
+          ? "A key is saved. Paste a new one to replace it."
+          : "Omi app → Settings → Developer → Create key. Lets HakiScribe import your finished conversations."}
+      </p>
+      <input
+        type="password"
+        className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        placeholder="omi_dev_…"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        autoComplete="off"
+        aria-label="Omi developer API key"
+      />
+      <Button className="mt-2" size="sm" onClick={() => save.mutate()} disabled={!key.trim() || save.isPending}>
+        {save.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+        Save and verify key
+      </Button>
+    </div>
   );
 }
 
@@ -582,18 +629,39 @@ function UrlRow({ label, value, openable }: { label: string; value: string; open
 function OmiProviderCard({
   provider,
   status,
+  health,
+  checking,
+  onCheck,
   onOpen,
   onDisconnect,
   isDisconnecting,
 }: {
   provider: Integration;
   status?: OmiStatus | undefined;
+  health: ConnectorHealth;
+  checking: boolean;
+  onCheck: () => void;
   onOpen: () => void;
   onDisconnect: () => void;
   isDisconnecting: boolean;
 }) {
-  const linked = provider.connected || Boolean(status?.linked);
+  const linked = provider.connected || Boolean(status?.connected ?? status?.linked);
   const masked = status?.masked_uid || provider.masked_creds?.['uid'];
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const importer = useMutation({
+    mutationFn: () => hakiApi.omiImport(10),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      toast.success(
+        result.imported
+          ? `Imported ${result.imported} Omi conversation${result.imported === 1 ? "" : "s"}`
+          : "No new Omi conversations to import",
+      );
+      if (result.session_ids[0]) void navigate({ to: "/sessions/$sessionId", params: { sessionId: result.session_ids[0] }, search: { fresh: false } });
+    },
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
+  });
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
@@ -605,16 +673,7 @@ function OmiProviderCard({
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
         </div>
-        {linked ? (
-          <Badge variant="outline" className="shrink-0 gap-1 border-success-foreground/20 bg-success/10 text-success-foreground">
-            <CheckCircle2 className="size-3" />
-            Connected
-          </Badge>
-        ) : (
-          <Badge variant="secondary" className="shrink-0">
-            Not connected
-          </Badge>
-        )}
+        <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
       </div>
 
       {provider.capabilities.length > 0 ? (
@@ -629,7 +688,8 @@ function OmiProviderCard({
 
       {linked && masked ? (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Linked uid {masked}
+          {status?.app_linked ? `Omi app linked (${masked})` : "Developer key only — live transcription needs the Omi app link"}
+          {status?.api_key_connected ? " · developer key saved" : ""}
           {status?.last_activity_at
             ? ` · last activity ${new Date(status.last_activity_at).toLocaleString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
             : ""}
@@ -641,8 +701,19 @@ function OmiProviderCard({
       <div className="mt-auto flex flex-wrap gap-2 pt-4">
         <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
           <Link2 className="mr-2 size-3.5" />
-          {linked ? "Miniapp URLs" : "Connect"}
+          {linked ? "Setup" : "Connect"}
         </Button>
+        {linked ? (
+          <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
+            Check again
+          </Button>
+        ) : null}
+        {status?.api_key_connected ? (
+          <Button variant="outline" size="sm" onClick={() => importer.mutate()} disabled={importer.isPending}>
+            {importer.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Import from Omi
+          </Button>
+        ) : null}
         {linked ? (
           <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
             {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}

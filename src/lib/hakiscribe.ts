@@ -246,8 +246,29 @@ export interface HealthStatus {
   };
 }
 
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  model?: string | null;
+  error?: boolean;
+  created_at: string;
+}
+
+export interface ChatThread {
+  id: string;
+  session_id: string;
+  title: string;
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OmiStatus {
   linked: boolean;
+  connected?: boolean;
+  app_linked?: boolean;
+  api_key_connected?: boolean;
   uid: string | null;
   masked_uid: string | null;
   connected_at: string | null;
@@ -510,6 +531,22 @@ export const hakiApi = {
   health: () => request<HealthStatus>("/health"),
   listIntegrations: () => request<Integration[]>("/integrations"),
   omiStatus: () => request<OmiStatus>("/integrations/omi/status"),
+  omiImport: (limit = 10) =>
+    request<{ imported: number; skipped: number; session_ids: string[] }>(`/integrations/omi/import?limit=${limit}`, {
+      method: "POST",
+    }),
+  omiSetActive: (sessionId: string) => request<OmiStatus>(`/integrations/omi/active/${sessionId}`, { method: "POST" }),
+  listChats: (sessionId: string) => request<ChatThread[]>(`/sessions/${sessionId}/chats`),
+  createChat: (sessionId: string, title?: string) =>
+    request<ChatThread>(`/sessions/${sessionId}/chats`, { method: "POST", body: JSON.stringify({ title }) }),
+  getChat: (sessionId: string, threadId: string) => request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}`),
+  deleteChat: (sessionId: string, threadId: string) =>
+    request<{ deleted: boolean }>(`/sessions/${sessionId}/chats/${threadId}`, { method: "DELETE" }),
+  sendChatMessage: (sessionId: string, threadId: string, body: { content: string; model?: string }) =>
+    request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   connectIntegration: (providerId: string, credentials: Record<string, string>) =>
     request<IntegrationStatus>(`/integrations/${providerId}`, {
       method: "POST",
