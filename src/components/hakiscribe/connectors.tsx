@@ -546,6 +546,7 @@ function OmiSetupDialog({
             Link uid
           </Button>
         </div>
+        <OmiApiKeySection connected={Boolean(status?.api_key_connected)} />
         {error ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>
         ) : null}
@@ -556,6 +557,46 @@ function OmiSetupDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function OmiApiKeySection({ connected }: { connected: boolean }) {
+  const queryClient = useQueryClient();
+  const [key, setKey] = useState("");
+  const save = useMutation({
+    mutationFn: () => hakiApi.connectIntegration("omi", { api_key: key.trim() }),
+    onSuccess: (result) => {
+      setKey("");
+      void queryClient.invalidateQueries({ queryKey: ["omi-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      void queryClient.invalidateQueries({ queryKey: ["integrations-health"] });
+      if (result.verified === false) toast.error(result.verify_error || "Omi did not accept that key.");
+      else toast.success("Omi developer key saved and verified");
+    },
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
+  });
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Omi developer API key</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {connected
+          ? "A key is saved. Paste a new one to replace it."
+          : "Omi app → Settings → Developer → Create key. Lets HakiScribe import your finished conversations."}
+      </p>
+      <input
+        type="password"
+        className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        placeholder="omi_dev_…"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        autoComplete="off"
+        aria-label="Omi developer API key"
+      />
+      <Button className="mt-2" size="sm" onClick={() => save.mutate()} disabled={!key.trim() || save.isPending}>
+        {save.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+        Save and verify key
+      </Button>
+    </div>
   );
 }
 
