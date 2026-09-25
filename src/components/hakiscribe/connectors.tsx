@@ -74,6 +74,7 @@ export function ConnectorsSection() {
       setDialogValues({});
       setManualUid("");
       setDialogError(null);
+      void queryClient.invalidateQueries({ queryKey: ["integrations-health"] });
       toast.success("Connector linked");
     },
     onError: (error: Error) => {
