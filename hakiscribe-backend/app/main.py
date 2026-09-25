@@ -31,6 +31,7 @@ _load_env_files()
 
 from app.integrations import llm_client
 from app.routers import (
+    chats,
     actions,
     auth,
     demo,
