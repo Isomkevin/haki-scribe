@@ -30,6 +30,52 @@ def list_integrations():
     return integrations.list_connections()
 
 
+@router.get("/health")
+async def integrations_health():
+    return await integrations.check_all_health()
+
+
+@router.post("/{provider_id}/check")
+async def check_integration(provider_id: str):
+    if integrations.provider_def(provider_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}")
+    return await integrations.check_health(provider_id)
+
+
+def _friendly_oauth(provider_name: str, raw: str) -> tuple[str, str, str]:
+    """(reason, title, guidance) for a failed sign-in."""
+    text = (raw or "").lower()
+    if "access_denied" in text or "cancel" in text or "denied" in text:
+        return ("cancelled", f"{provider_name} sign-in cancelled",
+                f"You cancelled the {provider_name} sign-in. Nothing was changed — start again whenever you're ready.")
+    if "state" in text and ("expired" in text or "invalid" in text or "unknown" in text):
+        return ("state_expired", "This sign-in link expired",
+                "The sign-in took too long or was opened twice. Close this window and press Sign in again.")
+    if "redirect_uri" in text:
+        return ("redirect_mismatch", "Sign-in address not approved",
+                f"The {provider_name} app doesn't list HakiScribe's callback address. Ask your administrator to add it (see the setup guide).")
+    if "invalid_client" in text or "unauthorized_client" in text:
+        return ("invalid_client", f"{provider_name} app credentials rejected",
+                f"The server's {provider_name} client ID or secret is wrong. Ask your administrator to check them on Render.")
+    if "not configured" in text or "not set" in text or "missing" in text and "client" in text:
+        return ("not_configured", f"{provider_name} sign-in isn't set up yet",
+                f"{provider_name} sign-in isn't switched on on the server yet. Ask your administrator to add it, or paste a token instead.")
+    if "invalid_grant" in text or "refresh" in text:
+        return ("expired", f"{provider_name} access expired",
+                f"Your {provider_name} access has expired or was revoked. Sign in again to reconnect.")
+    return ("failed", f"{provider_name} sign-in failed",
+            f"{provider_name} didn't complete the sign-in. Try again; if it keeps failing, share this message with your administrator: {raw[:200]}")
+
+
+def _oauth_fail(provider_id: str, raw: str, status_code: int = 400) -> HTMLResponse:
+    definition = integrations.provider_def(provider_id) or {"name": provider_id}
+    reason, title, body = _friendly_oauth(str(definition["name"]), raw)
+    return HTMLResponse(
+        status_code=status_code,
+        content=_oauth_html(title=title, body=body, ok=False, provider_id=provider_id, reason=reason),
+    )
+
+
 @router.get("/omi/status")
 def omi_status():
     return omi_pairing.status_payload()
@@ -58,10 +104,7 @@ def oauth_start(
     try:
         url = oauth.authorization_url(provider_id, extras or None)
     except oauth.OAuthError as exc:
-        return HTMLResponse(
-            status_code=exc.status_code,
-            content=_oauth_html(title="Cannot start sign-in", body=exc.message, ok=False, provider_id=provider_id),
-        )
+        return _oauth_fail(provider_id, exc.message, exc.status_code)
     return RedirectResponse(url, status_code=302)
 
 
@@ -80,15 +123,7 @@ async def oauth_callback(
             content=_oauth_html(title="Unknown connector", body=f"No connector called {provider_id}.", ok=False, provider_id=provider_id),
         )
     if error:
-        return HTMLResponse(
-            status_code=400,
-            content=_oauth_html(
-                title=f"{definition['name']} sign-in cancelled",
-                body=error_description or error,
-                ok=False,
-                provider_id=provider_id,
-            ),
-        )
+        return _oauth_fail(provider_id, f"{error} {error_description or ''}")
     if not code or not state:
         return HTMLResponse(
             status_code=400,
@@ -102,22 +137,11 @@ async def oauth_callback(
     try:
         creds = await oauth.exchange_code(provider_id, code, state)
     except oauth.OAuthError as exc:
-        return HTMLResponse(
-            status_code=exc.status_code,
-            content=_oauth_html(title="Sign-in failed", body=exc.message, ok=False, provider_id=provider_id),
-        )
+        return _oauth_fail(provider_id, exc.message, exc.status_code)
 
     check = await integrations.verify(provider_id, creds)
     if not check["ok"]:
-        return HTMLResponse(
-            status_code=400,
-            content=_oauth_html(
-                title="Sign-in failed",
-                body=check.get("error") or "The provider rejected the new token.",
-                ok=False,
-                provider_id=provider_id,
-            ),
-        )
+        return _oauth_fail(provider_id, check.get("error") or "The provider rejected the new token.")
 
     integrations.save_connection(provider_id, creds)
     account = creds.get("account")
@@ -131,9 +155,16 @@ async def oauth_callback(
     )
 
 
-def _oauth_html(*, title: str, body: str, ok: bool, provider_id: str) -> str:
+def _oauth_html(*, title: str, body: str, ok: bool, provider_id: str, reason: str = "") -> str:
+    import html as _html
+    import json as _json
+
     accent = "#1f4d3a" if ok else "#8b2e2e"
     status = "connected" if ok else "failed"
+    msg_js = _json.dumps(body).replace("</", "<\\/")
+    reason_js = _json.dumps(reason)
+    title = _html.escape(title)
+    body = _html.escape(body)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -158,12 +189,12 @@ def _oauth_html(*, title: str, body: str, ok: bool, provider_id: str) -> str:
     try {{
       if (window.opener) {{
         window.opener.postMessage(
-          {{ source: "hakiscribe-oauth", provider: "{provider_id}", status: "{status}" }},
+          {{ source: "hakiscribe-oauth", provider: "{provider_id}", status: "{status}", reason: {reason_js}, message: {msg_js} }},
           "*"
         );
       }}
     }} catch (err) {{}}
-    setTimeout(function () {{ window.close(); }}, {1200 if ok else 4000});
+    setTimeout(function () {{ window.close(); }}, {1200 if ok else 9000});
   </script>
 </body>
 </html>"""
@@ -239,7 +270,7 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         creds["default_model"] = os.environ.get("ASK_MODEL") or "openai/gpt-4o"
     if not creds:
         raise HTTPException(status_code=400, detail="No credentials provided")
-    if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter", "intron"} and not creds.get("api_key"):
+    if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter", "intron", "groq"} and not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="No credentials provided")
     if provider_id == "omi" and not creds.get("uid"):
         raise HTTPException(status_code=400, detail="Missing Omi uid")
@@ -301,6 +332,18 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
 
     payload_data = result.result if isinstance(result.result, dict) else {}
 
+    def _reauth(err: str | None) -> None:
+        if integrations.reauth_required(payload.provider) or "401" in (err or "") or "expired" in (err or "").lower():
+            name = (integrations.provider_def(payload.provider) or {}).get("name", payload.provider)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "reauth_required",
+                    "provider": payload.provider,
+                    "message": f"Your {name} access has expired. Sign in again on the Connectors page to keep exporting.",
+                },
+            )
+
     if payload_data.get("start") and payload.provider == "google_calendar":
         event = await integrations.create_calendar_event(
             payload.provider,
@@ -310,6 +353,7 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
             description=str(payload_data.get("description") or ""),
         )
         if not event["ok"]:
+            _reauth(event.get("error"))
             raise HTTPException(status_code=400, detail=event.get("error") or "Could not add the calendar event")
         payload_data.setdefault("exports", [])
         payload_data["exports"].append({"provider": payload.provider, "url": event.get("url")})
@@ -330,4 +374,5 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
         storage.upsert_action_results(session_id, [result])
         return {"ok": True, "url": export.get("url"), "provider": payload.provider}
 
+    _reauth(export.get("error"))
     raise HTTPException(status_code=400, detail=export.get("error") or "Export failed")
