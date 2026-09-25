@@ -826,6 +826,12 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
     retry: false,
   });
   const omiLinked = Boolean(omiStatus.data?.linked);
+  useEffect(() => {
+    // Route live Omi transcripts from the app-store link into this session.
+    if (hasApiConfiguration && session.source === "omi" && omiLinked) {
+      void hakiApi.omiSetActive(session.id).catch(() => undefined);
+    }
+  }, [omiLinked, session.id, session.source]);
   const recorder = useRef<MediaRecorder | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -1519,6 +1525,11 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
           </p>
         </div>
       </div>
+      <Button asChild variant="outline" size="sm" className="mt-3">
+        <Link to="/sessions/$sessionId/chat" params={{ sessionId }}>
+          <MessageSquare className="size-4" /> Open chat — have a full conversation with your chosen model
+        </Link>
+      </Button>
       <Textarea
         aria-label="Instruction for this session"
         className="mt-4 min-h-24 bg-background"
