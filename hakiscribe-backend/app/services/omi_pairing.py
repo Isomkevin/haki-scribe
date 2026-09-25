@@ -11,6 +11,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 from app.models.schemas import Session, SessionSource, SessionStatus
 from app.services import integrations, storage
@@ -36,7 +37,12 @@ def public_base_url() -> str:
 
 
 def webhook_url() -> str:
-    return f"{public_base_url()}/webhooks/omi"
+    url = f"{public_base_url()}/webhooks/omi"
+    # Omi integration webhooks cannot be configured with arbitrary headers.
+    # When the optional shared secret is set, embed it only in the endpoint
+    # copied into Omi so each delivery can be authenticated.
+    secret = os.environ.get("OMI_SHARED_SECRET", "").strip()
+    return f"{url}?{urlencode({'token': secret})}" if secret else url
 
 
 def auth_url() -> str:

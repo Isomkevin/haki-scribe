@@ -37,6 +37,19 @@ r = client.post(
 )
 assert r.status_code == 200 and r.json()["session_id"] == sid1, r.json()
 
+# Omi's real-time trigger may post a single segment object. Its segment id
+# must not be mistaken for the conversation id, and webhook retries are safe.
+r = client.post(
+    "/webhooks/omi?uid=test-uid",
+    json={"id": "segment-1", "text": "Single live segment", "speaker_id": 0, "start": 4, "end": 5},
+)
+assert r.status_code == 200 and r.json()["session_id"] == sid1 and r.json()["received"] == 1, r.text
+r = client.post(
+    "/webhooks/omi?uid=test-uid",
+    json={"id": "segment-1", "text": "Single live segment", "speaker_id": 0, "start": 4, "end": 5},
+)
+assert r.status_code == 200 and r.json()["session_id"] == sid1 and r.json()["received"] == 0, r.text
+
 r = client.post(
     "/webhooks/omi?uid=test-uid&session_id=omi-mem-9",
     json={

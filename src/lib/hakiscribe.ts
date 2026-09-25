@@ -639,8 +639,11 @@ export function startIntegrationOAuth(
   });
 }
 
-export function omiWebhookUrl(sessionId: string) {
-  return `${configuredBaseUrl}/webhooks/omi?session_id=${sessionId}`;
+export function omiWebhookUrl(sessionId: string, webhookBase?: string) {
+  const url = new URL(webhookBase ?? `${configuredBaseUrl || PRODUCTION_API_URL}/webhooks/omi`);
+  // Preserve the optional server-generated webhook token for legacy pairing.
+  url.searchParams.set("session_id", sessionId);
+  return url.toString();
 }
 
 export function omiMiniappUrls() {

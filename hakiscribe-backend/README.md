@@ -96,7 +96,8 @@ session — no pasting a per-session webhook URL.
    dual webhook for memory.
 3. Copy Auth URL, Setup-completed URL, and Webhook URL from
    **Settings → Connectors → Omi** (or from `GET /health` → `omi_miniapp`):
-   - Webhook: `{BACKEND}/webhooks/omi`
+   - Webhook: `{BACKEND}/webhooks/omi` (includes `?token=…` when
+     `OMI_SHARED_SECRET` is configured — copy the full URL)
    - Auth: `{BACKEND}/integrations/omi/auth`
    - Setup completed: `{BACKEND}/integrations/omi/setup-completed`
 4. Install the Miniapp → open Auth (Omi appends `?uid=…`) → speak into the
@@ -106,8 +107,11 @@ session — no pasting a per-session webhook URL.
 
 `GET /integrations/omi/setup-completed?uid=…` returns
 `{"is_setup_completed": true|false}` per the Miniapp contract.
-Linked Miniapp posts do not require `x-omi-secret`; the secret remains optional
-hardening for paste-URL pairing when the header is present.
+Set a long random `OMI_SHARED_SECRET` in production. HakiScribe then includes
+it as a token in the generated webhook URL, which is required for every Omi
+delivery; this is necessary because Omi integration webhooks do not accept
+custom request headers. Legacy clients may alternatively send it as
+`x-omi-secret`.
 
 ## Intron Sahara (code-switch / legal refine)
 

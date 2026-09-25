@@ -14,6 +14,7 @@ Accepted shapes (official Omi + our seed script):
 
 from __future__ import annotations
 
+import hmac
 import os
 from typing import Any
 
@@ -97,8 +98,34 @@ def _extract_payload(
     if isinstance(body, list):
         segments = body
     elif isinstance(body, dict):
+        # Omi's real-time trigger posts one transcript segment at a time.  A
+        # segment can itself have an ``id``; that is *not* a conversation id.
+        # Treat it separately so every live segment is routed to the active
+        # HakiScribe session instead of creating a new session per segment.
+        is_single_segment = bool(
+            (body.get("text") or body.get("transcript"))
+            and not any(key in body for key in ("segments", "transcript_segments", "transcriptSegments"))
+        )
+        if is_single_segment:
+            session_ref = (
+                query_session_id
+                or body.get("session_external_id")
+                or body.get("session_id")
+                or body.get("conversation_id")
+                or body.get("conversationId")
+            )
+            segments = [body]
+            return (str(session_ref) if session_ref else None), _normalize_segments(segments), None, False
+
         # Prefer query session_id; body may carry Omi's conversation id.
-        session_ref = query_session_id or body.get("session_external_id") or body.get("session_id") or body.get("id")
+        session_ref = (
+            query_session_id
+            or body.get("session_external_id")
+            or body.get("session_id")
+            or body.get("conversation_id")
+            or body.get("conversationId")
+            or body.get("id")
+        )
         structured = body.get("structured") if isinstance(body.get("structured"), dict) else {}
         if structured.get("title"):
             memory_title = str(structured["title"]).strip() or None
@@ -124,16 +151,29 @@ def _extract_payload(
     return (str(session_ref) if session_ref else None), _normalize_segments(segments), memory_title, is_memory
 
 
-def _check_secret(*, uid: str | None, x_omi_secret: str) -> None:
+def _check_secret(*, uid: str | None, x_omi_secret: str, token: str | None) -> None:
     if not OMI_SHARED_SECRET:
         return
-    # Miniapp posts with a linked uid do not send x-omi-secret.
-    if uid and omi_pairing.is_linked(uid):
-        if x_omi_secret and x_omi_secret != OMI_SHARED_SECRET:
-            raise HTTPException(status_code=401, detail="Invalid webhook secret")
-        return
-    if x_omi_secret != OMI_SHARED_SECRET:
+    supplied = x_omi_secret or (token or "")
+    if not hmac.compare_digest(supplied, OMI_SHARED_SECRET):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+
+def _already_received(session_id, raw: dict[str, Any]) -> bool:
+    """Make Omi's at-least-once webhook delivery safe to retry."""
+    segment_id = str(raw.get("id") or raw.get("segment_id") or "").strip()
+    for previous in storage.get_transcript(session_id):
+        source = previous.source_raw or {}
+        if segment_id and source.get("omi_segment_id") == segment_id:
+            return True
+        if not segment_id and (
+            previous.text == raw["text"]
+            and previous.speaker == raw["speaker"]
+            and previous.start_ms == raw["start_ms"]
+            and previous.end_ms == raw["end_ms"]
+        ):
+            return True
+    return False
 
 
 @router.post("/omi")
@@ -141,10 +181,11 @@ async def receive_omi_transcript(
     request: Request,
     session_id: str | None = Query(default=None),
     uid: str | None = Query(default=None),
+    token: str | None = Query(default=None),
     x_omi_secret: str = Header(default=""),
 ):
     cleaned_uid = (uid or "").strip() or None
-    _check_secret(uid=cleaned_uid, x_omi_secret=x_omi_secret)
+    _check_secret(uid=cleaned_uid, x_omi_secret=x_omi_secret, token=token)
 
     try:
         body = await request.json()
@@ -163,8 +204,14 @@ async def receive_omi_transcript(
     except omi_pairing.OmiPairingError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
 
+    received = 0
     for raw in segments:
+        if _already_received(session.id, raw):
+            continue
         source_raw = {**(raw["source_raw"] or {})}
+        segment_id = str(source_raw.get("id") or source_raw.get("segment_id") or "").strip()
+        if segment_id:
+            source_raw["omi_segment_id"] = segment_id
         if cleaned_uid:
             source_raw["omi_uid"] = cleaned_uid
         if session_ref:
@@ -181,9 +228,10 @@ async def receive_omi_transcript(
                 source_raw=source_raw,
             ),
         )
+        received += 1
 
     if is_memory and cleaned_uid and session.status == SessionStatus.recording:
         storage.update_session_status(session.id, SessionStatus.ready)
 
     # Omi realtime apps expect session_id echoed back (HakiScribe UUID).
-    return {"session_id": str(session.id), "received": len(segments), "uid": cleaned_uid}
+    return {"session_id": str(session.id), "received": received, "uid": cleaned_uid}

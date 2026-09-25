@@ -319,7 +319,7 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
 @router.delete("/{provider_id}")
 def disconnect_integration(provider_id: str):
     if provider_id == "omi":
-        if not omi_pairing.linked_uid():
+        if not integrations.get_connection(provider_id):
             raise HTTPException(status_code=404, detail="Provider not connected")
         omi_pairing.unlink()
         return {"provider_id": provider_id, "connected": False}

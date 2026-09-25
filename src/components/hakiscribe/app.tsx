@@ -923,6 +923,11 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
     stream.current?.getTracks().forEach((track) => track.stop());
     try {
       let detail: SessionDetail;
+      if (session.source === "omi") {
+        // Unlike the microphone WebSocket, Omi has no connection-close event
+        // that can finalize the desk session for us.
+        await hakiApi.finalize(session.id);
+      }
       const detectedMode = detectLanguageMix(captions.map((line) => line.text).join(" ")).mode;
       const shouldRefine =
         session.source === "mic" &&
@@ -1043,7 +1048,7 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
                   Advanced pairing URL
                 </summary>
                 <p className="mt-2 break-all font-mono text-[11px] text-primary-foreground/70">
-                  {omiWebhookUrl(session.id)}
+                  {omiWebhookUrl(session.id, omiStatus.data?.webhook_url)}
                 </p>
                 <div className="mt-2 flex justify-center">
                   <Button
@@ -1051,7 +1056,7 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
                     size="sm"
                     className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
                     onClick={() => {
-                      void navigator.clipboard.writeText(omiWebhookUrl(session.id));
+                      void navigator.clipboard.writeText(omiWebhookUrl(session.id, omiStatus.data?.webhook_url));
                       toast.success("Omi webhook copied");
                     }}
                   >
