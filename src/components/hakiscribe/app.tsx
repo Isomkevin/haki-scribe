@@ -1999,7 +1999,16 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
       setExportOpen(false);
     },
-    onError: (error: Error) => toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again.")),
+    onError: (error: Error) => {
+      if (reauthProvider(error)) {
+        toast.error(error.message, {
+          action: { label: "Reconnect", onClick: () => { window.location.href = "/settings?section=connectors"; } },
+          duration: 10000,
+        });
+        return;
+      }
+      toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again."));
+    },
   });
 
   const typeLabel = result.type.replaceAll("_", " ");
