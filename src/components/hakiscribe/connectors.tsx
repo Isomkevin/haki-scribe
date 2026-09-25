@@ -564,13 +564,16 @@ function OmiApiKeySection({ connected }: { connected: boolean }) {
   const queryClient = useQueryClient();
   const [key, setKey] = useState("");
   const save = useMutation({
-    mutationFn: () => hakiApi.connectIntegration("omi", { api_key: key.trim() }),
+    mutationFn: async () => {
+      await hakiApi.connectIntegration("omi", { api_key: key.trim() });
+      return hakiApi.checkIntegration("omi");
+    },
     onSuccess: (result) => {
       setKey("");
       void queryClient.invalidateQueries({ queryKey: ["omi-status"] });
       void queryClient.invalidateQueries({ queryKey: ["integrations"] });
       void queryClient.invalidateQueries({ queryKey: ["integrations-health"] });
-      if (result.verified === false) toast.error(result.verify_error || "Omi did not accept that key.");
+      if (result.health !== "valid") toast.error(result.health_error || "Omi did not accept that key.");
       else toast.success("Omi developer key saved and verified");
     },
     onError: (error) => toast.error(friendlyErrorMessage(error)),
@@ -635,7 +638,7 @@ function OmiProviderCard({
 }: {
   provider: Integration;
   status?: OmiStatus | undefined;
-  health: ConnectorHealthState;
+  health: ConnectorHealth;
   checking: boolean;
   onCheck: () => void;
   onOpen: () => void;
@@ -670,7 +673,7 @@ function OmiProviderCard({
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
         </div>
-        <HealthBadge health={linked && health === "not_connected" ? "unchecked" : health} checking={checking} />
+        <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
       </div>
 
       {provider.capabilities.length > 0 ? (
