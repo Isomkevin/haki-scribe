@@ -7,6 +7,9 @@ import { SETTINGS_SECTIONS } from "@/lib/workspace-settings";
 export const Route = createFileRoute("/settings")({
   validateSearch: z.object({
     section: z.enum(SETTINGS_SECTIONS).optional(),
+    q: z.string().optional(),
+    group: z.enum(["all", "ai", "storage", "practice", "attention"]).optional(),
+    status: z.enum(["any", "valid", "expired", "invalid", "not_connected"]).optional(),
   }),
   head: () => ({
     meta: [

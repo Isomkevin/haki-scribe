@@ -343,3 +343,11 @@ to remove the demo button and the account entirely before real client work.
 
 Scope note: everyone signed in shares the same workspace today. Per-lawyer
 vaults are the next step.
+
+## Groq
+
+Set `GROQ_API_KEY` on Render. Groq appears on the Connectors page as a workspace key and its Llama models join the Ask picker. Users can also paste their own key from console.groq.com.
+
+## Connection health and sign-in errors
+
+The Connectors page runs a live check on every connected service (`GET /integrations/health`, `POST /integrations/{id}/check`) and labels each Valid, Expired, Invalid or Unreachable. Failed or cancelled sign-ins show a plain-language reason and next step; exports with lapsed access return `reauth_required` with a Reconnect prompt.

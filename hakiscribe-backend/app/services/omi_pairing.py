@@ -85,6 +85,90 @@ def link_uid(uid: str) -> dict[str, Any]:
     return status_payload()
 
 
+def save_credentials(*, uid: str | None = None, api_key: str | None = None) -> dict[str, Any]:
+    """Store the app-store uid and/or the developer API key together."""
+    if uid and str(uid).strip():
+        link_uid(str(uid))
+    creds = _creds()
+    if api_key and str(api_key).strip():
+        creds["api_key"] = str(api_key).strip()
+        creds.setdefault("omi_conversation_ids", {})
+        creds.setdefault("linked_at", datetime.utcnow().isoformat())
+        integrations.save_connection(PROVIDER_ID, creds)
+    return status_payload()
+
+
+def api_key() -> Optional[str]:
+    key = str(_creds().get("api_key") or "").strip()
+    return key or None
+
+
+async def import_conversations(limit: int = 10) -> dict[str, Any]:
+    """Pull recent finished Omi conversations into the session library."""
+    import httpx
+
+    from app.models.schemas import TranscriptSegment
+    from app.routers.omi_webhook import _normalize_segments
+    from app.services.integrations import OMI_API_BASE
+
+    key = api_key()
+    if not key:
+        raise OmiPairingError("Add an Omi developer API key under Connectors first.", status_code=400)
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"{OMI_API_BASE}/user/conversations",
+            params={"limit": limit, "include_transcript": "true"},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    if resp.status_code in (401, 403):
+        raise OmiPairingError("Omi rejected the developer API key. Create a new key in the Omi app.", status_code=401)
+    if resp.status_code >= 400:
+        raise OmiPairingError(f"Omi returned {resp.status_code}.", status_code=502)
+    body = resp.json()
+    items = body if isinstance(body, list) else (body.get("conversations") or body.get("items") or [])
+
+    creds = _creds()
+    mapping = dict(creds.get("omi_conversation_ids") or {})
+    imported: list[str] = []
+    skipped = 0
+    for conv in items:
+        if not isinstance(conv, dict):
+            continue
+        conv_id = str(conv.get("id") or "")
+        if not conv_id or (conv_id in mapping and _parse_uuid(mapping[conv_id]) and storage.get_session(_parse_uuid(mapping[conv_id]))):
+            skipped += 1
+            continue
+        segments = _normalize_segments(conv.get("transcript_segments") or conv.get("segments") or [])
+        if not segments:
+            skipped += 1
+            continue
+        structured = conv.get("structured") if isinstance(conv.get("structured"), dict) else {}
+        title = str(structured.get("title") or "").strip() or f"Omi conversation {conv_id[:8]}"
+        session = storage.create_session(
+            Session(title=title[:200], source=SessionSource.omi, language_hint="code-switch", status=SessionStatus.ready)
+        )
+        for raw in segments:
+            storage.append_segment(
+                session.id,
+                TranscriptSegment(
+                    session_id=session.id,
+                    speaker=raw["speaker"],
+                    text=raw["text"],
+                    start_ms=raw["start_ms"],
+                    end_ms=raw["end_ms"],
+                    confidence=raw["confidence"],
+                    source_raw={**(raw["source_raw"] or {}), "omi_session_id": conv_id, "omi_import": True},
+                ),
+            )
+        mapping[conv_id] = str(session.id)
+        imported.append(str(session.id))
+    creds = _creds()
+    creds["omi_conversation_ids"] = mapping
+    creds["last_activity_at"] = datetime.utcnow().isoformat()
+    integrations.save_connection(PROVIDER_ID, creds)
+    return {"imported": len(imported), "skipped": skipped, "session_ids": imported}
+
+
 def unlink() -> bool:
     return integrations.remove_connection(PROVIDER_ID)
 
@@ -234,6 +318,9 @@ def status_payload() -> dict[str, Any]:
     conn = integrations.get_connection(PROVIDER_ID)
     return {
         "linked": bool(uid),
+        "connected": bool(uid) or bool(creds.get("api_key")),
+        "app_linked": bool(uid),
+        "api_key_connected": bool(creds.get("api_key")),
         "uid": uid,
         "masked_uid": integrations._mask(uid) if uid else None,  # noqa: SLF001
         "connected_at": (conn or {}).get("connected_at") or creds.get("linked_at"),

@@ -22,6 +22,7 @@ import {
   BookOpen,
   LockKeyhole,
   MessageCircle,
+  MessageSquare,
   Mic,
   NotebookPen,
   Radio,
@@ -69,6 +70,7 @@ import {
   formatBillableHours,
   formatDuration,
   friendlyErrorMessage,
+  reauthProvider,
   friendlyModelName,
   friendlyStatusNote,
   hakiApi,
@@ -825,6 +827,12 @@ function RecordingScreen({ session, onStopped }: { session: SessionDetail; onSto
     retry: false,
   });
   const omiLinked = Boolean(omiStatus.data?.linked);
+  useEffect(() => {
+    // Route live Omi transcripts from the app-store link into this session.
+    if (hasApiConfiguration && session.source === "omi" && omiLinked) {
+      void hakiApi.omiSetActive(session.id).catch(() => undefined);
+    }
+  }, [omiLinked, session.id, session.source]);
   const recorder = useRef<MediaRecorder | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -1518,6 +1526,11 @@ function AskComposer({ sessionId, onResult }: { sessionId: string; onResult: (re
           </p>
         </div>
       </div>
+      <Button asChild variant="outline" size="sm" className="mt-3">
+        <Link to="/sessions/$sessionId/chat" params={{ sessionId }}>
+          <MessageSquare className="size-4" /> Open chat — have a full conversation with your chosen model
+        </Link>
+      </Button>
       <Textarea
         aria-label="Instruction for this session"
         className="mt-4 min-h-24 bg-background"
@@ -1999,7 +2012,16 @@ function ResultCard({ result, sessionId }: { result: ActionResult; sessionId: st
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
       setExportOpen(false);
     },
-    onError: (error: Error) => toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again.")),
+    onError: (error: Error) => {
+      if (reauthProvider(error)) {
+        toast.error(error.message, {
+          action: { label: "Reconnect", onClick: () => { window.location.href = "/settings?section=connectors"; } },
+          duration: 10000,
+        });
+        return;
+      }
+      toast.error(friendlyErrorMessage(error, "Export failed. Check the storage connector and try again."));
+    },
   });
 
   const typeLabel = result.type.replaceAll("_", " ");

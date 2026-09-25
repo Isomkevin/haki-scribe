@@ -182,6 +182,28 @@ export interface Integration {
   oauth_configured?: boolean;
   oauth_setup?: IntegrationOAuthSetup | null;
   masked_creds: Record<string, string>;
+  health?: ConnectorHealthState;
+  health_error?: string | null;
+  last_checked_at?: string | null;
+}
+
+export type ConnectorHealthState = "valid" | "expired" | "invalid" | "unreachable" | "not_connected" | "unchecked";
+
+export interface ConnectorHealth {
+  provider_id: string;
+  health: ConnectorHealthState;
+  health_error: string | null;
+  last_checked_at: string | null;
+}
+
+export function reauthProvider(error: unknown): string | null {
+  return (error as { reauthProvider?: string } | null)?.reauthProvider || null;
+}
+
+export interface OAuthOutcome {
+  outcome: "connected" | "failed" | "closed";
+  reason?: string | undefined;
+  message?: string | undefined;
 }
 
 export interface IntegrationStatus {
@@ -224,8 +246,29 @@ export interface HealthStatus {
   };
 }
 
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  model?: string | null;
+  error?: boolean;
+  created_at: string;
+}
+
+export interface ChatThread {
+  id: string;
+  session_id: string;
+  title: string;
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OmiStatus {
   linked: boolean;
+  connected?: boolean;
+  app_linked?: boolean;
+  api_key_connected?: boolean;
   uid: string | null;
   masked_uid: string | null;
   connected_at: string | null;
@@ -259,6 +302,11 @@ function extractErrorDetail(body: string): string {
       error?: string;
     };
     if (typeof parsed.detail === "string" && parsed.detail.trim()) return parsed.detail.trim();
+    if (parsed.detail && !Array.isArray(parsed.detail) && typeof parsed.detail === "object") {
+      const d = parsed.detail as { code?: string; provider?: string; message?: string };
+      if (d.code === "reauth_required") return `__reauth__:${d.provider ?? ""}:${d.message ?? ""}`;
+      if (typeof d.message === "string") return d.message;
+    }
     if (Array.isArray(parsed.detail)) {
       const parts = parsed.detail
         .map((item) => (typeof item === "string" ? item : item.msg ?? item.message ?? ""))
@@ -374,6 +422,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.text();
     const detail = extractErrorDetail(body);
+    if (detail.startsWith("__reauth__:")) {
+      const [, provider = "", ...rest] = detail.split(":");
+      const err = new ApiError(rest.join(":") || "Sign in again to continue.", response.status);
+      (err as ApiError & { reauthProvider?: string }).reauthProvider = provider;
+      throw err;
+    }
     throw new ApiError(humanizeApiFailure(response.status, detail, path), response.status);
   }
   return (await response.json()) as T;
@@ -477,11 +531,30 @@ export const hakiApi = {
   health: () => request<HealthStatus>("/health"),
   listIntegrations: () => request<Integration[]>("/integrations"),
   omiStatus: () => request<OmiStatus>("/integrations/omi/status"),
+  omiImport: (limit = 10) =>
+    request<{ imported: number; skipped: number; session_ids: string[] }>(`/integrations/omi/import?limit=${limit}`, {
+      method: "POST",
+    }),
+  omiSetActive: (sessionId: string) => request<OmiStatus>(`/integrations/omi/active/${sessionId}`, { method: "POST" }),
+  listChats: (sessionId: string) => request<ChatThread[]>(`/sessions/${sessionId}/chats`),
+  createChat: (sessionId: string, title?: string) =>
+    request<ChatThread>(`/sessions/${sessionId}/chats`, { method: "POST", body: JSON.stringify({ title }) }),
+  getChat: (sessionId: string, threadId: string) => request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}`),
+  deleteChat: (sessionId: string, threadId: string) =>
+    request<{ deleted: boolean }>(`/sessions/${sessionId}/chats/${threadId}`, { method: "DELETE" }),
+  sendChatMessage: (sessionId: string, threadId: string, body: { content: string; model?: string }) =>
+    request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   connectIntegration: (providerId: string, credentials: Record<string, string>) =>
     request<IntegrationStatus>(`/integrations/${providerId}`, {
       method: "POST",
       body: JSON.stringify({ credentials }),
     }),
+  checkAllIntegrations: () => request<ConnectorHealth[]>("/integrations/health"),
+  checkIntegration: (providerId: string) =>
+    request<ConnectorHealth>(`/integrations/${providerId}/check`, { method: "POST" }),
   disconnectIntegration: (providerId: string) =>
     request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {
       method: "DELETE",
@@ -533,7 +606,7 @@ export function integrationOAuthUrl(providerId: string, params?: Record<string, 
 export function startIntegrationOAuth(
   providerId: string,
   params?: Record<string, string>,
-): Promise<"connected" | "failed"> {
+): Promise<OAuthOutcome> {
   return new Promise((resolve, reject) => {
     const popup = window.open(integrationOAuthUrl(providerId, params), "hakiscribe-oauth", "width=520,height=680");
     if (!popup) {
@@ -546,18 +619,22 @@ export function startIntegrationOAuth(
       window.clearInterval(poll);
     };
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { source?: string; provider?: string; status?: string } | null;
+      const data = event.data as { source?: string; provider?: string; status?: string; reason?: string; message?: string } | null;
       if (!data || data.source !== "hakiscribe-oauth" || data.provider !== providerId) return;
       done = true;
       cleanup();
       popup.close();
-      resolve(data.status === "connected" ? "connected" : "failed");
+      resolve(
+        data.status === "connected"
+          ? { outcome: "connected" }
+          : { outcome: "failed", reason: data.reason, message: data.message },
+      );
     };
     window.addEventListener("message", onMessage);
     const poll = window.setInterval(() => {
       if (!popup.closed || done) return;
       cleanup();
-      resolve("failed");
+      resolve({ outcome: "closed", message: "The sign-in window was closed before it finished. Nothing was changed." });
     }, 600);
   });
 }

@@ -116,6 +116,23 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "groq",
+        "name": "Groq",
+        "group": "ai",
+        "what_it_does": "Run the “Ask an AI model” task on Groq's very fast Llama models.",
+        "capabilities": ["Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Groq API key",
+                "type": "password",
+                "help": "Found in console.groq.com → API Keys. The workspace GROQ_API_KEY is used automatically when set.",
+                "placeholder": "gsk_…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "mistral",
         "name": "Mistral",
         "group": "ai",
@@ -292,15 +309,23 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "omi",
         "name": "Omi wearable",
         "group": "practice",
-        "what_it_does": "Receive live transcripts and finished memories from the Omi Miniapp — no per-session webhook paste.",
-        "capabilities": ["Live transcript", "Finished memories"],
+        "what_it_does": "Receive live transcripts from the Omi app store integration, and import finished conversations with an Omi developer key.",
+        "capabilities": ["Live transcript", "Finished memories", "Import conversations"],
         "fields": [
             {
                 "id": "uid",
                 "label": "Omi user id",
                 "type": "text",
-                "help": "Filled automatically when you open the Auth URL from Omi. For local testing you can paste a uid here.",
+                "help": "Filled automatically when you open the setup link from the Omi app.",
                 "placeholder": "omi-user-…",
+                "mask": True,
+            },
+            {
+                "id": "api_key",
+                "label": "Omi developer API key",
+                "type": "password",
+                "help": "Omi app → Settings → Developer → Create key.",
+                "placeholder": "omi_dev_…",
                 "mask": True,
             },
         ],
@@ -358,6 +383,7 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openrouter": {"api_key": "OPENROUTER_API_KEY", "default_model": "ASK_MODEL"},
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
+    "groq": {"api_key": "GROQ_API_KEY"},
 }
 
 
@@ -374,7 +400,7 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
         return None
     if provider_id == "openai" and not creds.get("api_key"):
         return None
-    if provider_id == "intron" and not creds.get("api_key"):
+    if provider_id in {"intron", "groq"} and not creds.get("api_key"):
         return None
     return creds or None
 
@@ -412,6 +438,7 @@ def list_connections() -> list[dict[str, Any]]:
                     "source": conn.get("source") or "user",
                     "account": (conn.get("creds") or {}).get("account"),
                     "masked_creds": _mask_creds(pid, conn.get("creds", {})),
+                    **_health_fields(pid),
                 }
             )
         else:
@@ -423,6 +450,9 @@ def list_connections() -> list[dict[str, Any]]:
                     "source": None,
                     "account": None,
                     "masked_creds": {},
+                    "health": "not_connected",
+                    "health_error": None,
+                    "last_checked_at": None,
                 }
             )
     return result
@@ -448,6 +478,70 @@ def get_creds(provider_id: str) -> Optional[dict[str, Any]]:
     return conn.get("creds") if conn else None
 
 
+_refresh_errors: dict[str, str] = {}
+_health: dict[str, dict[str, Any]] = {}
+
+
+def _health_fields(provider_id: str) -> dict[str, Any]:
+    h = _health.get(provider_id) or {}
+    return {
+        "health": h.get("health") or "unchecked",
+        "health_error": h.get("error"),
+        "last_checked_at": h.get("checked_at"),
+    }
+
+
+def reauth_required(provider_id: str) -> bool:
+    return provider_id in _refresh_errors or (_health.get(provider_id) or {}).get("health") == "expired"
+
+
+def _classify(provider_id: str, error: str) -> str:
+    text = (error or "").lower()
+    if provider_id in _refresh_errors or "invalid_grant" in text or "expired" in text or "refresh" in text:
+        return "expired"
+    if any(k in text for k in ("timeout", "timed out", "connecterror", "returned 5", "unreachable", "name or service")):
+        return "unreachable"
+    return "invalid"
+
+
+def _friendly_health_error(provider_id: str, health: str, raw: str) -> str:
+    name = (provider_def(provider_id) or {}).get("name", provider_id)
+    if health == "expired":
+        return f"Your {name} access has expired. Sign in again to keep using it."
+    if health == "unreachable":
+        return f"{name} could not be reached just now. Try again in a minute."
+    if "401" in raw or "403" in raw:
+        return f"{name} rejected the saved key. Paste a new key or reconnect. ({raw[:160]})"
+    return raw[:240] or f"{name} did not accept the saved credentials."
+
+
+async def check_health(provider_id: str) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    if get_connection(provider_id) is None:
+        _health.pop(provider_id, None)
+        return {"provider_id": provider_id, "health": "not_connected", "health_error": None, "last_checked_at": now}
+    _refresh_errors.pop(provider_id, None)
+    try:
+        creds = await asyncio.wait_for(get_fresh_creds(provider_id), timeout=20)
+        result = await asyncio.wait_for(verify(provider_id, creds or {}), timeout=20)
+    except asyncio.TimeoutError:
+        result = {"ok": False, "error": "timeout"}
+    except Exception as exc:  # noqa: BLE001
+        result = {"ok": False, "error": str(exc)}
+    if result.get("ok"):
+        health, err = "valid", None
+    else:
+        raw = str(result.get("error") or "")
+        health = _classify(provider_id, raw)
+        err = _friendly_health_error(provider_id, health, raw)
+    _health[provider_id] = {"health": health, "error": err, "checked_at": now}
+    return {"provider_id": provider_id, "health": health, "health_error": err, "last_checked_at": now}
+
+
+async def check_all_health() -> list[dict[str, Any]]:
+    return list(await asyncio.gather(*(check_health(p["id"]) for p in _PROVIDERS)))
+
+
 async def get_fresh_creds(provider_id: str) -> Optional[dict[str, Any]]:
     """Creds with a live access token — refreshes OAuth tokens when expired."""
     creds = get_creds(provider_id)
@@ -461,6 +555,7 @@ async def get_fresh_creds(provider_id: str) -> Optional[dict[str, Any]]:
         return await oauth.refresh_if_needed(provider_id, creds)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not refresh %s token: %s", provider_id, exc)
+        _refresh_errors[provider_id] = str(getattr(exc, "message", None) or exc)
         return creds
 
 
@@ -540,6 +635,23 @@ async def _verify_anthropic(creds: dict[str, Any]) -> dict[str, Any]:
             if resp.status_code < 400:
                 return {"ok": True, "error": None}
             return {"ok": False, "error": f"Anthropic returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_groq(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Groq returned {resp.status_code}: {resp.text[:200]}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 
@@ -744,10 +856,30 @@ async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "error": None}
 
 
+OMI_API_BASE = os.environ.get("OMI_API_BASE", "https://api.omi.me/v1/dev")
+
+
 async def _verify_omi(creds: dict[str, Any]) -> dict[str, Any]:
+    """Valid when the app-store link has a uid and/or the developer key is
+    accepted by Omi's API. A key that Omi rejects is reported as invalid."""
     uid = str(creds.get("uid") or "").strip()
-    if not uid:
-        return {"ok": False, "error": "Missing Omi uid"}
+    key = str(creds.get("api_key") or "").strip()
+    if not uid and not key:
+        return {"ok": False, "error": "Link Omi from the Omi app, or paste an Omi developer API key."}
+    if key:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{OMI_API_BASE}/user/conversations",
+                    params={"limit": 1},
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+            if resp.status_code in (401, 403):
+                return {"ok": False, "error": "Omi rejected the developer API key. Create a new one in the Omi app."}
+            if resp.status_code >= 400:
+                return {"ok": False, "error": f"Omi returned {resp.status_code}: {resp.text[:160]}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"Could not reach Omi: {exc}"}
     return {"ok": True, "error": None}
 
 
@@ -805,6 +937,7 @@ _VERIFIERS = {
     "openai": _verify_openai,
     "gemini": _verify_gemini,
     "mistral": _verify_mistral,
+    "groq": _verify_groq,
     "openrouter": _verify_openrouter,
     "intron": _verify_intron,
     "claude_custom": _verify_custom_openai,
@@ -986,6 +1119,8 @@ async def complete_with_provider(
             return await _complete_gemini(creds, system_prompt, user_prompt, model or "gemini-1.5-flash", timeout_s)
         elif provider_id == "mistral":
             return await _complete_openai(creds, system_prompt, user_prompt, model or "mistral-large-latest", timeout_s, "https://api.mistral.ai/v1")
+        elif provider_id == "groq":
+            return await _complete_openai(creds, system_prompt, user_prompt, model or "llama-3.3-70b-versatile", timeout_s, "https://api.groq.com/openai/v1")
         elif provider_id == "openrouter":
             return await _complete_openai(
                 creds,
@@ -1155,6 +1290,9 @@ def connected_llm_models() -> list[dict[str, str]]:
         add("gemini:gemini-1.5-flash", "Gemini 1.5 Flash (your key)")
     if get_connection("mistral"):
         add("mistral:mistral-large-latest", "Mistral Large (your key)")
+    if get_connection("groq"):
+        add("groq:llama-3.3-70b-versatile", "Llama 3.3 70B · Groq")
+        add("groq:llama-3.1-8b-instant", "Llama 3.1 8B Instant · Groq")
     if get_creds("openrouter"):
         for item in llm_client.CURATED_MODELS:
             add(item["id"], f"{item['label']} · OpenRouter")

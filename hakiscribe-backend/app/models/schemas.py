@@ -212,6 +212,24 @@ class LlmTaskResult(BaseModel):
     output: str
 
 
+class ChatMessage(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    role: str  # "user" | "assistant"
+    content: str
+    model: Optional[str] = None
+    error: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ChatThread(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    session_id: uuid.UUID
+    title: str = "New conversation"
+    messages: list[ChatMessage] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AskRequest(BaseModel):
     """Ad-hoc instruction the user types under the action tray."""
 
