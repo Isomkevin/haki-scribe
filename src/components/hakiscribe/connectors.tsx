@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Search,
@@ -702,6 +702,9 @@ function OmiProviderCard({
         <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
           <Link2 className="mr-2 size-3.5" />
           {linked ? "Setup" : "Connect"}
+        </Button>
+        <Button asChild size="sm" variant="ghost">
+          <Link to="/omi">Setup guide</Link>
         </Button>
         {linked ? (
           <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>

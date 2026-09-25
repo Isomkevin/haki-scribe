@@ -116,7 +116,7 @@ export function OmiGuidePage() {
 
       <div className="mt-6 flex flex-wrap gap-2">
         <Button asChild>
-          <Link to="/settings" search={{ section: "connectors", q: "omi" } as never}>Go to the Omi card <ArrowRight className="size-4" /></Link>
+          <Link to="/settings" search={{ section: "connectors", q: "omi" }}>Go to the Omi card <ArrowRight className="size-4" /></Link>
         </Button>
         <Button variant="outline" onClick={() => void status.refetch()} disabled={status.isFetching}>Refresh status</Button>
       </div>

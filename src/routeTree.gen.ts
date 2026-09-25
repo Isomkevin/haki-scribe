@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NewRouteImport } from './routes/new'
+import { Route as OmiRouteImport } from './routes/omi'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrackerRouteImport } from './routes/tracker'
@@ -38,6 +39,11 @@ const LoginRoute = LoginRouteImport.update({
 const NewRoute = NewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OmiRoute = OmiRouteImport.update({
+  id: '/omi',
+  path: '/omi',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResearchRoute = ResearchRouteImport.update({
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/connectors': typeof ConnectorsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
+  '/omi': typeof OmiRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof ConnectorsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
+  '/omi': typeof OmiRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/connectors': typeof ConnectorsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
+  '/omi': typeof OmiRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/login'
     | '/new'
+    | '/omi'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/login'
     | '/new'
+    | '/omi'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/login'
     | '/new'
+    | '/omi'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   ConnectorsRoute: typeof ConnectorsRoute
   LoginRoute: typeof LoginRoute
   NewRoute: typeof NewRoute
+  OmiRoute: typeof OmiRoute
   ResearchRoute: typeof ResearchRoute
   SettingsRoute: typeof SettingsRoute
   TrackerRoute: typeof TrackerRoute
@@ -190,6 +203,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/omi': {
+      id: '/omi'
+      path: '/omi'
+      fullPath: '/omi'
+      preLoaderRoute: typeof OmiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/research': {
@@ -242,6 +262,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorsRoute: ConnectorsRoute,
   LoginRoute: LoginRoute,
   NewRoute: NewRoute,
+  OmiRoute: OmiRoute,
   ResearchRoute: ResearchRoute,
   SettingsRoute: SettingsRoute,
   TrackerRoute: TrackerRoute,
