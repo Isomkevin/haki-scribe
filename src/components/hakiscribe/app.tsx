@@ -22,6 +22,7 @@ import {
   BookOpen,
   LockKeyhole,
   MessageCircle,
+  MessageSquare,
   Mic,
   NotebookPen,
   Radio,
