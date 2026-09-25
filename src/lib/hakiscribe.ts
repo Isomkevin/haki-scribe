@@ -202,8 +202,8 @@ export function reauthProvider(error: unknown): string | null {
 
 export interface OAuthOutcome {
   outcome: "connected" | "failed" | "closed";
-  reason?: string;
-  message?: string;
+  reason?: string | undefined;
+  message?: string | undefined;
 }
 
 export interface IntegrationStatus {
