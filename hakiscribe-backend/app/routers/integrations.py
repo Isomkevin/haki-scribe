@@ -200,6 +200,28 @@ def _oauth_html(*, title: str, body: str, ok: bool, provider_id: str, reason: st
 </html>"""
 
 
+@router.post("/omi/import")
+async def omi_import(limit: int = Query(default=10, ge=1, le=50)):
+    """Pull recent finished conversations with the Omi developer key."""
+    try:
+        return await omi_pairing.import_conversations(limit=limit)
+    except omi_pairing.OmiPairingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from None
+
+
+@router.post("/omi/active/{session_id}")
+def omi_set_active(session_id: str):
+    """Route app-store live transcripts into the session the lawyer just opened."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session id") from None
+    if storage.get_session(sid) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    omi_pairing.touch_activity(session_id=sid)
+    return omi_pairing.status_payload()
+
+
 @router.get("/omi/setup-completed")
 def omi_setup_completed(uid: str | None = Query(default=None)):
     return {"is_setup_completed": omi_pairing.setup_completed(uid)}
@@ -272,15 +294,15 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         raise HTTPException(status_code=400, detail="No credentials provided")
     if provider_id in {"anthropic", "openai", "gemini", "mistral", "openrouter", "intron", "groq"} and not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="No credentials provided")
-    if provider_id == "omi" and not creds.get("uid"):
-        raise HTTPException(status_code=400, detail="Missing Omi uid")
+    if provider_id == "omi" and not (creds.get("uid") or creds.get("api_key")):
+        raise HTTPException(status_code=400, detail="Add the Omi user id or an Omi developer API key")
 
     result = await integrations.verify(provider_id, creds)
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result.get("error") or "Verification failed")
 
     if provider_id == "omi":
-        omi_pairing.link_uid(str(creds["uid"]))
+        omi_pairing.save_credentials(uid=creds.get("uid"), api_key=creds.get("api_key"))
     else:
         integrations.save_connection(provider_id, creds)
 

@@ -309,15 +309,23 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "omi",
         "name": "Omi wearable",
         "group": "practice",
-        "what_it_does": "Receive live transcripts and finished memories from the Omi Miniapp — no per-session webhook paste.",
-        "capabilities": ["Live transcript", "Finished memories"],
+        "what_it_does": "Receive live transcripts from the Omi app store integration, and import finished conversations with an Omi developer key.",
+        "capabilities": ["Live transcript", "Finished memories", "Import conversations"],
         "fields": [
             {
                 "id": "uid",
                 "label": "Omi user id",
                 "type": "text",
-                "help": "Filled automatically when you open the Auth URL from Omi. For local testing you can paste a uid here.",
+                "help": "Filled automatically when you open the setup link from the Omi app.",
                 "placeholder": "omi-user-…",
+                "mask": True,
+            },
+            {
+                "id": "api_key",
+                "label": "Omi developer API key",
+                "type": "password",
+                "help": "Omi app → Settings → Developer → Create key.",
+                "placeholder": "omi_dev_…",
                 "mask": True,
             },
         ],
@@ -848,10 +856,30 @@ async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "error": None}
 
 
+OMI_API_BASE = os.environ.get("OMI_API_BASE", "https://api.omi.me/v1/dev")
+
+
 async def _verify_omi(creds: dict[str, Any]) -> dict[str, Any]:
+    """Valid when the app-store link has a uid and/or the developer key is
+    accepted by Omi's API. A key that Omi rejects is reported as invalid."""
     uid = str(creds.get("uid") or "").strip()
-    if not uid:
-        return {"ok": False, "error": "Missing Omi uid"}
+    key = str(creds.get("api_key") or "").strip()
+    if not uid and not key:
+        return {"ok": False, "error": "Link Omi from the Omi app, or paste an Omi developer API key."}
+    if key:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{OMI_API_BASE}/user/conversations",
+                    params={"limit": 1},
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+            if resp.status_code in (401, 403):
+                return {"ok": False, "error": "Omi rejected the developer API key. Create a new one in the Omi app."}
+            if resp.status_code >= 400:
+                return {"ok": False, "error": f"Omi returned {resp.status_code}: {resp.text[:160]}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"Could not reach Omi: {exc}"}
     return {"ok": True, "error": None}
 
 
