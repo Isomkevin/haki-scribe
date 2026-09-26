@@ -10,6 +10,7 @@ export const Route = createFileRoute("/settings")({
     q: z.string().optional(),
     group: z.enum(["all", "ai", "storage", "practice", "attention"]).optional(),
     status: z.enum(["any", "valid", "expired", "invalid", "not_connected"]).optional(),
+    view: z.enum(["grid", "list"]).optional(),
   }),
   head: () => ({
     meta: [

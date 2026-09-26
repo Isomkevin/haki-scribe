@@ -1,15 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ChevronDown,
   Search,
   XCircle,
   CheckCircle2,
   Copy,
   ExternalLink,
   Headphones,
+  LayoutGrid,
   Link2,
+  List,
   Loader2,
   LockKeyhole,
   Plug,
@@ -40,12 +43,15 @@ import {
   type OmiStatus,
 } from "@/lib/hakiscribe";
 import { SectionHeading } from "./shell";
+import { cn } from "@/lib/utils";
 
 const GROUP_LABELS: Record<string, string> = {
   ai: "AI assistants",
   storage: "Cloud storage",
   practice: "Practice suite",
 };
+
+type ConnectorView = "grid" | "list";
 
 export function ConnectorsSection() {
   const queryClient = useQueryClient();
@@ -67,11 +73,12 @@ export function ConnectorsSection() {
   const [oauthPending, setOauthPending] = useState<string | null>(null);
   const [manualUid, setManualUid] = useState("");
   const [oauthNotice, setOauthNotice] = useState<{ provider: Integration; title: string; message: string } | null>(null);
-  const search = useSearch({ strict: false }) as { q?: string; group?: string; status?: string };
+  const search = useSearch({ strict: false }) as { q?: string; group?: string; status?: string; view?: string };
   const navigate = useNavigate();
   const q = search.q ?? "";
   const groupFilter = search.group ?? "all";
   const statusFilter = search.status ?? "any";
+  const view: ConnectorView = search.view === "list" ? "list" : "grid";
   const setFilter = (patch: Record<string, string | undefined>) =>
     void navigate({
       to: "/settings",
@@ -327,18 +334,21 @@ export function ConnectorsSection() {
               {label}
             </Button>
           ))}
-          <select
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(e) => setFilter({ status: e.target.value === "any" ? undefined : e.target.value })}
-            className="ml-auto rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-          >
-            <option value="any">Any status</option>
-            <option value="valid">Valid</option>
-            <option value="expired">Expired</option>
-            <option value="invalid">Invalid</option>
-            <option value="not_connected">Not connected</option>
-          </select>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(e) => setFilter({ status: e.target.value === "any" ? undefined : e.target.value })}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+            >
+              <option value="any">Any status</option>
+              <option value="valid">Valid</option>
+              <option value="expired">Expired</option>
+              <option value="invalid">Invalid</option>
+              <option value="not_connected">Not connected</option>
+            </select>
+            <ViewToggle view={view} onChange={(next) => setFilter({ view: next === "grid" ? undefined : next })} />
+          </div>
         </div>
       </div>
 
@@ -377,13 +387,14 @@ export function ConnectorsSection() {
       {Object.entries(grouped).map(([group, providers]) => (
         <section key={group} className="mb-9">
           <SectionHeading eyebrow={GROUP_LABELS[group] ?? group} title={GROUP_LABELS[group] ?? group} />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={view === "grid" ? "grid items-start gap-4 sm:grid-cols-2" : "flex flex-col gap-3"}>
             {providers.map((provider) =>
               provider.provider_id === "omi" ? (
                 <OmiProviderCard
                   key={provider.provider_id}
                   provider={provider}
                   status={omiStatus.data}
+                  view={view}
                   health={healthFor(provider)}
                   checking={checkingOne === provider.provider_id || (health.isFetching && provider.connected)}
                   onCheck={() => void checkOne(provider.provider_id)}
@@ -396,6 +407,7 @@ export function ConnectorsSection() {
                   key={provider.provider_id}
                   provider={provider}
                   health={healthFor(provider)}
+                  view={view}
                   checking={checkingOne === provider.provider_id || (health.isFetching && provider.connected)}
                   onCheck={() => void checkOne(provider.provider_id)}
                   onConnect={() => openConnect(provider)}
@@ -635,6 +647,7 @@ function OmiProviderCard({
   onOpen,
   onDisconnect,
   isDisconnecting,
+  view,
 }: {
   provider: Integration;
   status?: OmiStatus | undefined;
@@ -644,9 +657,12 @@ function OmiProviderCard({
   onOpen: () => void;
   onDisconnect: () => void;
   isDisconnecting: boolean;
+  view: ConnectorView;
 }) {
   const linked = provider.connected || Boolean(status?.connected ?? status?.linked);
   const masked = status?.masked_uid || provider.masked_creds?.['uid'];
+  const [open, setOpen] = useState(false);
+  const toggleId = `connector-${provider.provider_id}`;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const importer = useMutation({
@@ -663,67 +679,111 @@ function OmiProviderCard({
     onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
 
+  const badge = (
+    <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
+  );
+  const shortStatus = linked
+    ? status?.app_linked
+      ? "Omi app linked — transcripts arrive live."
+      : "Developer key only — live transcription needs the Omi app link."
+    : "Install the Miniapp once, then speak — sessions appear on the desk.";
+  const actions = (
+    <>
+      <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
+        <Link2 className="mr-2 size-3.5" />
+        {linked ? "Setup" : "Connect"}
+      </Button>
+      <Button asChild size="sm" variant="ghost">
+        <Link to="/omi">Setup guide</Link>
+      </Button>
+      {linked ? (
+        <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
+          Check again
+        </Button>
+      ) : null}
+      {status?.api_key_connected ? (
+        <Button variant="outline" size="sm" onClick={() => importer.mutate()} disabled={importer.isPending}>
+          {importer.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+          Import from Omi
+        </Button>
+      ) : null}
+      {linked ? (
+        <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
+          {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
+          Disconnect
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-serif text-base font-semibold">
-            <Headphones className="size-4 text-primary" />
-            {provider.name}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
+      {view === "list" ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
+              <Headphones className="size-4 shrink-0 text-primary" />
+              <span className="min-w-0 truncate">{provider.name}</span>
+              {badge}
+            </div>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{provider.what_it_does}</p>
+            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground sm:line-clamp-1">{shortStatus}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{actions}</div>
         </div>
-        <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
-      </div>
-
-      {provider.capabilities.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {provider.capabilities.map((cap) => (
-            <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
-              {cap}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {linked && masked ? (
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          {status?.app_linked ? `Omi app linked (${masked})` : "Developer key only — live transcription needs the Omi app link"}
-          {status?.api_key_connected ? " · developer key saved" : ""}
-          {status?.last_activity_at
-            ? ` · last activity ${new Date(status.last_activity_at).toLocaleString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-            : ""}
-        </p>
       ) : (
-        <p className="mt-3 text-[11px] text-muted-foreground">Install the Miniapp once, then speak — sessions appear on the desk.</p>
+        <>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-serif text-base font-semibold">
+                <Headphones className="size-4 shrink-0 text-primary" />
+                {provider.name}
+              </p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{provider.what_it_does}</p>
+              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">{shortStatus}</p>
+            </div>
+            {badge}
+          </div>
+          <div className="mt-auto flex flex-wrap gap-2 pt-4">{actions}</div>
+        </>
       )}
 
-      <div className="mt-auto flex flex-wrap gap-2 pt-4">
-        <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
-          <Link2 className="mr-2 size-3.5" />
-          {linked ? "Setup" : "Connect"}
-        </Button>
-        <Button asChild size="sm" variant="ghost">
-          <Link to="/omi">Setup guide</Link>
-        </Button>
-        {linked ? (
-          <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
-            Check again
-          </Button>
+      <Details open={open} id={toggleId}>
+        <p className="text-[11px] leading-5 text-muted-foreground">{provider.what_it_does}</p>
+        {provider.capabilities.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {provider.capabilities.map((cap) => (
+              <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+                {cap}
+              </span>
+            ))}
+          </div>
         ) : null}
-        {status?.api_key_connected ? (
-          <Button variant="outline" size="sm" onClick={() => importer.mutate()} disabled={importer.isPending}>
-            {importer.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-            Import from Omi
-          </Button>
+        {linked && masked ? (
+          <p className="text-[11px] text-muted-foreground">
+            Linked to Omi uid <span className="font-mono">{masked}</span>.
+          </p>
         ) : null}
-        {linked ? (
-          <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
-            {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
-            Disconnect
-          </Button>
+        {status?.last_activity_at ? (
+          <p className="text-[11px] text-muted-foreground">
+            Last Omi activity{" "}
+            {new Date(status.last_activity_at).toLocaleString("en-KE", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            .
+          </p>
         ) : null}
-      </div>
+        <p className="text-[11px] leading-5 text-muted-foreground">
+          {status?.api_key_connected
+            ? "A developer key is saved, so finished Omi conversations can be imported. The Omi app link is what streams live transcripts."
+            : "Add a developer key on the Omi setup screen to import finished conversations; the app link streams live transcripts."}
+        </p>
+      </Details>
+
+      <ShowMoreToggle open={open} onToggle={() => setOpen((prev) => !prev)} id={toggleId} name={provider.name} />
     </div>
   );
 }
@@ -763,6 +823,85 @@ function HealthBadge({ health, checking }: { health: ConnectorHealthState; check
   );
 }
 
+function ViewToggle({ view, onChange }: { view: ConnectorView; onChange: (view: ConnectorView) => void }) {
+  const items: [ConnectorView, string, typeof LayoutGrid][] = [
+    ["grid", "Grid view", LayoutGrid],
+    ["list", "List view", List],
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Connector layout"
+      className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background p-0.5"
+    >
+      {items.map(([value, label, Icon]) => (
+        <Button
+          key={value}
+          type="button"
+          size="icon"
+          variant={view === value ? "secondary" : "ghost"}
+          aria-pressed={view === value}
+          title={label}
+          onClick={() => onChange(value)}
+          className="size-7"
+        >
+          <Icon className="size-3.5" />
+          <span className="sr-only">{label}</span>
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+/** Secondary connector information, collapsed to zero height until opened. */
+function Details({ open, id, children }: { open: boolean; id: string; children: ReactNode }) {
+  return (
+    <div
+      id={`${id}-details`}
+      aria-hidden={!open}
+      className={cn(
+        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div className="mt-3 space-y-2.5 border-t border-border/60 pt-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function ShowMoreToggle({
+  open,
+  onToggle,
+  id,
+  name,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  id: string;
+  name: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      id={id}
+      aria-expanded={open}
+      aria-controls={`${id}-details`}
+      aria-label={`${open ? "Show less about" : "Show more about"} ${name}`}
+      onClick={onToggle}
+      className="-ml-1.5 justify-between gap-2 px-1.5 font-normal text-muted-foreground hover:text-foreground"
+    >
+      {open ? "Show less" : "Show more"}
+      <ChevronDown
+        className={cn("transition-transform duration-200 motion-reduce:transition-none", open && "rotate-180")}
+      />
+    </Button>
+  );
+}
+
 function ProviderCard({
   provider,
   health,
@@ -772,6 +911,7 @@ function ProviderCard({
   onDisconnect,
   isConnecting,
   isDisconnecting,
+  view,
 }: {
   provider: Integration;
   health: ConnectorHealth;
@@ -781,8 +921,11 @@ function ProviderCard({
   onDisconnect: () => void;
   isConnecting: boolean;
   isDisconnecting: boolean;
+  view: ConnectorView;
 }) {
   const isAmbiguous = provider.provider_id === "ambiguous";
+  const [open, setOpen] = useState(false);
+  const toggleId = `connector-${provider.provider_id}`;
   const signInLabel = provider.oauth
     ? provider.provider_id === "dropbox"
       ? "Sign in with Dropbox"
@@ -792,127 +935,162 @@ function ProviderCard({
     : "Connect";
   const needsSetup = Boolean(provider.oauth) && !provider.oauth_configured;
 
-  return (
-    <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-serif text-base font-semibold">{provider.name}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <HealthBadge health={provider.connected ? health.health : "not_connected"} checking={checking} />
-          {provider.connected && provider.source === "workspace" ? (
-            <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Workspace key</span>
-          ) : null}
-        </div>
-      </div>
-
-      {provider.capabilities.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {provider.capabilities.map((cap) => (
-            <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
-              {cap}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {provider.connected && health.health_error && !checking ? (
-        <p className="mt-3 rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-5 text-foreground">
-          {health.health_error}
-        </p>
-      ) : null}
-      {provider.connected && health.last_checked_at ? (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Last checked{" "}
-          {new Date(health.last_checked_at.endsWith("Z") ? health.last_checked_at : `${health.last_checked_at}Z`).toLocaleTimeString("en-KE", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
-      ) : null}
-
+  const badge = <HealthBadge health={provider.connected ? health.health : "not_connected"} checking={checking} />;
+  const workspaceTag =
+    provider.connected && provider.source === "workspace" ? (
+      <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Workspace key</span>
+    ) : null;
+  const accountLine =
+    provider.connected && provider.account ? (
+      <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <ShieldCheck className="size-3 shrink-0 text-primary" />
+        <span className="min-w-0 truncate">Signed in as {provider.account}</span>
+      </p>
+    ) : null;
+  const errorLine =
+    provider.connected && health.health_error && !checking ? (
+      <p className="mt-3 line-clamp-2 rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-5 text-foreground">
+        {health.health_error}
+      </p>
+    ) : null;
+  const actions = (
+    <>
       {provider.connected && provider.source === "workspace" ? (
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          {isAmbiguous
-            ? "Using the workspace Ambiguous AI key from server config. Generated documents, dates, matters, contacts, and review pings can be mirrored to your workspace."
-            : provider.group === "ai"
-              ? `Using the workspace ${provider.name} key from server config. Ask routes through this connector.`
-              : `Using the workspace ${provider.name} key from server config.`}
-        </p>
-      ) : null}
-      {isAmbiguous ? (
-        <p className="mt-3 rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-5 text-muted-foreground">
-          HakiScribe sends only generated, reviewed artifacts to Ambiguous — never the raw transcript. Documents go to Docs,
-          dates to Calendar, matters and contacts to CRM, and completion notices to Chat when a channel is configured.
-        </p>
-      ) : null}
-      {provider.connected && provider.account ? (
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <ShieldCheck className="size-3 text-primary" />
-          Signed in as {provider.account}
-        </p>
-      ) : null}
-      {needsSetup ? (
-        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-          Sign-in is not switched on for this service yet. Add the app credentials on the server, using the redirect
-          address <span className="break-all font-mono">{provider.oauth_setup?.redirect_uri}</span>. You can still paste
-          a token manually below.
-        </p>
-      ) : null}
-      {provider.connected && provider.connected_at ? (
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          Connected{" "}
-          {new Date(provider.connected_at).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
-        </p>
-      ) : null}
-
-      <div className="mt-auto pt-4">
-        {provider.connected && provider.source === "workspace" ? (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={onCheck} disabled={checking}>
-              <RefreshCw className="mr-2 size-3.5" />
-              Check again
+        <>
+          <Button size="sm" variant="outline" onClick={onCheck} disabled={checking}>
+            <RefreshCw className="mr-2 size-3.5" />
+            Check again
+          </Button>
+          <Button size="sm" variant="outline" onClick={onConnect}>
+            <Link2 className="mr-2 size-3.5" />
+            Replace key
+          </Button>
+        </>
+      ) : provider.connected ? (
+        <>
+          <Button size="sm" variant="outline" onClick={onCheck} disabled={checking}>
+            <RefreshCw className="mr-2 size-3.5" />
+            Check again
+          </Button>
+          {provider.oauth && provider.oauth_configured ? (
+            <Button
+              size="sm"
+              variant={health.health === "expired" ? "default" : "outline"}
+              onClick={onConnect}
+              disabled={isConnecting}
+            >
+              {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
+              {health.health === "expired" ? "Sign in again" : "Reconnect"}
             </Button>
-            <Button size="sm" variant="outline" onClick={onConnect}>
+          ) : health.health === "invalid" ? (
+            <Button size="sm" onClick={onConnect}>
               <Link2 className="mr-2 size-3.5" />
               Replace key
             </Button>
-          </div>
-        ) : provider.connected ? (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={onCheck} disabled={checking}>
-              <RefreshCw className="mr-2 size-3.5" />
-              Check again
-            </Button>
-            {provider.oauth && provider.oauth_configured ? (
-              <Button
-                size="sm"
-                variant={health.health === "expired" ? "default" : "outline"}
-                onClick={onConnect}
-                disabled={isConnecting}
-              >
-                {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
-                {health.health === "expired" ? "Sign in again" : "Reconnect"}
-              </Button>
-            ) : health.health === "invalid" ? (
-              <Button size="sm" onClick={onConnect}>
-                <Link2 className="mr-2 size-3.5" />
-                Replace key
-              </Button>
-            ) : null}
-            <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
-              {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
-              Disconnect
-            </Button>
-          </div>
-        ) : (
-          <Button size="sm" onClick={onConnect} disabled={isConnecting}>
-            {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Link2 className="mr-2 size-3.5" />}
-            {signInLabel}
+          ) : null}
+          <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
+            {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
+            Disconnect
           </Button>
-        )}
-      </div>
+        </>
+      ) : (
+        <Button size="sm" onClick={onConnect} disabled={isConnecting}>
+          {isConnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Link2 className="mr-2 size-3.5" />}
+          {signInLabel}
+        </Button>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
+      {view === "list" ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
+              <span className="min-w-0 truncate">{provider.name}</span>
+              {badge}
+            </div>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{provider.what_it_does}</p>
+            {workspaceTag ? <p className="mt-1">{workspaceTag}</p> : null}
+            {accountLine}
+            {errorLine}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{actions}</div>
+        </div>
+      ) : (
+        <>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-serif text-base font-semibold">{provider.name}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{provider.what_it_does}</p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              {badge}
+              {workspaceTag}
+            </div>
+          </div>
+          {accountLine}
+          {errorLine}
+          <div className="mt-auto flex flex-wrap gap-2 pt-4">{actions}</div>
+        </>
+      )}
+
+      <Details open={open} id={toggleId}>
+        <p className="text-[11px] leading-5 text-muted-foreground">{provider.what_it_does}</p>
+        {provider.capabilities.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {provider.capabilities.map((cap) => (
+              <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+                {cap}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {provider.connected && provider.source === "workspace" ? (
+          <p className="text-[11px] leading-5 text-muted-foreground">
+            {isAmbiguous
+              ? "Using the workspace Ambiguous AI key from server config. Generated documents, dates, matters, contacts, and review pings can be mirrored to your workspace."
+              : provider.group === "ai"
+                ? `Using the workspace ${provider.name} key from server config. Ask routes through this connector.`
+                : `Using the workspace ${provider.name} key from server config.`}
+          </p>
+        ) : null}
+        {isAmbiguous ? (
+          <p className="text-[11px] leading-5 text-muted-foreground">
+            HakiScribe sends only generated, reviewed artifacts to Ambiguous — never the raw transcript. Documents go to
+            Docs, dates to Calendar, matters and contacts to CRM, and completion notices to Chat when a channel is
+            configured.
+          </p>
+        ) : null}
+        {needsSetup ? (
+          <p className="text-[11px] leading-5 text-muted-foreground">
+            Sign-in is not switched on for this service yet. Add the app credentials on the server, using the redirect
+            address <span className="break-all font-mono">{provider.oauth_setup?.redirect_uri}</span>. You can still
+            paste a token manually.
+          </p>
+        ) : null}
+        {provider.connected && health.last_checked_at ? (
+          <p className="text-[11px] text-muted-foreground">
+            Last checked{" "}
+            {new Date(
+              health.last_checked_at.endsWith("Z") ? health.last_checked_at : `${health.last_checked_at}Z`,
+            ).toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        ) : null}
+        {provider.connected && provider.connected_at ? (
+          <p className="text-[11px] text-muted-foreground">
+            Connected{" "}
+            {new Date(provider.connected_at).toLocaleDateString("en-KE", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </p>
+        ) : null}
+      </Details>
+
+      <ShowMoreToggle open={open} onToggle={() => setOpen((prev) => !prev)} id={toggleId} name={provider.name} />
     </div>
   );
 }
