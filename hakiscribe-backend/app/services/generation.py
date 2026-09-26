@@ -98,7 +98,7 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
         if model == "openrouter/auto":
             # Keep low-stakes prose economical without sending legal drafting
             # through a changing router. The fixed fallback protects availability.
-            payload["models"] = ["openrouter/auto", LIGHTWEIGHT_FALLBACK_MODEL]
+            payload["models"] = [LIGHTWEIGHT_FALLBACK_MODEL]
             payload["plugins"] = [{"id": "auto-router", "cost_quality_tradeoff": max(0, min(10, AUTO_ROUTER_COST_QUALITY_TRADEOFF))}]
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
