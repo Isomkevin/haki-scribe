@@ -1076,6 +1076,7 @@ _VERIFIERS = {
     "mistral": _verify_mistral,
     "groq": _verify_groq,
     "openrouter": _verify_openrouter,
+    "nvidia_nim": _verify_nvidia_nim,
     "intron": _verify_intron,
     "claude_custom": _verify_custom_openai,
     "google_drive": _verify_google_drive,
