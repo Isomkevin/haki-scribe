@@ -363,6 +363,58 @@ def link_contact_to_session(session_id: uuid.UUID, contact_id: uuid.UUID) -> Non
     contact = _contacts.get(contact_id)
     if contact is not None and contact.session_id is None:
         contact.session_id = session_id
+    _persist()
+
+
+def contact_session_ids(contact_id: uuid.UUID) -> list[uuid.UUID]:
+    ids = [sid for sid, cids in _session_contact_ids.items() if contact_id in cids and sid in _sessions]
+    contact = _contacts.get(contact_id)
+    if contact is not None and contact.session_id and contact.session_id in _sessions and contact.session_id not in ids:
+        ids.append(contact.session_id)
+    return ids
+
+
+def update_contact(
+    contact_id: uuid.UUID,
+    *,
+    name: Optional[str] = None,
+    updates: Optional[dict] = None,
+    matter_id: Optional[uuid.UUID] = None,
+    clear_matter: bool = False,
+    session_ids: Optional[list[uuid.UUID]] = None,
+) -> Optional[Contact]:
+    contact = _contacts.get(contact_id)
+    if contact is None:
+        return None
+    if name is not None and name.strip():
+        contact.name = name.strip()
+    if updates is not None:
+        contact.updates = {k: v for k, v in updates.items() if not (isinstance(v, str) and not v.strip())}
+    if clear_matter or (matter_id is not None and matter_id != contact.matter_id):
+        old = _matters.get(contact.matter_id) if contact.matter_id else None
+        if old is not None and contact.id in old.contact_ids:
+            old.contact_ids.remove(contact.id)
+        contact.matter_id = None
+    if matter_id is not None and not clear_matter:
+        contact.matter_id = matter_id
+        matter = _matters.get(matter_id)
+        if matter is not None and contact.id not in matter.contact_ids:
+            matter.contact_ids.append(contact.id)
+    if session_ids is not None:
+        wanted = {sid for sid in session_ids if sid in _sessions}
+        for sid, cids in _session_contact_ids.items():
+            if sid not in wanted and contact.id in cids:
+                cids.remove(contact.id)
+        for sid in wanted:
+            link_contact_to_session(sid, contact.id)
+        if contact.session_id and contact.session_id not in wanted:
+            contact.session_id = next(iter(wanted), None)
+    _persist()
+    return contact
+
+
+def persist() -> None:
+    _persist()
 
 
 def _uuid_map(raw: dict) -> dict[uuid.UUID, list[uuid.UUID]]:

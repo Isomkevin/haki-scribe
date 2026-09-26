@@ -8,6 +8,7 @@ stay in lockstep.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Optional
 
@@ -80,6 +81,7 @@ def persist_contact(
             storage.link_contact_to_session(session_id, existing.id)
         if ambiguous_contact_id and not existing.ambiguous_contact_id:
             existing.ambiguous_contact_id = ambiguous_contact_id
+        storage.persist()
         return existing
 
     contact = Contact(
@@ -90,3 +92,31 @@ def persist_contact(
         ambiguous_contact_id=ambiguous_contact_id,
     )
     return storage.create_contact(contact)
+
+
+_GENERIC_SPEAKER = re.compile(
+    r"^(speaker|spk|voice|person|participant|unknown|user|you|me|guest)?[\s_#-]*\d*$|^speaker[\s_#-]*[a-z0-9]{1,3}$",
+    re.IGNORECASE,
+)
+
+
+def capture_speaker_contacts(session_id: uuid.UUID) -> list[Contact]:
+    """Turn named transcript speakers (mic or Omi) into contacts linked to the
+    session, so everyone who spoke shows up in the tracker automatically.
+    Generic labels like "Speaker 1" are skipped until the lawyer renames them."""
+    detail = storage.get_session(session_id)
+    if detail is None:
+        return []
+    source = getattr(detail.source, "value", str(detail.source))
+    seen: set[str] = set()
+    captured: list[Contact] = []
+    for segment in detail.transcript:
+        name = (segment.speaker or "").strip()
+        if not name or len(name) < 2 or _GENERIC_SPEAKER.match(name) or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        existing = storage.find_contact_by_name(name)
+        updates = None if existing else {"source": f"{source}_transcription"}
+        matter_id = detail.matters[0].id if detail.matters and existing is None else None
+        captured.append(persist_contact(name=name, updates=updates, session_id=session_id, matter_id=matter_id))
+    return captured
