@@ -16,6 +16,7 @@ block-array document body and start/end event fields; those 422.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import re
@@ -31,7 +32,9 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
-_last_error: str | None = None
+_last_error_var: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar(
+    "ambiguous_last_error", default=None
+)
 
 
 def configured() -> bool:
@@ -39,7 +42,7 @@ def configured() -> bool:
 
 
 def last_error() -> str | None:
-    return _last_error
+    return _last_error_var.get()
 
 
 def document_url(document_id: str | None) -> str | None:
@@ -59,6 +62,19 @@ def contact_url(contact_id: str | None) -> str | None:
 
 
 def _api_key() -> Optional[str]:
+    # Per-user Settings → Connectors credential wins when present; the
+    # workspace-level env var is the fallback used by the demo/hackathon
+    # deployment. Lazy import avoids a circular import with
+    # app.services.integrations, which itself calls into this module to
+    # verify the credential.
+    try:
+        from app.services import integrations as integrations_service
+
+        creds = integrations_service.get_creds("ambiguous")
+        if creds and creds.get("api_key"):
+            return str(creds["api_key"])
+    except Exception:  # noqa: BLE001 — connector store not available yet
+        pass
     return os.environ.get("AMBIGUOUS_API_KEY") or None
 
 
@@ -67,8 +83,7 @@ def _headers() -> dict[str, str]:
 
 
 def _set_error(message: str) -> None:
-    global _last_error
-    _last_error = message
+    _last_error_var.set(message)
     logger.warning("Ambiguous AI %s; keeping local result", message)
 
 
@@ -108,10 +123,9 @@ async def _request(
 ) -> Optional[dict[str, Any]]:
     """Never raise into generation — local artifacts stay usable if the
     workspace mirror fails."""
-    global _last_error
     if not _api_key():
         return None
-    _last_error = None
+    _last_error_var.set(None)
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.request(

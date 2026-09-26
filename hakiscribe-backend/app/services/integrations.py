@@ -306,6 +306,23 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "ambiguous",
+        "name": "Ambiguous AI",
+        "group": "practice",
+        "what_it_does": "Send drafted documents to Docs, court dates to Calendar, matters/contacts to CRM, and a review ping to Chat.",
+        "capabilities": ["Export documents", "Add calendar events", "Sync matters", "Chat notification"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Ambiguous AI API key",
+                "type": "password",
+                "help": "From app.ambiguous.ai → mint a key at /mcp, or Developers → API keys. The workspace AMBIGUOUS_API_KEY is used automatically when set.",
+                "placeholder": "ak_…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "omi",
         "name": "Omi wearable",
         "group": "practice",
@@ -384,6 +401,7 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
+    "ambiguous": {"api_key": "AMBIGUOUS_API_KEY"},
 }
 
 
@@ -856,6 +874,23 @@ async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "error": None}
 
 
+async def _verify_ambiguous(creds: dict[str, Any]) -> dict[str, Any]:
+    key = creds.get("api_key", "")
+    if not key:
+        return {"ok": False, "error": "Missing API key"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://app.ambiguous.ai/api/documents",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Ambiguous AI returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 OMI_API_BASE = os.environ.get("OMI_API_BASE", "https://api.omi.me/v1/dev")
 
 
@@ -945,6 +980,7 @@ _VERIFIERS = {
     "dropbox": _verify_dropbox,
     "onedrive": _verify_onedrive,
     "hakichain": _verify_hakichain,
+    "ambiguous": _verify_ambiguous,
     "omi": _verify_omi,
 }
 
