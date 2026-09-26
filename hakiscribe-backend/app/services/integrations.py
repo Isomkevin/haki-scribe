@@ -1275,6 +1275,14 @@ async def complete_with_provider(
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
+        elif provider_id == "nvidia_nim":
+            base = _nim_base(creds.get("llm_endpoint"))
+            if not base:
+                return None
+            if not base.endswith("/v1"):
+                base = f"{base}/v1"
+            chosen = model or str(creds.get("llm_model") or "").strip() or "meta/llama-3.1-8b-instruct"
+            return await _complete_openai(creds, system_prompt, user_prompt, chosen, timeout_s, base)
         return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("Provider %s completion failed: %s", provider_id, exc)
