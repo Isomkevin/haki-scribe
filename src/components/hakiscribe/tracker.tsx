@@ -13,7 +13,7 @@ import { ContactDirectory } from "./contacts";
 
 const REFRESH_MS = 20_000;
 
-interface TrackedDocument {
+export interface TrackedDocument {
   sessionId: string;
   sessionTitle: string;
   kind: string;
@@ -22,7 +22,7 @@ interface TrackedDocument {
   archived: boolean;
 }
 
-interface TrackedEvent {
+export interface TrackedEvent {
   sessionId: string;
   sessionTitle: string;
   title: string;
@@ -35,7 +35,7 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function documentOf(result: ActionResult, detail: SessionDetail): TrackedDocument | null {
+export function documentOf(result: ActionResult, detail: SessionDetail): TrackedDocument | null {
   if (result.type !== "draft_document" || result.status !== "success") return null;
   const kind = str(result.result["document_kind"]) ?? "Legal document";
   return {
@@ -48,7 +48,7 @@ function documentOf(result: ActionResult, detail: SessionDetail): TrackedDocumen
   };
 }
 
-function eventOf(result: ActionResult, detail: SessionDetail): TrackedEvent | null {
+export function eventOf(result: ActionResult, detail: SessionDetail): TrackedEvent | null {
   if (result.type !== "calendar_event" || result.status !== "success") return null;
   const attendees = Array.isArray(result.result["attendees"])
     ? (result.result["attendees"] as unknown[]).map((item) => String(item))
@@ -63,7 +63,7 @@ function eventOf(result: ActionResult, detail: SessionDetail): TrackedEvent | nu
   };
 }
 
-function formatDate(value: string | null) {
+export function formatDate(value: string | null) {
   if (!value) return "Date not on the record";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -77,7 +77,7 @@ function formatDate(value: string | null) {
   });
 }
 
-function formatDay(value: string) {
+export function formatDay(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });

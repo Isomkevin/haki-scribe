@@ -85,7 +85,17 @@ export interface Contact {
   updates: Record<string, unknown>;
   matter_id: string | null;
   session_id: string | null;
+  session_ids?: string[];
+  ambiguous_contact_id?: string | null;
   created_at: string;
+}
+
+export interface ContactUpdate {
+  name?: string;
+  updates?: Record<string, unknown>;
+  matter_id?: string;
+  clear_matter?: boolean;
+  session_ids?: string[];
 }
 
 export interface Session {
@@ -528,6 +538,9 @@ export const hakiApi = {
   listContacts: () => request<Contact[]>("/contacts"),
   createContact: (body: { name: string; updates?: Record<string, unknown>; matter_id?: string; session_id?: string }) =>
     request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
+  getContact: (id: string) => request<Contact>(`/contacts/${id}`),
+  updateContact: (id: string, body: ContactUpdate) =>
+    request<Contact>(`/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
   listIntegrations: () => request<Integration[]>("/integrations"),
   omiStatus: () => request<OmiStatus>("/integrations/omi/status"),
