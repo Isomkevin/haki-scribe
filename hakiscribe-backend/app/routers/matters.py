@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import Contact, ContactCreate, Matter, MatterCreate
+from app.models.schemas import Contact, ContactCreate, ContactUpdate, ContactWithSessions, Matter, MatterCreate
 from app.services import storage, workspace
 
 router = APIRouter()
@@ -72,6 +72,35 @@ def create_contact(payload: ContactCreate):
     )
 
 
-@contacts_router.get("", response_model=list[Contact])
+def _with_sessions(contact: Contact) -> ContactWithSessions:
+    return ContactWithSessions(**contact.model_dump(), session_ids=storage.contact_session_ids(contact.id))
+
+
+@contacts_router.get("", response_model=list[ContactWithSessions])
 def list_contacts():
-    return storage.list_contacts()
+    return [_with_sessions(contact) for contact in storage.list_contacts()]
+
+
+@contacts_router.get("/{contact_id}", response_model=ContactWithSessions)
+def get_contact(contact_id: uuid.UUID):
+    contact = storage.get_contact(contact_id)
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return _with_sessions(contact)
+
+
+@contacts_router.patch("/{contact_id}", response_model=ContactWithSessions)
+def update_contact(contact_id: uuid.UUID, payload: ContactUpdate):
+    if payload.matter_id is not None and storage.get_matter(payload.matter_id) is None:
+        raise HTTPException(status_code=404, detail="Matter not found")
+    contact = storage.update_contact(
+        contact_id,
+        name=payload.name,
+        updates=payload.updates,
+        matter_id=payload.matter_id,
+        clear_matter=payload.clear_matter,
+        session_ids=payload.session_ids,
+    )
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return _with_sessions(contact)

@@ -232,6 +232,8 @@ async def receive_omi_transcript(
 
     if is_memory and cleaned_uid and session.status == SessionStatus.recording:
         storage.update_session_status(session.id, SessionStatus.ready)
+        from app.services import workspace
+        workspace.capture_speaker_contacts(session.id)
 
     # Omi realtime apps expect session_id echoed back (HakiScribe UUID).
     return {"session_id": str(session.id), "received": received, "uid": cleaned_uid}

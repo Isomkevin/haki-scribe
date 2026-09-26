@@ -111,6 +111,21 @@ class ContactCreate(BaseModel):
     session_id: Optional[uuid.UUID] = None
 
 
+class ContactUpdate(BaseModel):
+    """Edit a contact. `updates` replaces the detail map (send the full map);
+    empty string values are dropped so a field can be cleared."""
+
+    name: Optional[str] = None
+    updates: Optional[dict[str, Any]] = None
+    matter_id: Optional[uuid.UUID] = None
+    clear_matter: bool = False
+    session_ids: Optional[list[uuid.UUID]] = None
+
+
+class ContactWithSessions(Contact):
+    session_ids: list[uuid.UUID] = []
+
+
 class ActionType(str, Enum):
     draft_document = "draft_document"
     calendar_event = "calendar_event"

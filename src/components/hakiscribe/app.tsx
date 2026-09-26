@@ -987,6 +987,9 @@ export function NewSessionPage() {
                   <Link to="/tracker">Case tracker</Link>
                 </Button>
                 <Button asChild variant="outline" size="sm">
+                  <Link to="/contacts">Contacts</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
                   <Link to="/settings">Settings</Link>
                 </Button>
               </div>
