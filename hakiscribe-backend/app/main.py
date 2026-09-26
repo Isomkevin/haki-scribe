@@ -41,6 +41,7 @@ from app.routers import (
     news,
     sessions,
     omi_webhook,
+    organisations,
     stream,
 )
 from app.services import demo_library
@@ -70,6 +71,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(organisations.router, prefix="/organisations", tags=["organisations"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(stream.router, prefix="/sessions", tags=["stream"])
 app.include_router(actions.router, prefix="/sessions", tags=["actions"])
