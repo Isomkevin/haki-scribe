@@ -18,21 +18,36 @@ def endpoint(value: str | None, path: str) -> str | None:
     return base if base.endswith(path) else f"{base}{path}"
 
 
+def connector_creds() -> dict[str, Any]:
+    """Credentials saved on the NVIDIA NIM connector card, when present."""
+    try:
+        from app.services import integrations
+
+        return integrations.get_creds("nvidia_nim") or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _setting(field: str, env_name: str) -> str:
+    value = str(connector_creds().get(field) or "").strip()
+    return value or (os.environ.get(env_name) or "").strip()
+
+
 def headers() -> dict[str, str]:
-    key = (os.environ.get("NVIDIA_NIM_API_KEY") or "").strip()
+    key = _setting("api_key", "NVIDIA_NIM_API_KEY")
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 def asr_endpoint() -> str | None:
-    return endpoint(os.environ.get("NVIDIA_NIM_ASR_ENDPOINT"), "/v1/audio/transcriptions")
+    return endpoint(_setting("asr_endpoint", "NVIDIA_NIM_ASR_ENDPOINT"), "/v1/audio/transcriptions")
 
 
 def llm_endpoint() -> str | None:
-    return endpoint(os.environ.get("NVIDIA_NIM_LLM_ENDPOINT"), "/v1/chat/completions")
+    return endpoint(_setting("llm_endpoint", "NVIDIA_NIM_LLM_ENDPOINT"), "/v1/chat/completions")
 
 
 def llm_model() -> str:
-    return os.environ.get("NVIDIA_NIM_LLM_MODEL", "meta/llama-3.1-8b-instruct")
+    return _setting("llm_model", "NVIDIA_NIM_LLM_MODEL") or "meta/llama-3.1-8b-instruct"
 
 
 async def complete(system_prompt: str, user_prompt: str, *, timeout_s: float = 60.0) -> str | None:
