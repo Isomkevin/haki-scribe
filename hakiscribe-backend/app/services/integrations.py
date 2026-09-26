@@ -456,6 +456,12 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
+    "nvidia_nim": {
+        "llm_endpoint": "NVIDIA_NIM_LLM_ENDPOINT",
+        "asr_endpoint": "NVIDIA_NIM_ASR_ENDPOINT",
+        "llm_model": "NVIDIA_NIM_LLM_MODEL",
+        "api_key": "NVIDIA_NIM_API_KEY",
+    },
     "ambiguous": {
         "api_key": "AMBIGUOUS_API_KEY",
         "calendar_id": "AMBIGUOUS_CALENDAR_ID",
