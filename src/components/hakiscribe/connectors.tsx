@@ -721,11 +721,11 @@ function OmiProviderCard({
       {view === "list" ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
+            <div className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
               <Headphones className="size-4 shrink-0 text-primary" />
               <span className="min-w-0 truncate">{provider.name}</span>
               {badge}
-            </p>
+            </div>
             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
             <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{shortStatus}</p>
           </div>
@@ -1006,10 +1006,10 @@ function ProviderCard({
       {view === "list" ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
+            <div className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
               <span className="min-w-0 truncate">{provider.name}</span>
               {badge}
-            </p>
+            </div>
             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
             {workspaceTag ? <p className="mt-1">{workspaceTag}</p> : null}
             {accountLine}
