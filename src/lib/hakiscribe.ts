@@ -456,7 +456,9 @@ export interface LlmUsageSummary {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cost_usd: number;
   estimated_requests: number;
+  historical_requests: number;
   by_task: Record<string, { requests: number; prompt_tokens: number; completion_tokens: number; total_tokens: number }>;
   models: Record<string, number>;
 }

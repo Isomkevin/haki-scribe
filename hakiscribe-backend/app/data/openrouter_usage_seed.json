@@ -1,0 +1,30 @@
+{
+  "source": "openrouter_activity_2026-09-26.csv",
+  "note": "Aggregated imported OpenRouter activity. Raw generation identifiers are deliberately not retained.",
+  "events": [
+    {
+      "at": "2026-09-15T15:41:36+00:00",
+      "task": "historical_openrouter",
+      "model": "openai/gpt-4o",
+      "provider": "Azure",
+      "requests": 113,
+      "prompt_tokens": 126201,
+      "completion_tokens": 49177,
+      "cost_usd": 0.807246,
+      "estimated": false,
+      "historical": true
+    },
+    {
+      "at": "2026-09-15T15:41:36+00:00",
+      "task": "historical_openrouter",
+      "model": "openai/gpt-4o",
+      "provider": "OpenAI",
+      "requests": 107,
+      "prompt_tokens": 118279,
+      "completion_tokens": 46003,
+      "cost_usd": 0.745457,
+      "estimated": false,
+      "historical": true
+    }
+  ]
+}

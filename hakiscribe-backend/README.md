@@ -100,8 +100,9 @@ simultaneous retries for one action are coalesced, so a duplicate click or
 worker retry does not create another model request. The frontend exposes the
 in-process usage ledger at **Settings → AI usage**; `GET /usage` returns the
 same request/token breakdown. It reports exact token counts when a provider
-returns them and marks other counts as estimates. The ledger resets when the
-backend restarts.
+returns them and marks other counts as estimates. The included aggregate seed
+preserves the supplied 15 September 2026 OpenRouter export; new live entries
+reset when the backend restarts.
 
 For self-hosted NVIDIA NIM configuration, see
 [`../docs/nvidia-nim.md`](../docs/nvidia-nim.md).

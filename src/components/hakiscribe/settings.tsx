@@ -124,7 +124,7 @@ function UsageSection() {
         <div className="grid gap-3 sm:grid-cols-3">
           <UsageCard label="Requests" value={number.format(data.requests)} />
           <UsageCard label="Input tokens" value={number.format(data.prompt_tokens)} />
-          <UsageCard label="Output tokens" value={number.format(data.completion_tokens)} />
+          <UsageCard label="Recorded cost" value={data.cost_usd ? `$${data.cost_usd.toFixed(2)}` : "Pending"} />
         </div>
         <div className="mt-6 rounded-xl border border-border bg-card p-4 sm:p-5">
           <p className="text-sm font-semibold">By task</p>
@@ -132,6 +132,7 @@ function UsageSection() {
             {Object.entries(data.by_task).length ? Object.entries(data.by_task).map(([task, item]) => <div key={task} className="flex justify-between gap-4"><span className="capitalize text-muted-foreground">{task.replaceAll("_", " ")} · {item.requests} requests</span><span>{number.format(item.total_tokens)} tokens</span></div>) : <p className="text-muted-foreground">No model requests have been recorded since this process started.</p>}
           </div>
           {data.estimated_requests ? <p className="mt-4 text-xs text-muted-foreground">{data.estimated_requests} request{data.estimated_requests === 1 ? "" : "s"} used a character-based estimate because the provider did not return token usage.</p> : null}
+          {data.historical_requests ? <p className="mt-2 text-xs text-muted-foreground">Includes {number.format(data.historical_requests)} imported OpenRouter requests from 15 Sep 2026.</p> : null}
         </div>
       </> : null}
     </section>
