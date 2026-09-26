@@ -1,15 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ChevronDown,
   Search,
   XCircle,
   CheckCircle2,
   Copy,
   ExternalLink,
   Headphones,
+  LayoutGrid,
   Link2,
+  List,
   Loader2,
   LockKeyhole,
   Plug,
@@ -40,12 +43,15 @@ import {
   type OmiStatus,
 } from "@/lib/hakiscribe";
 import { SectionHeading } from "./shell";
+import { cn } from "@/lib/utils";
 
 const GROUP_LABELS: Record<string, string> = {
   ai: "AI assistants",
   storage: "Cloud storage",
   practice: "Practice suite",
 };
+
+type ConnectorView = "grid" | "list";
 
 export function ConnectorsSection() {
   const queryClient = useQueryClient();
@@ -67,11 +73,12 @@ export function ConnectorsSection() {
   const [oauthPending, setOauthPending] = useState<string | null>(null);
   const [manualUid, setManualUid] = useState("");
   const [oauthNotice, setOauthNotice] = useState<{ provider: Integration; title: string; message: string } | null>(null);
-  const search = useSearch({ strict: false }) as { q?: string; group?: string; status?: string };
+  const search = useSearch({ strict: false }) as { q?: string; group?: string; status?: string; view?: string };
   const navigate = useNavigate();
   const q = search.q ?? "";
   const groupFilter = search.group ?? "all";
   const statusFilter = search.status ?? "any";
+  const view: ConnectorView = search.view === "list" ? "list" : "grid";
   const setFilter = (patch: Record<string, string | undefined>) =>
     void navigate({
       to: "/settings",
