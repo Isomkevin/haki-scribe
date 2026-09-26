@@ -27,10 +27,12 @@ import {
   hasApiConfiguration,
   productionAuthApi,
   productionAuthEnabled,
+  productionTenancyApi,
   type Integration,
   type Session,
   type SessionSource,
 } from "@/lib/hakiscribe";
+import { loadProductionTenancy, saveProductionTenancy } from "@/lib/production-tenancy";
 import {
   LANGUAGE_OPTIONS,
   PRACTICE_ROLES,
@@ -585,6 +587,53 @@ function SecuritySection() {
   const [enrolment, setEnrolment] = useState<{ id: string; qr?: string; secret?: string } | null>(null);
   const [code, setCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [firmName, setFirmName] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [tenant, setTenant] = useState(loadProductionTenancy);
+  const organisations = useQuery({
+    queryKey: ["production-organisations"],
+    queryFn: productionTenancyApi.listOrganisations,
+    enabled: hasApiConfiguration && productionAuthEnabled && account.isSuccess,
+    retry: false,
+  });
+  const workspaces = useQuery({
+    queryKey: ["production-workspaces", tenant?.organisationId],
+    queryFn: () => productionTenancyApi.listWorkspaces(tenant?.organisationId || ""),
+    enabled: hasApiConfiguration && productionAuthEnabled && Boolean(tenant?.organisationId),
+    retry: false,
+  });
+
+  function selectTenant(organisationId: string, workspaceId: string) {
+    const next = { organisationId, workspaceId };
+    setTenant(next);
+    saveProductionTenancy(next);
+  }
+
+  async function createFirm() {
+    if (!firmName.trim()) return;
+    try {
+      const organisation = await productionTenancyApi.createOrganisation(firmName.trim());
+      setFirmName("");
+      await organisations.refetch();
+      toast.success("Firm created. Set up two-factor authentication, then create its workspace.");
+      setTenant({ organisationId: organisation.id, workspaceId: "" });
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not create the firm."));
+    }
+  }
+
+  async function createWorkspace() {
+    if (!tenant?.organisationId || !workspaceName.trim()) return;
+    try {
+      const workspace = await productionTenancyApi.createWorkspace(tenant.organisationId, workspaceName.trim());
+      setWorkspaceName("");
+      selectTenant(tenant.organisationId, workspace.id);
+      await workspaces.refetch();
+      toast.success("Workspace is ready for tenant-backed sessions.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not create the workspace. Verify two-factor authentication first."));
+    }
+  }
 
   async function beginTotp() {
     setMfaBusy(true);
@@ -655,6 +704,32 @@ function SecuritySection() {
             <Button className="mt-4" onClick={() => void beginTotp()} disabled={mfaBusy || account.isLoading}>Set up authenticator app</Button>
           ) : null}
           {factors.data?.totp?.length ? <p className="mt-3 text-xs text-muted-foreground">Registered factor: {factors.data.totp[0]?.friendly_name || "Authenticator app"}</p> : null}
+        </div>
+      ) : null}
+      {productionAuthEnabled ? (
+        <div className="mt-6 rounded-lg border border-border bg-card p-4 sm:p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Firm and workspace</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Choose the firm and workspace used for production data. This choice is rechecked by the server on every request.</p>
+          {!organisations.data?.length ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <Input value={firmName} onChange={(event) => setFirmName(event.target.value)} placeholder="Firm or organisation name" />
+              <Button onClick={() => void createFirm()} disabled={!firmName.trim()}>Create firm</Button>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <select className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm" value={tenant?.organisationId || ""} onChange={(event) => setTenant({ organisationId: event.target.value, workspaceId: "" })}>
+                <option value="">Select a firm</option>
+                {organisations.data.map((item) => <option key={item.organisation_id} value={item.organisation_id}>{item.haki_organisations.name} · {item.role}</option>)}
+              </select>
+              {tenant?.organisationId ? <>
+                {workspaces.data?.length ? <select className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm" value={tenant.workspaceId} onChange={(event) => selectTenant(tenant.organisationId, event.target.value)}>
+                  <option value="">Select a workspace</option>
+                  {workspaces.data.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select> : null}
+                {account.data?.aal === "aal2" ? <div className="flex flex-col gap-2 sm:flex-row"><Input value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} placeholder="New workspace name" /><Button onClick={() => void createWorkspace()} disabled={!workspaceName.trim()}>Create workspace</Button></div> : null}
+              </> : null}
+            </div>
+          )}
         </div>
       ) : null}
       <div className="mt-6 rounded-lg border border-border bg-card p-4 sm:p-5">

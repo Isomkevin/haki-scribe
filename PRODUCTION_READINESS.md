@@ -155,6 +155,22 @@ existing demo remains usable:
 - An owner or administrator must have an `aal2` (MFA-verified) token before
   administering workspaces. Initial firm creation is intentionally allowed at
   `aal1` so a new user can create the firm before completing MFA enrolment.
+- Production Settings provisions a firm and MFA-gated workspace. The selected
+  IDs are browser convenience state only: list/create/read session calls carry
+  them and the backend verifies membership and workspace ownership again.
+
+### Production router safety boundary
+
+With `HAKISCRIBE_PRODUCTION_AUTH=true`, HakiScribe no longer mounts the legacy
+`/sessions`, `/matters`, `/contacts`, `/integrations`, `/demo`, or internal/demo
+stateful routers. The production router set contains only cookie-authenticated,
+tenant-checked organisation, workspace, session, transcript-stream, action,
+and chat operations. This is deliberate: an incomplete migration must fail
+closed rather than falling back to shared demo data. Matter/contact management,
+file/export storage, Omi ingestion, connector OAuth, research monitors, and
+background workers need tenant-specific migrations before they are enabled in
+production.
+
 - `HAKISCRIBE_PRODUCTION_AUTH=false` preserves the existing demo workflow.
   When it is set to `true`, production routes require a Supabase bearer token;
   browser CORS is deny-by-default until `HAKISCRIBE_ALLOWED_ORIGINS` is set.
@@ -184,6 +200,19 @@ and data path has been migrated and the release gates above are evidenced.
 5. Migrate the frontend endpoint-by-endpoint from the demo API to the
    production API, then remove the demo routes and seed credentials from the
    production deployment.
+
+## Demo-safe activation behaviour
+
+The default is `HAKISCRIBE_PRODUCTION_AUTH=false`. In that mode HakiScribe runs
+the existing demo workflow and does not query Supabase. When the flag is set to
+`true`, `/health` reports a non-secret `production_readiness` checklist. The
+production identity routes reject requests until all required Supabase keys,
+allowed browser origins, and password-reset URL are configured. This prevents a
+partially configured deployment from accidentally accepting client work.
+
+After deploying, check `/health` in a private browser session. Enable real
+users only when `production_readiness.ready` is `true` *and* the SQL migration
+has been applied to the selected Supabase project.
 
 ## Decisions required from HakiChain
 

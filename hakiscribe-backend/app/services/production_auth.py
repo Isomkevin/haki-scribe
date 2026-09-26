@@ -27,6 +27,22 @@ def production_auth_enabled() -> bool:
     return (os.environ.get("HAKISCRIBE_PRODUCTION_AUTH") or "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def production_configuration_issues() -> list[str]:
+    """Safe, non-secret checklist for enabling the production surface."""
+    required = {
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+        "SUPABASE_ANON_KEY": os.environ.get("SUPABASE_ANON_KEY"),
+        "SUPABASE_SERVICE_KEY": os.environ.get("SUPABASE_SERVICE_KEY"),
+        "HAKISCRIBE_ALLOWED_ORIGINS": os.environ.get("HAKISCRIBE_ALLOWED_ORIGINS"),
+        "HAKISCRIBE_PASSWORD_RESET_URL": os.environ.get("HAKISCRIBE_PASSWORD_RESET_URL"),
+    }
+    return [name for name, value in required.items() if not (value or "").strip()]
+
+
+def production_auth_ready() -> bool:
+    return production_auth_enabled() and not production_configuration_issues()
+
+
 def csrf_token() -> str:
     return secrets.token_urlsafe(32)
 
@@ -55,6 +71,8 @@ async def require_production_user(
 ) -> ProductionUser:
     if not production_auth_enabled():
         raise HTTPException(status_code=503, detail="Production authentication is not enabled")
+    if production_configuration_issues():
+        raise HTTPException(status_code=503, detail="Production authentication is not fully configured")
     token = (authorization or "").removeprefix("Bearer ").strip() or (access_token or "")
     url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     api_key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or ""

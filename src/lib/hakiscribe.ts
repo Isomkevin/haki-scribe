@@ -1,3 +1,5 @@
+import { loadProductionTenancy } from "./production-tenancy";
+
 export type SessionSource = "mic" | "omi";
 export type SessionStatus = "recording" | "processing" | "ready" | "exported";
 export type ActionType =
@@ -486,34 +488,29 @@ export const hakiApi = {
     request<{ token: string; user: AuthUser }>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
   demoCredentials: () => request<DemoCredentials>("/auth/demo"),
   listSessions: (opts?: { includeDemo?: boolean }) => {
+    if (productionAuthEnabled) return request<Session[]>("/production", { headers: productionSessionHeaders() });
     const includeDemo = opts?.includeDemo !== false;
     const query = includeDemo ? "" : "?include_demo=false";
     return request<Session[]>(`/sessions${query}`);
   },
-  getSession: (id: string) => request<SessionDetail>(`/sessions/${id}`),
+  getSession: (id: string) => productionAuthEnabled
+    ? request<SessionDetail>(`/production/${id}`, { headers: productionSessionHeaders() })
+    : request<SessionDetail>(`/sessions/${id}`),
   createSession: (body: { title: string; source: SessionSource; language_hint?: string }) =>
-    request<Session>("/sessions", { method: "POST", body: JSON.stringify(body) }),
+    productionAuthEnabled
+      ? request<Session>("/production", { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<Session>("/sessions", { method: "POST", body: JSON.stringify(body) }),
   flagMoment: (id: string, body: { at_ms: number; label?: string }) =>
-    request<FlaggedMoment>(`/sessions/${id}/flags`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    productionAuthEnabled
+      ? request<FlaggedMoment>(`/production/${id}/flags`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<FlaggedMoment>(`/sessions/${id}/flags`, { method: "POST", body: JSON.stringify(body) }),
   updateSpeakers: (id: string, mapping: Record<string, string>) =>
-    request<TranscriptSegment[]>(`/sessions/${id}/speakers`, {
-      method: "POST",
-      body: JSON.stringify({ mapping }),
-    }),
+    productionAuthEnabled ? request<TranscriptSegment[]>(`/production/${id}/speakers`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify({ mapping }) }) : request<TranscriptSegment[]>(`/sessions/${id}/speakers`, { method: "POST", body: JSON.stringify({ mapping }) }),
   redactSegment: (sessionId: string, segmentId: string, redacted: boolean) =>
-    request<TranscriptSegment>(`/sessions/${sessionId}/segments/${segmentId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ redacted }),
-    }),
+    productionAuthEnabled ? request<TranscriptSegment>(`/production/${sessionId}/segments/${segmentId}`, { method: "PATCH", headers: productionSessionHeaders(true), body: JSON.stringify({ redacted }) }) : request<TranscriptSegment>(`/sessions/${sessionId}/segments/${segmentId}`, { method: "PATCH", body: JSON.stringify({ redacted }) }),
   updateSegmentText: (sessionId: string, segmentId: string, text: string) =>
-    request<TranscriptSegment>(`/sessions/${sessionId}/segments/${segmentId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ text }),
-    }),
-  finalize: (id: string) => request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
+    productionAuthEnabled ? request<TranscriptSegment>(`/production/${sessionId}/segments/${segmentId}`, { method: "PATCH", headers: productionSessionHeaders(true), body: JSON.stringify({ text }) }) : request<TranscriptSegment>(`/sessions/${sessionId}/segments/${segmentId}`, { method: "PATCH", body: JSON.stringify({ text }) }),
+  finalize: (id: string) => productionAuthEnabled ? request<Session>(`/production/${id}/finalize`, { method: "POST", headers: productionSessionHeaders(true) }) : request<Session>(`/sessions/${id}/finalize`, { method: "POST" }),
   finalizeAsr: async (id: string, audio: Blob, filename = "recording.webm", detectedMode?: string | null) => {
     const form = new FormData();
     form.append("audio", audio, filename);
@@ -534,18 +531,24 @@ export const hakiApi = {
     }
     return (await response.json()) as SessionDetail;
   },
-  detect: (id: string, force = false) =>
-    request<DetectedAction[]>(`/sessions/${id}/detect${force ? "?force=true" : ""}`, { method: "POST" }),
+  detect: (id: string, force = false) => productionAuthEnabled
+    ? request<DetectedAction[]>(`/production/${id}/detect${force ? "?force=true" : ""}`, { method: "POST", headers: productionSessionHeaders(true) })
+    : request<DetectedAction[]>(`/sessions/${id}/detect${force ? "?force=true" : ""}`, { method: "POST" }),
   dismissAction: (sessionId: string, actionId: string) =>
-    request<DetectedAction>(`/sessions/${sessionId}/actions/${actionId}/dismiss`, { method: "POST" }),
-  listActions: (id: string) => request<DetectedAction[]>(`/sessions/${id}/actions`),
+    productionAuthEnabled
+      ? request<DetectedAction>(`/production/${sessionId}/actions/${actionId}/dismiss`, { method: "POST", headers: productionSessionHeaders(true) })
+      : request<DetectedAction>(`/sessions/${sessionId}/actions/${actionId}/dismiss`, { method: "POST" }),
+  listActions: (id: string) => productionAuthEnabled
+    ? request<DetectedAction[]>(`/production/${id}/actions`, { headers: productionSessionHeaders() })
+    : request<DetectedAction[]>(`/sessions/${id}/actions`),
   generate: (id: string, actionIds: string[], fieldOverrides?: Record<string, Record<string, unknown>>) =>
-    request<ActionResult[]>(`/sessions/${id}/generate`, {
-      method: "POST",
-      body: JSON.stringify({ action_ids: actionIds, field_overrides: fieldOverrides ?? {} }),
-    }),
+    productionAuthEnabled
+      ? request<ActionResult[]>(`/production/${id}/generate`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify({ action_ids: actionIds, field_overrides: fieldOverrides ?? {} }) })
+      : request<ActionResult[]>(`/sessions/${id}/generate`, { method: "POST", body: JSON.stringify({ action_ids: actionIds, field_overrides: fieldOverrides ?? {} }) }),
   ask: (id: string, body: { instruction: string; model?: string }) =>
-    request<ActionResult>(`/sessions/${id}/ask`, { method: "POST", body: JSON.stringify(body) }),
+    productionAuthEnabled
+      ? request<ActionResult>(`/production/${id}/ask`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<ActionResult>(`/sessions/${id}/ask`, { method: "POST", body: JSON.stringify(body) }),
   listModels: () => request<ModelCatalogue>("/models"),
   listMatters: () => request<Matter[]>("/matters"),
   createMatter: (body: { client_name: string; matter_name: string; session_id?: string }) =>
@@ -564,17 +567,14 @@ export const hakiApi = {
       method: "POST",
     }),
   omiSetActive: (sessionId: string) => request<OmiStatus>(`/integrations/omi/active/${sessionId}`, { method: "POST" }),
-  listChats: (sessionId: string) => request<ChatThread[]>(`/sessions/${sessionId}/chats`),
+  listChats: (sessionId: string) => productionAuthEnabled ? request<ChatThread[]>(`/production/${sessionId}/chats`, { headers: productionSessionHeaders() }) : request<ChatThread[]>(`/sessions/${sessionId}/chats`),
   createChat: (sessionId: string, title?: string) =>
-    request<ChatThread>(`/sessions/${sessionId}/chats`, { method: "POST", body: JSON.stringify({ title }) }),
-  getChat: (sessionId: string, threadId: string) => request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}`),
+    productionAuthEnabled ? request<ChatThread>(`/production/${sessionId}/chats`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify({ title }) }) : request<ChatThread>(`/sessions/${sessionId}/chats`, { method: "POST", body: JSON.stringify({ title }) }),
+  getChat: (sessionId: string, threadId: string) => productionAuthEnabled ? request<ChatThread>(`/production/${sessionId}/chats/${threadId}`, { headers: productionSessionHeaders() }) : request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}`),
   deleteChat: (sessionId: string, threadId: string) =>
-    request<{ deleted: boolean }>(`/sessions/${sessionId}/chats/${threadId}`, { method: "DELETE" }),
+    productionAuthEnabled ? request<{ deleted: boolean }>(`/production/${sessionId}/chats/${threadId}`, { method: "DELETE", headers: productionSessionHeaders(true) }) : request<{ deleted: boolean }>(`/sessions/${sessionId}/chats/${threadId}`, { method: "DELETE" }),
   sendChatMessage: (sessionId: string, threadId: string, body: { content: string; model?: string }) =>
-    request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}/messages`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    productionAuthEnabled ? request<ChatThread>(`/production/${sessionId}/chats/${threadId}/messages`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) }) : request<ChatThread>(`/sessions/${sessionId}/chats/${threadId}/messages`, { method: "POST", body: JSON.stringify(body) }),
   connectIntegration: (providerId: string, credentials: Record<string, string>) =>
     request<IntegrationStatus>(`/integrations/${providerId}`, {
       method: "POST",
@@ -619,6 +619,32 @@ export interface ProductionLoginResult {
   mfa_required: boolean;
 }
 
+export interface ProductionOrganisation {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface ProductionWorkspace {
+  id: string;
+  organisation_id: string;
+  name: string;
+}
+
+function productionWriteHeaders(organisationId?: string): Record<string, string> {
+  return { ...csrfHeader(), ...(organisationId ? { "X-Haki-Organisation": organisationId } : {}) };
+}
+
+function productionSessionHeaders(write = false): Record<string, string> {
+  const context = loadProductionTenancy();
+  if (!context) throw new ApiError("Select a firm and workspace in Settings before working with production sessions.");
+  return {
+    "X-Haki-Organisation": context.organisationId,
+    "X-Haki-Workspace": context.workspaceId,
+    ...(write ? csrfHeader() : {}),
+  };
+}
+
 /** Cookie-backed production identity API. No access token is exposed to JS. */
 export const productionAuthApi = {
   login: (body: { email: string; password: string }) =>
@@ -645,6 +671,17 @@ export const productionAuthApi = {
     request<{ csrf: string; aal: "aal2" }>("/auth/production/mfa/totp/verify", {
       method: "POST", headers: csrfHeader(), body: JSON.stringify({ factor_id, challenge_id, code }),
     }),
+};
+
+/** Firm bootstrap and selection endpoints for the authenticated production UI. */
+export const productionTenancyApi = {
+  createOrganisation: (name: string) =>
+    request<ProductionOrganisation>("/organisations", { method: "POST", headers: productionWriteHeaders(), body: JSON.stringify({ name }) }),
+  listOrganisations: () => request<Array<{ organisation_id: string; role: string; haki_organisations: ProductionOrganisation }>>("/organisations"),
+  listWorkspaces: (organisationId: string) =>
+    request<ProductionWorkspace[]>("/production/workspaces", { headers: productionWriteHeaders(organisationId) }),
+  createWorkspace: (organisationId: string, name: string) =>
+    request<ProductionWorkspace>("/production/workspaces", { method: "POST", headers: productionWriteHeaders(organisationId), body: JSON.stringify({ name }) }),
 };
 
 /** Ping health + demo credentials so a sleeping Render instance starts before sign-in. */
@@ -732,7 +769,13 @@ export function downloadTextFile(filename: string, contents: string) {
 }
 
 export function websocketUrl(sessionId: string) {
-  const url = new URL(apiUrl(`/sessions/${sessionId}/stream`));
+  const context = productionAuthEnabled ? loadProductionTenancy() : null;
+  if (productionAuthEnabled && !context) throw new ApiError("Select a firm and workspace in Settings before recording.");
+  const url = new URL(apiUrl(productionAuthEnabled ? `/production/${sessionId}/stream` : `/sessions/${sessionId}/stream`));
+  if (context) {
+    url.searchParams.set("organisation_id", context.organisationId);
+    url.searchParams.set("workspace_id", context.workspaceId);
+  }
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }

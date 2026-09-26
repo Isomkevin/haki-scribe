@@ -42,11 +42,14 @@ from app.routers import (
     sessions,
     omi_webhook,
     organisations,
+    production_actions,
     production_auth,
+    production_chats,
     production_sessions,
     stream,
 )
 from app.services import demo_library
+from app.services.production_auth import production_auth_ready, production_configuration_issues
 
 
 @asynccontextmanager
@@ -64,7 +67,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="HakiScribe", version="0.1.0", lifespan=lifespan)
 
-production_auth = os.environ.get("HAKISCRIBE_PRODUCTION_AUTH", "false").lower() == "true"
+production_auth_enabled_flag = os.environ.get("HAKISCRIBE_PRODUCTION_AUTH", "false").lower() == "true"
 allowed_origins = [
     origin.strip()
     for origin in os.environ.get("HAKISCRIBE_ALLOWED_ORIGINS", "").split(",")
@@ -72,34 +75,38 @@ allowed_origins = [
 ]
 # Demo keeps its convenient local cross-origin setup. A production deployment
 # has no browser CORS access until its exact frontend origins are configured.
-cors_origins = allowed_origins if production_auth else ["*"]
+cors_origins = allowed_origins if production_auth_enabled_flag else ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=production_auth,
+    allow_credentials=production_auth_enabled_flag,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(production_auth.router, prefix="/auth/production", tags=["production-auth"])
 app.include_router(organisations.router, prefix="/organisations", tags=["organisations"])
-# Production routes are deliberately separate until the frontend completes its
-# Supabase-authenticated migration. They reject requests unless the production
-# auth flag, bearer token, firm, and (where needed) workspace are all present.
+app.include_router(production_actions.router, prefix="/production", tags=["production-actions"])
+app.include_router(production_chats.router, prefix="/production", tags=["production-chats"])
 app.include_router(production_sessions.router, prefix="/production", tags=["production"])
-app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
-app.include_router(stream.router, prefix="/sessions", tags=["stream"])
-app.include_router(actions.router, prefix="/sessions", tags=["actions"])
-app.include_router(chats.router, prefix="/sessions", tags=["chats"])
-app.include_router(omi_webhook.router, prefix="/webhooks", tags=["omi"])
-app.include_router(matters.router, prefix="/matters", tags=["matters"])
-app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
-app.include_router(internal.router, prefix="/internal", tags=["internal"])
-app.include_router(demo.router, prefix="/demo", tags=["demo"])
-app.include_router(news.router, prefix="/news", tags=["news"])
-app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
-app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
+
+# The original stateful routers share demo-era storage. They are available only
+# in demo mode; production never mounts them, so a missed UI migration cannot
+# cross the tenant boundary by accident.
+if not production_auth_enabled_flag:
+    app.include_router(auth.router, prefix="/auth", tags=["auth"])
+    app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
+    app.include_router(stream.router, prefix="/sessions", tags=["stream"])
+    app.include_router(actions.router, prefix="/sessions", tags=["actions"])
+    app.include_router(chats.router, prefix="/sessions", tags=["chats"])
+    app.include_router(omi_webhook.router, prefix="/webhooks", tags=["omi"])
+    app.include_router(matters.router, prefix="/matters", tags=["matters"])
+    app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
+    app.include_router(internal.router, prefix="/internal", tags=["internal"])
+    app.include_router(demo.router, prefix="/demo", tags=["demo"])
+    app.include_router(news.router, prefix="/news", tags=["news"])
+    app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
+    app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 
 
 @app.get("/")
@@ -115,6 +122,13 @@ async def health():
     omi_linked = bool(omi_pairing.linked_uid())
     return {
         "status": "ok",
+        "mode": "production" if production_auth_enabled_flag else "demo",
+        "production_readiness": {
+            "enabled": production_auth_enabled_flag,
+            "ready": production_auth_ready(),
+            "missing": production_configuration_issues() if production_auth_enabled_flag else [],
+            "migration": "hakiscribe-backend/migrations/001_tenant_security.sql",
+        },
         "storage": {"database": db.status(), "documents": object_store.status()},
         "integrations": {
             "openrouter": bool(integrations.get_creds("openrouter")),
