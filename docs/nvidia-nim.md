@@ -26,3 +26,13 @@ The ASR route is `/v1/audio/transcriptions` and the LLM route is
 times out, or returns a non-2xx response, HakiScribe logs a warning and uses
 the existing OpenRouter Whisper or GPT-4o request path instead. `GET /health`
 includes a `nvidia_nim` object with the configured endpoint statuses.
+
+## Connecting from the UI
+
+Connectors → **NVIDIA NIM** accepts the same settings without touching the
+server environment: language-model endpoint, model name, optional ASR
+endpoint and optional bearer token. Connecting verifies each endpoint's
+`/v1/models` route and shows Valid / Needs attention on the card, and the
+configured model appears in the Ask model picker as `nvidia_nim:<model>`.
+Values saved on the card take precedence over the matching environment
+variables; env values show the card as connected from workspace config.

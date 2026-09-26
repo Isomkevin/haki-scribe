@@ -217,6 +217,47 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "nvidia_nim",
+        "name": "NVIDIA NIM",
+        "group": "ai",
+        "what_it_does": "Run transcription, action detection and drafting on your own NVIDIA NIM GPU service.",
+        "capabilities": ["Speech-to-text", "Ask an AI model", "Action detection and drafting"],
+        "fields": [
+            {
+                "id": "llm_endpoint",
+                "label": "Language model endpoint",
+                "type": "text",
+                "help": "Base URL of your NIM chat service, e.g. https://llm.example/v1. Workspace NVIDIA_NIM_LLM_ENDPOINT is used automatically when set.",
+                "placeholder": "https://llm.example/v1",
+                "mask": False,
+            },
+            {
+                "id": "llm_model",
+                "label": "Model name",
+                "type": "text",
+                "help": "Leave blank for meta/llama-3.1-8b-instruct.",
+                "placeholder": "meta/llama-3.1-8b-instruct",
+                "mask": False,
+            },
+            {
+                "id": "asr_endpoint",
+                "label": "Speech-to-text endpoint",
+                "type": "text",
+                "help": "Optional. Base URL of your NIM ASR service, e.g. https://asr.example/v1.",
+                "placeholder": "https://asr.example/v1",
+                "mask": False,
+            },
+            {
+                "id": "api_key",
+                "label": "Bearer token",
+                "type": "password",
+                "help": "Only needed when your NIM container or proxy requires authentication.",
+                "placeholder": "…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "google_drive",
         "name": "Google Drive",
         "group": "storage",
@@ -415,6 +456,12 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
+    "nvidia_nim": {
+        "llm_endpoint": "NVIDIA_NIM_LLM_ENDPOINT",
+        "asr_endpoint": "NVIDIA_NIM_ASR_ENDPOINT",
+        "llm_model": "NVIDIA_NIM_LLM_MODEL",
+        "api_key": "NVIDIA_NIM_API_KEY",
+    },
     "ambiguous": {
         "api_key": "AMBIGUOUS_API_KEY",
         "calendar_id": "AMBIGUOUS_CALENDAR_ID",
@@ -437,6 +484,8 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
     if provider_id == "openai" and not creds.get("api_key"):
         return None
     if provider_id in {"intron", "groq", "ambiguous"} and not creds.get("api_key"):
+        return None
+    if provider_id == "nvidia_nim" and not (creds.get("llm_endpoint") or creds.get("asr_endpoint")):
         return None
     return creds or None
 
@@ -759,6 +808,41 @@ async def _verify_openrouter(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _nim_base(value: Any) -> str:
+    base = str(value or "").strip().rstrip("/")
+    if not base:
+        return ""
+    for suffix in ("/chat/completions", "/audio/transcriptions"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+    return base.rstrip("/")
+
+
+async def _verify_nvidia_nim(creds: dict[str, Any]) -> dict[str, Any]:
+    llm = _nim_base(creds.get("llm_endpoint"))
+    asr = _nim_base(creds.get("asr_endpoint"))
+    if not llm and not asr:
+        return {"ok": False, "error": "Add at least one NVIDIA NIM endpoint URL."}
+    key = str(creds.get("api_key") or "").strip()
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    errors: list[str] = []
+    for label, base in (("Language model", llm), ("Speech-to-text", asr)):
+        if not base:
+            continue
+        url = base if base.endswith("/v1") else f"{base}/v1"
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                resp = await client.get(f"{url}/models", headers=headers)
+            if resp.status_code >= 400:
+                errors.append(f"{label} endpoint returned {resp.status_code}: {resp.text[:120]}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{label} endpoint could not be reached: {exc}")
+    if errors:
+        return {"ok": False, "error": " ".join(errors)}
+    return {"ok": True, "error": None}
+
+
+
 def _tiny_silent_wav() -> bytes:
     """Minimal WAV used only to probe whether an Intron API key is accepted."""
     import struct
@@ -992,6 +1076,7 @@ _VERIFIERS = {
     "mistral": _verify_mistral,
     "groq": _verify_groq,
     "openrouter": _verify_openrouter,
+    "nvidia_nim": _verify_nvidia_nim,
     "intron": _verify_intron,
     "claude_custom": _verify_custom_openai,
     "google_drive": _verify_google_drive,
@@ -1190,6 +1275,14 @@ async def complete_with_provider(
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
+        elif provider_id == "nvidia_nim":
+            base = _nim_base(creds.get("llm_endpoint"))
+            if not base:
+                return None
+            if not base.endswith("/v1"):
+                base = f"{base}/v1"
+            chosen = model or str(creds.get("llm_model") or "").strip() or "meta/llama-3.1-8b-instruct"
+            return await _complete_openai(creds, system_prompt, user_prompt, chosen, timeout_s, base)
         return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("Provider %s completion failed: %s", provider_id, exc)
@@ -1241,8 +1334,10 @@ async def _complete_openai(
     base_url: str,
     extra_headers: Optional[dict[str, str]] = None,
 ) -> Optional[str]:
-    key = creds.get("api_key", "")
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    key = str(creds.get("api_key", "") or "").strip()
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
     if extra_headers:
         headers.update(extra_headers)
     async with httpx.AsyncClient(timeout=timeout_s) as client:
@@ -1360,4 +1455,8 @@ def connected_llm_models() -> list[dict[str, str]]:
                 add(mid, f"{mid} ({label} · OpenRouter)")
     if get_connection("claude_custom"):
         add("claude_custom:gpt-4o", "Custom endpoint (your key)")
+    nim = get_creds("nvidia_nim") or {}
+    if nim.get("llm_endpoint"):
+        nim_model = str(nim.get("llm_model") or "").strip() or "meta/llama-3.1-8b-instruct"
+        add(f"nvidia_nim:{nim_model}", f"{nim_model} · NVIDIA NIM")
     return models
