@@ -334,18 +334,21 @@ export function ConnectorsSection() {
               {label}
             </Button>
           ))}
-          <select
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(e) => setFilter({ status: e.target.value === "any" ? undefined : e.target.value })}
-            className="ml-auto rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-          >
-            <option value="any">Any status</option>
-            <option value="valid">Valid</option>
-            <option value="expired">Expired</option>
-            <option value="invalid">Invalid</option>
-            <option value="not_connected">Not connected</option>
-          </select>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(e) => setFilter({ status: e.target.value === "any" ? undefined : e.target.value })}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+            >
+              <option value="any">Any status</option>
+              <option value="valid">Valid</option>
+              <option value="expired">Expired</option>
+              <option value="invalid">Invalid</option>
+              <option value="not_connected">Not connected</option>
+            </select>
+            <ViewToggle view={view} onChange={(next) => setFilter({ view: next === "grid" ? undefined : next })} />
+          </div>
         </div>
       </div>
 
@@ -384,13 +387,14 @@ export function ConnectorsSection() {
       {Object.entries(grouped).map(([group, providers]) => (
         <section key={group} className="mb-9">
           <SectionHeading eyebrow={GROUP_LABELS[group] ?? group} title={GROUP_LABELS[group] ?? group} />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={view === "grid" ? "grid items-start gap-4 sm:grid-cols-2" : "flex flex-col gap-3"}>
             {providers.map((provider) =>
               provider.provider_id === "omi" ? (
                 <OmiProviderCard
                   key={provider.provider_id}
                   provider={provider}
                   status={omiStatus.data}
+                  view={view}
                   health={healthFor(provider)}
                   checking={checkingOne === provider.provider_id || (health.isFetching && provider.connected)}
                   onCheck={() => void checkOne(provider.provider_id)}
@@ -403,6 +407,7 @@ export function ConnectorsSection() {
                   key={provider.provider_id}
                   provider={provider}
                   health={healthFor(provider)}
+                  view={view}
                   checking={checkingOne === provider.provider_id || (health.isFetching && provider.connected)}
                   onCheck={() => void checkOne(provider.provider_id)}
                   onConnect={() => openConnect(provider)}
