@@ -78,6 +78,20 @@ def _api_key() -> Optional[str]:
     return os.environ.get("AMBIGUOUS_API_KEY") or None
 
 
+def _connector_setting(field: str, env_name: str) -> Optional[str]:
+    """Prefer the user's connector routing setting over the env fallback."""
+    try:
+        from app.services import integrations as integrations_service
+
+        creds = integrations_service.get_creds("ambiguous")
+        value = creds.get(field) if creds else None
+        if value and str(value).strip():
+            return str(value).strip()
+    except Exception:  # noqa: BLE001 — connector store not available yet
+        pass
+    return os.environ.get(env_name) or None
+
+
 def _headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
 
@@ -175,7 +189,7 @@ async def create_document(title: str, body_text: str) -> Optional[dict[str, Any]
 
 
 async def _default_calendar_id() -> Optional[str]:
-    configured_id = os.environ.get("AMBIGUOUS_CALENDAR_ID") or ""
+    configured_id = _connector_setting("calendar_id", "AMBIGUOUS_CALENDAR_ID") or ""
     if configured_id.strip():
         return configured_id.strip()
     calendar = await _request("GET", "/calendars")
@@ -243,8 +257,8 @@ async def create_contact(contact_name: str, updates: dict[str, Any]) -> Optional
 
 async def post_chat_message(content: str, channel: Optional[str] = None) -> Optional[dict[str, Any]]:
     """POST /api/channels/:id/messages — channel id is a UUID, not 'general'."""
-    channel = channel or os.environ.get("AMBIGUOUS_NOTIFY_CHANNEL") or ""
+    channel = channel or _connector_setting("notify_channel", "AMBIGUOUS_NOTIFY_CHANNEL") or ""
     if not _UUID_RE.match(channel.strip()):
-        logger.info("Skipping Ambiguous chat ping; AMBIGUOUS_NOTIFY_CHANNEL is not a channel UUID")
+        logger.info("Skipping Ambiguous chat ping; no valid connector or AMBIGUOUS_NOTIFY_CHANNEL UUID")
         return None
     return await _request("POST", f"/channels/{channel.strip()}/messages", {"content": content})

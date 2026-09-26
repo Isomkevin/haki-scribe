@@ -320,6 +320,20 @@ _PROVIDERS: list[dict[str, Any]] = [
                 "placeholder": "ak_…",
                 "mask": True,
             },
+            {
+                "id": "calendar_id",
+                "label": "Calendar ID (optional)",
+                "type": "text",
+                "help": "Where court dates should be created. Leave blank to use the first calendar available to this key. Overrides AMBIGUOUS_CALENDAR_ID.",
+                "placeholder": "Calendar UUID",
+            },
+            {
+                "id": "notify_channel",
+                "label": "Chat channel ID (optional)",
+                "type": "text",
+                "help": "Where review-ready notifications should be posted. Use the channel UUID from Ambiguous. Overrides AMBIGUOUS_NOTIFY_CHANNEL.",
+                "placeholder": "Channel UUID",
+            },
         ],
     },
     {
@@ -401,7 +415,11 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
-    "ambiguous": {"api_key": "AMBIGUOUS_API_KEY"},
+    "ambiguous": {
+        "api_key": "AMBIGUOUS_API_KEY",
+        "calendar_id": "AMBIGUOUS_CALENDAR_ID",
+        "notify_channel": "AMBIGUOUS_NOTIFY_CHANNEL",
+    },
 }
 
 
@@ -418,7 +436,7 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
         return None
     if provider_id == "openai" and not creds.get("api_key"):
         return None
-    if provider_id in {"intron", "groq"} and not creds.get("api_key"):
+    if provider_id in {"intron", "groq", "ambiguous"} and not creds.get("api_key"):
         return None
     return creds or None
 

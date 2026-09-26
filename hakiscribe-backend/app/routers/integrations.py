@@ -296,6 +296,8 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         raise HTTPException(status_code=400, detail="No credentials provided")
     if provider_id == "omi" and not (creds.get("uid") or creds.get("api_key")):
         raise HTTPException(status_code=400, detail="Add the Omi user id or an Omi developer API key")
+    if provider_id == "ambiguous" and not creds.get("api_key"):
+        raise HTTPException(status_code=400, detail="Add an Ambiguous AI API key")
 
     result = await integrations.verify(provider_id, creds)
     if not result["ok"]:
