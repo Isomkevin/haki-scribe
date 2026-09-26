@@ -1334,8 +1334,10 @@ async def _complete_openai(
     base_url: str,
     extra_headers: Optional[dict[str, str]] = None,
 ) -> Optional[str]:
-    key = creds.get("api_key", "")
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    key = str(creds.get("api_key", "") or "").strip()
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
     if extra_headers:
         headers.update(extra_headers)
     async with httpx.AsyncClient(timeout=timeout_s) as client:
