@@ -374,7 +374,7 @@ export function LandingPage() {
     },
     {
       icon: FileText,
-      title: "Work, not a transcript dump",
+      title: "Structured Legal Work, not a transcript dump",
       copy: "Choose only the letters, notes, calendar entries, matters, contacts, time records, and research the conversation supports.",
     },
     {
