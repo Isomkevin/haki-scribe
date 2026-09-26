@@ -726,8 +726,8 @@ function OmiProviderCard({
               <span className="min-w-0 truncate">{provider.name}</span>
               {badge}
             </div>
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
-            <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{shortStatus}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{provider.what_it_does}</p>
+            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground sm:line-clamp-1">{shortStatus}</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{actions}</div>
         </div>
@@ -1011,7 +1011,7 @@ function ProviderCard({
               <span className="min-w-0 truncate">{provider.name}</span>
               {badge}
             </div>
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1">{provider.what_it_does}</p>
             {workspaceTag ? <p className="mt-1">{workspaceTag}</p> : null}
             {accountLine}
             {errorLine}
