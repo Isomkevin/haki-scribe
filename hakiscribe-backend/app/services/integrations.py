@@ -485,6 +485,8 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
         return None
     if provider_id in {"intron", "groq", "ambiguous"} and not creds.get("api_key"):
         return None
+    if provider_id == "nvidia_nim" and not (creds.get("llm_endpoint") or creds.get("asr_endpoint")):
+        return None
     return creds or None
 
 
