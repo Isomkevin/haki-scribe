@@ -749,6 +749,7 @@ function OmiProviderCard({
       )}
 
       <Details open={open} id={toggleId}>
+        <p className="text-[11px] leading-5 text-muted-foreground">{provider.what_it_does}</p>
         {provider.capabilities.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {provider.capabilities.map((cap) => (
@@ -1036,6 +1037,7 @@ function ProviderCard({
       )}
 
       <Details open={open} id={toggleId}>
+        <p className="text-[11px] leading-5 text-muted-foreground">{provider.what_it_does}</p>
         {provider.capabilities.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {provider.capabilities.map((cap) => (
