@@ -15,7 +15,7 @@ from app.models.schemas import (
     SpeakerRelabelRequest,
     TranscriptSegment,
 )
-from app.services import demo_library, storage, transcription
+from app.services import demo_library, storage, transcription, workspace
 
 router = APIRouter()
 
@@ -148,6 +148,7 @@ async def finalize_asr_with_sahara(
             )
         )
     storage.replace_transcript(session_id, segments)
+    workspace.capture_speaker_contacts(session_id)
     refreshed = storage.get_session(session_id)
     if refreshed is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -159,6 +160,7 @@ def finalize_session(session_id: uuid.UUID):
     session = storage.update_session_status(session_id, SessionStatus.ready)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    workspace.capture_speaker_contacts(session_id)
     return session
 
 
@@ -179,7 +181,9 @@ def relabel_speakers(session_id: uuid.UUID, payload: SpeakerRelabelRequest):
     labels ('Speaker 1') to real names improves every downstream action."""
     if storage.get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return storage.relabel_speakers(session_id, payload.mapping)
+    segments = storage.relabel_speakers(session_id, payload.mapping)
+    workspace.capture_speaker_contacts(session_id)
+    return segments
 
 
 @router.patch("/{session_id}/segments/{segment_id}", response_model=TranscriptSegment)
