@@ -6,7 +6,8 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.services.production_auth import ProductionUser, require_production_user
+from app.services.production_auth import ProductionUser, require_csrf, require_production_user
+from app.services.tenant_context import require_organisation
 
 router = APIRouter()
 
@@ -27,7 +28,11 @@ def _client():
 
 
 @router.post("", status_code=201)
-def create_organisation(payload: OrganisationCreate, user: ProductionUser = Depends(require_production_user)):
+def create_organisation(
+    payload: OrganisationCreate,
+    user: ProductionUser = Depends(require_production_user),
+    _csrf: None = Depends(require_csrf),
+):
     """Create a firm and its first owner membership in one server-side operation."""
     client = _client()
     org = client.table("haki_organisations").insert({"name": payload.name.strip(), "created_by": user.id}).execute()
@@ -45,3 +50,10 @@ def list_organisations(user: ProductionUser = Depends(require_production_user)):
     client = _client()
     memberships = client.table("haki_memberships").select("organisation_id,role,status,haki_organisations(id,name,created_at)").eq("user_id", user.id).eq("status", "active").execute()
     return memberships.data or []
+
+
+@router.get("/active")
+async def active_organisation(context=Depends(require_organisation)):
+    """Health-check the currently selected firm before tenant-scoped work."""
+    user, organisation_id = context
+    return {"organisation_id": str(organisation_id), "user_id": user.id}

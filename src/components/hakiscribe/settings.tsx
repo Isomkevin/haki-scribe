@@ -25,6 +25,8 @@ import {
   friendlyErrorMessage,
   hakiApi,
   hasApiConfiguration,
+  productionAuthApi,
+  productionAuthEnabled,
   type Integration,
   type Session,
   type SessionSource,
@@ -568,6 +570,51 @@ function SecuritySection() {
   const live = Object.entries(health.data?.integrations ?? {})
     .filter(([, on]) => on)
     .map(([name]) => name);
+  const account = useQuery({
+    queryKey: ["production-account"],
+    queryFn: productionAuthApi.me,
+    enabled: hasApiConfiguration && productionAuthEnabled,
+    retry: false,
+  });
+  const factors = useQuery({
+    queryKey: ["production-mfa-factors"],
+    queryFn: productionAuthApi.listMfaFactors,
+    enabled: hasApiConfiguration && productionAuthEnabled && account.isSuccess,
+    retry: false,
+  });
+  const [enrolment, setEnrolment] = useState<{ id: string; qr?: string; secret?: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+
+  async function beginTotp() {
+    setMfaBusy(true);
+    try {
+      const factor = await productionAuthApi.enrollTotp();
+      setEnrolment({ id: factor.id, qr: factor.totp?.qr_code, secret: factor.totp?.secret });
+      toast.message("Scan the authenticator code, then enter its six-digit code.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not start two-factor setup."));
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function verifyTotp() {
+    if (!enrolment || !/^\d{6}$/.test(code)) return;
+    setMfaBusy(true);
+    try {
+      const challenge = await productionAuthApi.challengeTotp(enrolment.id);
+      await productionAuthApi.verifyTotp(enrolment.id, challenge.id, code);
+      setEnrolment(null);
+      setCode("");
+      await Promise.all([account.refetch(), factors.refetch()]);
+      toast.success("Two-factor authentication is now active.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "That code could not be verified. Try a fresh code."));
+    } finally {
+      setMfaBusy(false);
+    }
+  }
 
   return (
     <section>
@@ -590,6 +637,26 @@ function SecuritySection() {
           body="Live captions and analysis use your configured keys. Generated work stays local until you choose to send it to a connected tool."
         />
       </ul>
+      {productionAuthEnabled ? (
+        <div className="mt-6 rounded-lg border border-border bg-card p-4 sm:p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Account security</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {account.data?.aal === "aal2" ? "Two-factor authentication is verified for this session." : "Set up an authenticator app before administering a firm workspace."}
+          </p>
+          {enrolment ? (
+            <div className="mt-4 space-y-3">
+              {enrolment.qr ? <img className="size-44 rounded bg-white p-2" alt="Authenticator setup QR code" src={`data:image/svg+xml;utf8,${encodeURIComponent(enrolment.qr)}`} /> : null}
+              {enrolment.secret ? <p className="break-all text-xs text-muted-foreground">Manual setup key: {enrolment.secret}</p> : null}
+              <Label htmlFor="totp-code">Authenticator code</Label>
+              <Input id="totp-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" />
+              <Button onClick={() => void verifyTotp()} disabled={mfaBusy || code.length !== 6}>Verify and enable</Button>
+            </div>
+          ) : account.data?.aal !== "aal2" ? (
+            <Button className="mt-4" onClick={() => void beginTotp()} disabled={mfaBusy || account.isLoading}>Set up authenticator app</Button>
+          ) : null}
+          {factors.data?.totp?.length ? <p className="mt-3 text-xs text-muted-foreground">Registered factor: {factors.data.totp[0]?.friendly_name || "Authenticator app"}</p> : null}
+        </div>
+      ) : null}
       <div className="mt-6 rounded-lg border border-border bg-card p-4 sm:p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace service</p>
         <p className="mt-2 font-serif text-lg font-semibold">

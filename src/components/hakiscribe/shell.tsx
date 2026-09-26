@@ -5,7 +5,7 @@ import { currentSession, signOut } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { SessionStatus } from "@/lib/hakiscribe";
+import { productionAuthApi, productionAuthEnabled, type SessionStatus } from "@/lib/hakiscribe";
 import { Brand, SecureBadge } from "./brand";
 import { InstallAppButton } from "./pwa-register";
 
@@ -20,6 +20,7 @@ function SignOutButton() {
       size="sm"
       className="text-muted-foreground"
       onClick={() => {
+        if (productionAuthEnabled) void productionAuthApi.logout().catch(() => undefined);
         signOut();
         window.location.assign("/");
       }}

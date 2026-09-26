@@ -42,6 +42,8 @@ from app.routers import (
     sessions,
     omi_webhook,
     organisations,
+    production_auth,
+    production_sessions,
     stream,
 )
 from app.services import demo_library
@@ -62,16 +64,30 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="HakiScribe", version="0.1.0", lifespan=lifespan)
 
-# Lovable frontend will hit this from a different origin during dev.
+production_auth = os.environ.get("HAKISCRIBE_PRODUCTION_AUTH", "false").lower() == "true"
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("HAKISCRIBE_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+# Demo keeps its convenient local cross-origin setup. A production deployment
+# has no browser CORS access until its exact frontend origins are configured.
+cors_origins = allowed_origins if production_auth else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten before anything beyond the demo
+    allow_origins=cors_origins,
+    allow_credentials=production_auth,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(production_auth.router, prefix="/auth/production", tags=["production-auth"])
 app.include_router(organisations.router, prefix="/organisations", tags=["organisations"])
+# Production routes are deliberately separate until the frontend completes its
+# Supabase-authenticated migration. They reject requests unless the production
+# auth flag, bearer token, firm, and (where needed) workspace are all present.
+app.include_router(production_sessions.router, prefix="/production", tags=["production"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(stream.router, prefix="/sessions", tags=["stream"])
 app.include_router(actions.router, prefix="/sessions", tags=["actions"])

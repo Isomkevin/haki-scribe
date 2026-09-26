@@ -242,6 +242,7 @@ const configuredBaseUrl = (
 
 export const hasApiConfiguration = Boolean(configuredBaseUrl);
 export const apiBaseUrl = configuredBaseUrl;
+export const productionAuthEnabled = (import.meta.env["VITE_PRODUCTION_AUTH"] as string | undefined)?.toLowerCase() === "true";
 
 export interface HealthStatus {
   status: string;
@@ -421,6 +422,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(apiUrl(path), {
       ...init,
+      // Demo CORS intentionally uses a wildcard and cannot accept credentialed
+      // browser requests. Production opts in and has exact allowed origins.
+      credentials: productionAuthEnabled ? "include" : "same-origin",
       headers: {
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...init?.headers,
@@ -440,7 +444,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(humanizeApiFailure(response.status, detail, path), response.status);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function csrfHeader(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const token = document.cookie
+    .split(";")
+    .map((value) => value.trim())
+    .find((value) => value.startsWith("hakiscribe_csrf="))
+    ?.split("=")[1];
+  return token ? { "X-Haki-CSRF": decodeURIComponent(token) } : {};
 }
 
 export interface AuthUser {
@@ -596,6 +611,40 @@ export const hakiApi = {
       `/news/hits${suffix ? `?${suffix}` : ""}`,
     );
   },
+};
+
+export interface ProductionLoginResult {
+  email: string | null;
+  csrf: string;
+  mfa_required: boolean;
+}
+
+/** Cookie-backed production identity API. No access token is exposed to JS. */
+export const productionAuthApi = {
+  login: (body: { email: string; password: string }) =>
+    request<ProductionLoginResult>("/auth/production/login", { method: "POST", body: JSON.stringify(body) }),
+  me: () => request<{ id: string; email: string; email_confirmed: boolean; aal: "aal1" | "aal2" }>("/auth/production/me"),
+  refresh: () => request<{ csrf: string }>("/auth/production/refresh", { method: "POST" }),
+  establishRecoverySession: (body: { access_token: string; refresh_token: string; expires_in?: number }) =>
+    request<{ csrf: string }>("/auth/production/recovery-session", { method: "POST", body: JSON.stringify(body) }),
+  logout: () => request<void>("/auth/production/logout", { method: "POST", headers: csrfHeader() }),
+  requestPasswordReset: (email: string) =>
+    request<{ message: string }>("/auth/production/password-reset", { method: "POST", body: JSON.stringify({ email }) }),
+  updatePassword: (password: string) =>
+    request<{ message: string }>("/auth/production/password", { method: "PUT", headers: csrfHeader(), body: JSON.stringify({ password }) }),
+  enrollTotp: (friendly_name = "Authenticator") =>
+    request<{ id: string; totp?: { qr_code?: string; secret?: string; uri?: string } }>("/auth/production/mfa/totp/enroll", {
+      method: "POST", headers: csrfHeader(), body: JSON.stringify({ friendly_name }),
+    }),
+  listMfaFactors: () => request<{ totp?: Array<{ id: string; status?: string; friendly_name?: string }> }>("/auth/production/mfa/factors"),
+  challengeTotp: (factor_id: string) =>
+    request<{ id: string }>("/auth/production/mfa/totp/challenge", {
+      method: "POST", headers: csrfHeader(), body: JSON.stringify({ factor_id }),
+    }),
+  verifyTotp: (factor_id: string, challenge_id: string, code: string) =>
+    request<{ csrf: string; aal: "aal2" }>("/auth/production/mfa/totp/verify", {
+      method: "POST", headers: csrfHeader(), body: JSON.stringify({ factor_id, challenge_id, code }),
+    }),
 };
 
 /** Ping health + demo credentials so a sleeping Render instance starts before sign-in. */

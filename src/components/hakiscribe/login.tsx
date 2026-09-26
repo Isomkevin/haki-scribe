@@ -20,6 +20,8 @@ import {
   friendlyErrorMessage,
   hakiApi,
   hasApiConfiguration,
+  productionAuthApi,
+  productionAuthEnabled,
   type DemoCredentials,
   warmWorkspace,
 } from "@/lib/hakiscribe";
@@ -45,19 +47,22 @@ export function LoginPage({ next }: { next?: string | undefined }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [slowWake, setSlowWake] = useState(false);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
 
   const demo = useQuery({
     queryKey: DEMO_CREDENTIALS_QUERY_KEY,
     queryFn: hakiApi.demoCredentials,
-    enabled: hasApiConfiguration,
+    enabled: hasApiConfiguration && !productionAuthEnabled,
     retry: 4,
     retryDelay: (attempt) => Math.min(1500 * 2 ** attempt, 12_000),
     staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
-    if (!hasApiConfiguration) return;
+    if (!hasApiConfiguration || productionAuthEnabled) return;
     void warmWorkspace();
   }, []);
 
@@ -70,10 +75,33 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     return () => window.clearTimeout(timer);
   }, [demo.isLoading, demo.isFetching]);
 
+  useEffect(() => {
+    if (!productionAuthEnabled || typeof window === "undefined") return;
+    const values = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const access_token = values.get("access_token");
+    const refresh_token = values.get("refresh_token");
+    if (!access_token || !refresh_token) return;
+    void productionAuthApi
+      .establishRecoverySession({ access_token, refresh_token, expires_in: Number(values.get("expires_in")) || undefined })
+      .then(() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setPassword("");
+        setRecoveryReady(true);
+      })
+      .catch(() => setError("This password-reset link is invalid or has expired. Request a new one."));
+  }, []);
+
   const login = useMutation({
-    mutationFn: (body: { email: string; password: string }) => hakiApi.login(body),
+    mutationFn: (body: { email: string; password: string }) =>
+      productionAuthEnabled ? productionAuthApi.login(body) : hakiApi.login(body),
     onSuccess: (data) => {
-      signIn({ token: data.token, user: data.user });
+      if (productionAuthEnabled) {
+        const production = data as Awaited<ReturnType<typeof productionAuthApi.login>>;
+        signIn({ token: "", user: { email: production.email || email, name: production.email || email } });
+      } else {
+        const demoSession = data as Awaited<ReturnType<typeof hakiApi.login>>;
+        signIn({ token: demoSession.token, user: demoSession.user });
+      }
       const target = next && next.startsWith("/") ? next : "/new";
       window.location.assign(target);
     },
@@ -94,9 +122,32 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     },
   });
 
+  const passwordUpdate = useMutation({
+    mutationFn: (nextPassword: string) => productionAuthApi.updatePassword(nextPassword),
+    onSuccess: () => {
+      window.location.assign("/login");
+    },
+    onError: (err: Error) => setError(friendlyErrorMessage(err, "We could not update your password. Try again.")),
+  });
+
+  const passwordReset = useMutation({
+    mutationFn: (address: string) => productionAuthApi.requestPasswordReset(address),
+    onSuccess: (data) => setNotice(data.message),
+    onError: (err: Error) => setError(friendlyErrorMessage(err, "We could not request a password reset. Try again.")),
+  });
+
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
+    if (recoveryReady) {
+      passwordUpdate.mutate(password);
+      return;
+    }
+    if (forgotMode) {
+      passwordReset.mutate(email);
+      return;
+    }
     login.mutate({ email, password });
   }
 
@@ -110,7 +161,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
   }
 
   const demoDisabledByServer = demo.isSuccess && demo.data?.enabled === false;
-  const showDemoPanel = hasApiConfiguration && !demoDisabledByServer;
+  const showDemoPanel = hasApiConfiguration && !productionAuthEnabled && !demoDisabledByServer;
   const demoReady = Boolean(resolveDemoCredentials(demo.data));
   const demoWaking =
     showDemoPanel && (demo.isLoading || demo.isFetching || demo.isError || slowWake);
@@ -235,7 +286,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
             >
               <div className="h-1 bg-gradient-to-r from-primary via-action to-primary" />
               <div className="space-y-5 p-5 sm:p-6">
-                <div className="space-y-2">
+                {!recoveryReady ? <div className="space-y-2">
                   <Label
                     htmlFor="login-email"
                     className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
@@ -256,25 +307,45 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                     required
                     className="h-12 bg-background text-base"
                   />
-                </div>
+                </div> : null}
 
-                <div className="space-y-2">
+                {!forgotMode ? <div className="space-y-2">
                   <Label
                     htmlFor="login-password"
                     className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
                   >
-                    Password
+                    {recoveryReady ? "New password" : "Password"}
                   </Label>
                   <Input
                     id="login-password"
                     type="password"
-                    autoComplete="current-password"
+                    autoComplete={recoveryReady ? "new-password" : "current-password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
                     className="h-12 bg-background text-base"
                   />
-                </div>
+                </div> : null}
+
+                {productionAuthEnabled && !recoveryReady && !forgotMode ? (
+                  <button
+                    type="button"
+                    className="text-left text-sm font-medium text-primary hover:underline"
+                    onClick={() => { setForgotMode(true); setError(null); setNotice(null); }}
+                  >
+                    Forgot your password?
+                  </button>
+                ) : null}
+
+                {forgotMode ? (
+                  <button
+                    type="button"
+                    className="text-left text-sm font-medium text-primary hover:underline"
+                    onClick={() => { setForgotMode(false); setError(null); setNotice(null); }}
+                  >
+                    Back to sign in
+                  </button>
+                ) : null}
 
                 {error ? (
                   <div
@@ -285,20 +356,32 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                   </div>
                 ) : null}
 
+                {notice ? (
+                  <div role="status" className="rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm leading-6 text-success-foreground">
+                    {notice}
+                  </div>
+                ) : null}
+
                 <Button
                   type="submit"
                   variant="warm"
                   size="lg"
                   className="h-12 w-full text-base"
-                  disabled={login.isPending || !email.trim() || !password}
+                  disabled={login.isPending || passwordUpdate.isPending || passwordReset.isPending || (!forgotMode && !password) || (!recoveryReady && !email.trim())}
                 >
-                  {login.isPending ? (
+                  {login.isPending || passwordUpdate.isPending || passwordReset.isPending ? (
                     <>
                       <Loader2 className="size-4 animate-spin" aria-hidden />
-                      Signing in…
+                      {recoveryReady ? "Updating password…" : forgotMode ? "Sending reset link…" : "Signing in…"}
                     </>
                   ) : (
-                    <>
+                    recoveryReady ? <>
+                      <LockKeyhole className="size-4" aria-hidden />
+                      Update password
+                    </> : forgotMode ? <>
+                      <LockKeyhole className="size-4" aria-hidden />
+                      Send reset link
+                    </> : <>
                       <LockKeyhole className="size-4" aria-hidden />
                       Sign in
                     </>

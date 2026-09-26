@@ -99,6 +99,9 @@ Do not rely on security questions. SMS should be a fallback only, not the primar
 - Create organisation, membership, invitation, role, workspace, and matter-membership models.
 - Migrate every existing record to a tenant-owned schema.
 - Implement server-side ownership checks and Postgres RLS policies.
+- Require `X-Haki-Organisation` only as a requested context; validate it
+  server-side against the authenticated user's active membership before any
+  tenant-scoped route reads or writes data.
 - Add automated negative tests proving one firm cannot read, modify, export, stream, or enumerate another firm's data.
 
 ### Phase 3 — MFA and administrative controls
@@ -125,6 +128,62 @@ HakiScribe may accept real legal-client data only when all items below are true:
 - [ ] OAuth/provider credentials are tenant-scoped or explicitly firm-scoped.
 - [ ] A security review and restore drill have been completed.
 - [ ] The demo account and seeded demo data are disabled in production.
+
+## Implemented foundation (not a release approval)
+
+The repository now includes a deliberately separate production path while the
+existing demo remains usable:
+
+- `hakiscribe-backend/migrations/001_tenant_security.sql` creates the firm,
+  membership, workspace, matter, session, immutable session-record, and audit
+  tables, plus Row Level Security policies.
+- Production identity is verified against Supabase Auth in
+  `app/services/production_auth.py`; it rejects unverified-email accounts.
+- The organisation and workspace headers are only requested context. Their
+  membership and ownership are checked by the backend in
+  `app/services/tenant_context.py` before a production route can use them.
+- `POST /organisations`, `/production/workspaces`, and `/production` bootstrap
+  a firm, its workspace, and a tenant-backed session. Session records live at
+  `/production/{session_id}/records` and are protected from cross-firm and
+  restricted-matter access. Workspace creation is restricted to an owner or
+  administrator; session records are append-only at the database policy layer.
+- The production Auth BFF (`/auth/production/*`) uses Secure, HttpOnly access
+  and refresh cookies, a double-submit CSRF token for writes, password reset
+  initiation, password update, session refresh/logout, and the Supabase TOTP
+  enrollment/challenge/verification sequence. It deliberately has no route
+  that returns an access token to browser JavaScript.
+- An owner or administrator must have an `aal2` (MFA-verified) token before
+  administering workspaces. Initial firm creation is intentionally allowed at
+  `aal1` so a new user can create the firm before completing MFA enrolment.
+- `HAKISCRIBE_PRODUCTION_AUTH=false` preserves the existing demo workflow.
+  When it is set to `true`, production routes require a Supabase bearer token;
+  browser CORS is deny-by-default until `HAKISCRIBE_ALLOWED_ORIGINS` is set.
+
+This foundation does **not** yet move the legacy UI, WebSocket streams,
+background detection jobs, object storage, exports, connectors, or old records
+onto those controls. Do not enable real legal-data onboarding until each route
+and data path has been migrated and the release gates above are evidenced.
+
+## Safe enablement sequence
+
+1. Create a separate Supabase production project. Apply
+   `hakiscribe-backend/migrations/001_tenant_security.sql` there via the
+   Supabase CLI or SQL editor, then verify the tables and RLS policies.
+2. Configure Supabase Auth: verified-email sign-up, reset-email redirect URLs,
+   password policy, TOTP MFA, recovery-code policy, and appropriate rate
+   limits. Put only the anon/publishable key in the frontend; keep the service
+   role key in the backend secret store.
+3. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, and exact
+   `HAKISCRIBE_ALLOWED_ORIGINS` on the backend. Set
+   `HAKISCRIBE_PASSWORD_RESET_URL` to the exact public reset page and add it
+   under Supabase Auth redirect URLs. Set
+   `HAKISCRIBE_PRODUCTION_AUTH=true` only in that production environment.
+4. Run cross-firm negative tests before deployment: a member of Firm A must be
+   unable to list, retrieve, append a record to, or alter a Firm B session;
+   the same must hold for restricted matters inside a firm.
+5. Migrate the frontend endpoint-by-endpoint from the demo API to the
+   production API, then remove the demo routes and seed credentials from the
+   production deployment.
 
 ## Decisions required from HakiChain
 

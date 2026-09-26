@@ -106,6 +106,17 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+create or replace function public.haki_workspace_administrator(org uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.haki_memberships m
+    where m.organisation_id = org
+      and m.user_id = auth.uid()
+      and m.status = 'active'
+      and m.role in ('owner', 'admin')
+  );
+$$;
+
 create or replace function public.haki_can_access_session(target_session uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
@@ -132,10 +143,14 @@ alter table public.haki_audit_events enable row level security;
 create policy "profile self" on public.haki_profiles for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "organisation member read" on public.haki_organisations for select using (public.haki_active_member(id));
 create policy "membership member read" on public.haki_memberships for select using (public.haki_active_member(organisation_id));
-create policy "workspace member" on public.haki_workspaces for all using (public.haki_active_member(organisation_id)) with check (public.haki_active_member(organisation_id));
+create policy "workspace member read" on public.haki_workspaces for select using (public.haki_active_member(organisation_id));
+create policy "workspace administrator write" on public.haki_workspaces for insert with check (public.haki_workspace_administrator(organisation_id));
+create policy "workspace administrator update" on public.haki_workspaces for update using (public.haki_workspace_administrator(organisation_id)) with check (public.haki_workspace_administrator(organisation_id));
+create policy "workspace administrator delete" on public.haki_workspaces for delete using (public.haki_workspace_administrator(organisation_id));
 create policy "matter member" on public.haki_matters for select using (public.haki_active_member(organisation_id) and exists (select 1 from public.haki_matter_memberships mm where mm.matter_id = id and mm.user_id = auth.uid()));
 create policy "session access" on public.haki_sessions for all using (public.haki_can_access_session(id)) with check (public.haki_active_member(organisation_id) and created_by = auth.uid());
-create policy "session record access" on public.haki_session_records for all using (public.haki_can_access_session(session_id)) with check (public.haki_can_access_session(session_id) and created_by = auth.uid());
+create policy "session record read" on public.haki_session_records for select using (public.haki_can_access_session(session_id));
+create policy "session record append" on public.haki_session_records for insert with check (public.haki_can_access_session(session_id) and created_by = auth.uid());
 create policy "audit member read" on public.haki_audit_events for select using (organisation_id is not null and public.haki_active_member(organisation_id));
 
 -- Service-role background workers may bypass RLS only after they have verified
