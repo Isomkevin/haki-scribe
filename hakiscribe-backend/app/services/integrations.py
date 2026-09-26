@@ -808,6 +808,41 @@ async def _verify_openrouter(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _nim_base(value: Any) -> str:
+    base = str(value or "").strip().rstrip("/")
+    if not base:
+        return ""
+    for suffix in ("/chat/completions", "/audio/transcriptions"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+    return base.rstrip("/")
+
+
+async def _verify_nvidia_nim(creds: dict[str, Any]) -> dict[str, Any]:
+    llm = _nim_base(creds.get("llm_endpoint"))
+    asr = _nim_base(creds.get("asr_endpoint"))
+    if not llm and not asr:
+        return {"ok": False, "error": "Add at least one NVIDIA NIM endpoint URL."}
+    key = str(creds.get("api_key") or "").strip()
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    errors: list[str] = []
+    for label, base in (("Language model", llm), ("Speech-to-text", asr)):
+        if not base:
+            continue
+        url = base if base.endswith("/v1") else f"{base}/v1"
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                resp = await client.get(f"{url}/models", headers=headers)
+            if resp.status_code >= 400:
+                errors.append(f"{label} endpoint returned {resp.status_code}: {resp.text[:120]}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{label} endpoint could not be reached: {exc}")
+    if errors:
+        return {"ok": False, "error": " ".join(errors)}
+    return {"ok": True, "error": None}
+
+
+
 def _tiny_silent_wav() -> bytes:
     """Minimal WAV used only to probe whether an Intron API key is accepted."""
     import struct
