@@ -647,6 +647,7 @@ function OmiProviderCard({
   onOpen,
   onDisconnect,
   isDisconnecting,
+  view,
 }: {
   provider: Integration;
   status?: OmiStatus | undefined;
@@ -656,9 +657,12 @@ function OmiProviderCard({
   onOpen: () => void;
   onDisconnect: () => void;
   isDisconnecting: boolean;
+  view: ConnectorView;
 }) {
   const linked = provider.connected || Boolean(status?.connected ?? status?.linked);
   const masked = status?.masked_uid || provider.masked_creds?.['uid'];
+  const [open, setOpen] = useState(false);
+  const toggleId = `connector-${provider.provider_id}`;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const importer = useMutation({
@@ -675,67 +679,110 @@ function OmiProviderCard({
     onError: (error) => toast.error(friendlyErrorMessage(error)),
   });
 
+  const badge = (
+    <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
+  );
+  const shortStatus = linked
+    ? status?.app_linked
+      ? "Omi app linked — transcripts arrive live."
+      : "Developer key only — live transcription needs the Omi app link."
+    : "Install the Miniapp once, then speak — sessions appear on the desk.";
+  const actions = (
+    <>
+      <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
+        <Link2 className="mr-2 size-3.5" />
+        {linked ? "Setup" : "Connect"}
+      </Button>
+      <Button asChild size="sm" variant="ghost">
+        <Link to="/omi">Setup guide</Link>
+      </Button>
+      {linked ? (
+        <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
+          Check again
+        </Button>
+      ) : null}
+      {status?.api_key_connected ? (
+        <Button variant="outline" size="sm" onClick={() => importer.mutate()} disabled={importer.isPending}>
+          {importer.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+          Import from Omi
+        </Button>
+      ) : null}
+      {linked ? (
+        <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
+          {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
+          Disconnect
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-serif text-base font-semibold">
-            <Headphones className="size-4 text-primary" />
-            {provider.name}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
+      {view === "list" ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-2 font-serif text-sm font-semibold sm:text-base">
+              <Headphones className="size-4 shrink-0 text-primary" />
+              <span className="min-w-0 truncate">{provider.name}</span>
+              {badge}
+            </p>
+            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{provider.what_it_does}</p>
+            <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{shortStatus}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{actions}</div>
         </div>
-        <HealthBadge health={linked && health.health === "not_connected" ? "unchecked" : health.health} checking={checking} />
-      </div>
-
-      {provider.capabilities.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {provider.capabilities.map((cap) => (
-            <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
-              {cap}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {linked && masked ? (
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          {status?.app_linked ? `Omi app linked (${masked})` : "Developer key only — live transcription needs the Omi app link"}
-          {status?.api_key_connected ? " · developer key saved" : ""}
-          {status?.last_activity_at
-            ? ` · last activity ${new Date(status.last_activity_at).toLocaleString("en-KE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-            : ""}
-        </p>
       ) : (
-        <p className="mt-3 text-[11px] text-muted-foreground">Install the Miniapp once, then speak — sessions appear on the desk.</p>
+        <>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-serif text-base font-semibold">
+                <Headphones className="size-4 shrink-0 text-primary" />
+                {provider.name}
+              </p>
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{provider.what_it_does}</p>
+              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">{shortStatus}</p>
+            </div>
+            {badge}
+          </div>
+          <div className="mt-auto flex flex-wrap gap-2 pt-4">{actions}</div>
+        </>
       )}
 
-      <div className="mt-auto flex flex-wrap gap-2 pt-4">
-        <Button size="sm" variant={linked ? "outline" : "default"} onClick={onOpen}>
-          <Link2 className="mr-2 size-3.5" />
-          {linked ? "Setup" : "Connect"}
-        </Button>
-        <Button asChild size="sm" variant="ghost">
-          <Link to="/omi">Setup guide</Link>
-        </Button>
-        {linked ? (
-          <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
-            Check again
-          </Button>
+      <Details open={open} id={toggleId}>
+        {provider.capabilities.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {provider.capabilities.map((cap) => (
+              <span key={cap} className="rounded-md border border-border/70 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+                {cap}
+              </span>
+            ))}
+          </div>
         ) : null}
-        {status?.api_key_connected ? (
-          <Button variant="outline" size="sm" onClick={() => importer.mutate()} disabled={importer.isPending}>
-            {importer.isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-            Import from Omi
-          </Button>
+        {linked && masked ? (
+          <p className="text-[11px] text-muted-foreground">
+            Linked to Omi uid <span className="font-mono">{masked}</span>.
+          </p>
         ) : null}
-        {linked ? (
-          <Button variant="outline" size="sm" onClick={onDisconnect} disabled={isDisconnecting}>
-            {isDisconnecting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Unplug className="mr-2 size-3.5" />}
-            Disconnect
-          </Button>
+        {status?.last_activity_at ? (
+          <p className="text-[11px] text-muted-foreground">
+            Last Omi activity{" "}
+            {new Date(status.last_activity_at).toLocaleString("en-KE", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            .
+          </p>
         ) : null}
-      </div>
+        <p className="text-[11px] leading-5 text-muted-foreground">
+          {status?.api_key_connected
+            ? "A developer key is saved, so finished Omi conversations can be imported. The Omi app link is what streams live transcripts."
+            : "Add a developer key on the Omi setup screen to import finished conversations; the app link streams live transcripts."}
+        </p>
+      </Details>
+
+      <ShowMoreToggle open={open} onToggle={() => setOpen((prev) => !prev)} id={toggleId} name={provider.name} />
     </div>
   );
 }
