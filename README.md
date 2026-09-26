@@ -232,6 +232,7 @@ Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: 
 |---|---|
 | [`README.md`](./README.md) (this file) | Product story, routes, stack, local run |
 | [`PRODUCT_GUIDE.md`](./PRODUCT_GUIDE.md) | Complete product capabilities, safeguards, dependencies, and implementation roadmap |
+| [`PRODUCTION_READINESS.md`](./PRODUCTION_READINESS.md) | Multi-tenancy, identity, MFA, password reset, and real-world deployment plan |
 | [`hakiscribe-backend/README.md`](./hakiscribe-backend/README.md) | API runbook, auth, Omi Miniapp, demo HTTP path |
 | [`src/routes/README.md`](./src/routes/README.md) | TanStack file-based routing conventions |
 | [`SPEC.md`](./SPEC.md) | Architecture, data model, API contract |
