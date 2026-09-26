@@ -174,7 +174,10 @@ async def detect(detail):
     }
     trigger_output = await trigger_client.trigger_and_wait("detect-actions", payload, timeout_s=180.0)
     if trigger_output is not None:
-        return [DetectedAction(**item) for item in trigger_output]
+        trigger_output = _unwrap_trigger_output(trigger_output)
+        if isinstance(trigger_output, list) and all(isinstance(item, dict) for item in trigger_output):
+            return [DetectedAction(**item) for item in trigger_output]
+        logger.error("Trigger detect-actions returned an invalid result shape; falling back in-process")
     return await action_detector.detect_actions(
         detail.id,
         detail.transcript,
@@ -194,18 +197,36 @@ def _trigger_result_error(action: DetectedAction, message: str) -> ActionResult:
     )
 
 
+def _unwrap_trigger_output(payload: Any) -> Any:
+    """Unwrap JSON envelopes returned by Trigger's run API.
+
+    Trigger serializes a task's JSON return value as ``{"json": ...}`` on
+    some API versions.  The task's actual result is the array inside that
+    envelope, not an ActionResult-shaped object itself.
+    """
+    for _ in range(3):
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return payload
+        if not isinstance(payload, dict):
+            return payload
+        for key in ("json", "results", "output", "data"):
+            if key in payload:
+                payload = payload[key]
+                break
+        else:
+            return payload
+    return payload
+
+
 def _normalise_trigger_results(trigger_output: Any, actions: list[DetectedAction]) -> list[ActionResult]:
     """Convert Trigger's JSON/object result variants into ActionResult models."""
-    payload = trigger_output
+    payload = _unwrap_trigger_output(trigger_output)
     if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except json.JSONDecodeError:
-            logger.error("Trigger generate-actions returned a non-JSON string result")
-            payload = []
-
-    if isinstance(payload, dict):
-        payload = payload.get("results", payload.get("output", [payload]))
+        logger.error("Trigger generate-actions returned a non-JSON string result")
+        payload = []
 
     if not isinstance(payload, list):
         logger.error(

@@ -27,22 +27,24 @@ class TriggerResultNormalisationTests(unittest.IsolatedAsyncioTestCase):
                 confidence=1,
             ),
         ]
-        raw = [
-            {
-                "action_id": str(actions[0].id),
-                "type": "private_note",
-                "status": "success",
-                "result": {"note_text": "Follow up Friday"},
-            },
-            json.dumps(
+        raw = {
+            "json": [
                 {
-                    "action_id": str(actions[1].id),
-                    "type": "time_entry",
+                    "action_id": str(actions[0].id),
+                    "type": "private_note",
                     "status": "success",
-                    "result": {"duration_hours": 0.5},
-                }
-            ),
-        ]
+                    "result": {"note_text": "Follow up Friday"},
+                },
+                json.dumps(
+                    {
+                        "action_id": str(actions[1].id),
+                        "type": "time_entry",
+                        "status": "success",
+                        "result": {"duration_hours": 0.5},
+                    }
+                ),
+            ]
+        }
 
         with patch(
             "app.services.demo_library.trigger_client.trigger_and_wait",
