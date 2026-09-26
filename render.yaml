@@ -37,6 +37,12 @@ services:
         value: openai/gpt-4o
       - key: DRAFTING_MODEL
         value: openai/gpt-4o
+      - key: LIGHTWEIGHT_MODEL
+        value: openrouter/auto
+      - key: LIGHTWEIGHT_FALLBACK_MODEL
+        value: openai/gpt-4o-mini
+      - key: AUTO_ROUTER_COST_QUALITY_TRADEOFF
+        value: "7"
       - key: ASK_MODEL
         value: openai/gpt-4o
       # Dashboard-only (do not add as sync: false — that makes them

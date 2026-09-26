@@ -50,7 +50,7 @@ def llm_model() -> str:
     return _setting("llm_model", "NVIDIA_NIM_LLM_MODEL") or "meta/llama-3.1-8b-instruct"
 
 
-async def complete(system_prompt: str, user_prompt: str, *, timeout_s: float = 60.0) -> str | None:
+async def complete(system_prompt: str, user_prompt: str, *, model: str | None = None, task: str = "generation", timeout_s: float = 60.0) -> str | None:
     url = llm_endpoint()
     if not url:
         raise RuntimeError("NVIDIA_NIM_LLM_ENDPOINT is not configured")
@@ -59,7 +59,7 @@ async def complete(system_prompt: str, user_prompt: str, *, timeout_s: float = 6
             url,
             headers=headers(),
             json={
-                "model": llm_model(),
+                "model": model or llm_model(),
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -68,7 +68,10 @@ async def complete(system_prompt: str, user_prompt: str, *, timeout_s: float = 6
         )
         response.raise_for_status()
         body = response.json()
-    return (body["choices"][0]["message"]["content"] or "").strip() or None
+    text = (body["choices"][0]["message"]["content"] or "").strip() or None
+    from app.services import llm_usage
+    llm_usage.record(task=task, model=model or llm_model(), provider="nvidia_nim", prompt=user_prompt, response=text, usage=body.get("usage"))
+    return text
 
 
 async def _ping(url: str | None) -> dict[str, Any]:

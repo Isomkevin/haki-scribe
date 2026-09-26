@@ -350,7 +350,7 @@ async def detect_actions(
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim
-            content = await nvidia_nim.complete(DETECTION_SYSTEM_PROMPT, user_content)
+            content = await nvidia_nim.complete(DETECTION_SYSTEM_PROMPT, user_content, task="detection")
             actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(content or ""))
             if actions:
                 return _stamp_mode(actions, "model")
@@ -373,7 +373,10 @@ async def detect_actions(
                     },
                 )
                 response.raise_for_status()
-                content = response.json()["choices"][0]["message"]["content"]
+                body = response.json()
+                content = body["choices"][0]["message"]["content"]
+                from app.services import llm_usage
+                llm_usage.record(task="detection", model=DETECTION_MODEL, provider="openrouter", prompt=user_content, response=content, usage=body.get("usage"))
 
             actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(content))
             if actions:

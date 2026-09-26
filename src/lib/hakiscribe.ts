@@ -450,6 +450,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface LlmUsageSummary {
+  window: string;
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_requests: number;
+  by_task: Record<string, { requests: number; prompt_tokens: number; completion_tokens: number; total_tokens: number }>;
+  models: Record<string, number>;
+}
+
 function csrfHeader(): Record<string, string> {
   if (typeof document === "undefined") return {};
   const token = document.cookie
@@ -560,6 +571,7 @@ export const hakiApi = {
   updateContact: (id: string, body: ContactUpdate) =>
     request<Contact>(`/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
+  usage: () => request<LlmUsageSummary>("/usage"),
   listIntegrations: () => request<Integration[]>("/integrations"),
   omiStatus: () => request<OmiStatus>("/integrations/omi/status"),
   omiImport: (limit = 10) =>

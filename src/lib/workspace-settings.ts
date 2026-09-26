@@ -1,6 +1,6 @@
 import type { SessionSource } from "@/lib/hakiscribe";
 
-export const SETTINGS_SECTIONS = ["profile", "workspace", "security", "connectors", "about"] as const;
+export const SETTINGS_SECTIONS = ["profile", "workspace", "usage", "security", "connectors", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const PRACTICE_ROLES = [

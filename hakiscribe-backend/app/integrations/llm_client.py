@@ -97,5 +97,9 @@ async def complete(
             },
         )
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        return (content or "").strip() or None
+        body = response.json()
+        content = body["choices"][0]["message"]["content"]
+        text = (content or "").strip() or None
+        from app.services import llm_usage
+        llm_usage.record(task="ask", model=model or default_model(), provider="openrouter", prompt=user_prompt, response=text, usage=body.get("usage"))
+        return text

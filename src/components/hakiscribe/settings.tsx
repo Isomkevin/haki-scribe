@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BriefcaseBusiness,
+  ChartNoAxesCombined,
   History,
   Info,
   KeyRound,
@@ -29,6 +30,7 @@ import {
   productionAuthEnabled,
   productionTenancyApi,
   type Integration,
+  type LlmUsageSummary,
   type Session,
   type SessionSource,
 } from "@/lib/hakiscribe";
@@ -52,6 +54,7 @@ import { TrustLine } from "./brand";
 const NAV: { id: SettingsSection; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "workspace", label: "Workspace", icon: BriefcaseBusiness },
+  { id: "usage", label: "AI usage", icon: ChartNoAxesCombined },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "connectors", label: "Connectors", icon: Plug },
   { id: "about", label: "About", icon: Info },
@@ -97,6 +100,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
 
           {section === "profile" && <ProfileSection />}
           {section === "workspace" && <WorkspaceSection />}
+          {section === "usage" && <UsageSection />}
           {section === "security" && <SecuritySection />}
           {section === "connectors" && <ConnectorsSection />}
           {section === "about" && <AboutSection />}
@@ -105,6 +109,37 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
       <WorkspaceFooter />
     </PageShell>
   );
+}
+
+function UsageSection() {
+  const usage = useQuery({ queryKey: ["llm-usage"], queryFn: hakiApi.usage, enabled: hasApiConfiguration, retry: false });
+  const data: LlmUsageSummary | undefined = usage.data;
+  const number = new Intl.NumberFormat();
+  return (
+    <section>
+      <SectionIntro eyebrow="AI usage" title="Token use and model routing" copy="Counts are recorded by this backend process. OpenRouter supplies exact usage when available; otherwise HakiScribe labels the estimate." />
+      {usage.isLoading ? <p className="text-sm text-muted-foreground">Loading usage…</p> : null}
+      {usage.isError ? <p className="text-sm text-muted-foreground">Usage data is unavailable until the backend is reachable.</p> : null}
+      {data ? <>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <UsageCard label="Requests" value={number.format(data.requests)} />
+          <UsageCard label="Input tokens" value={number.format(data.prompt_tokens)} />
+          <UsageCard label="Output tokens" value={number.format(data.completion_tokens)} />
+        </div>
+        <div className="mt-6 rounded-xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-sm font-semibold">By task</p>
+          <div className="mt-3 space-y-2 text-sm">
+            {Object.entries(data.by_task).length ? Object.entries(data.by_task).map(([task, item]) => <div key={task} className="flex justify-between gap-4"><span className="capitalize text-muted-foreground">{task.replaceAll("_", " ")} · {item.requests} requests</span><span>{number.format(item.total_tokens)} tokens</span></div>) : <p className="text-muted-foreground">No model requests have been recorded since this process started.</p>}
+          </div>
+          {data.estimated_requests ? <p className="mt-4 text-xs text-muted-foreground">{data.estimated_requests} request{data.estimated_requests === 1 ? "" : "s"} used a character-based estimate because the provider did not return token usage.</p> : null}
+        </div>
+      </> : null}
+    </section>
+  );
+}
+
+function UsageCard({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>;
 }
 
 function useStoredSettings() {

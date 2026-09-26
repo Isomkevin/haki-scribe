@@ -79,6 +79,7 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
 
     to_run: list[DetectedAction] = []
     results: list[ActionResult] = []
+    completed = {item.action_id: item for item in storage.get_action_results(session_id) if item.status == "success"}
     for action_id in payload.action_ids:
         action = storage.get_action(session_id, action_id)
         if action is None:
@@ -89,6 +90,9 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
         overrides = payload.field_overrides.get(str(action_id), {})
         if overrides:
             action = storage.update_action_fields(session_id, action_id, overrides) or action
+        elif action_id in completed:
+            results.append(completed[action_id])
+            continue
         to_run.append(action)
 
     if to_run:

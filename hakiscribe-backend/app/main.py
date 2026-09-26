@@ -163,6 +163,13 @@ async def health():
     }
 
 
+@app.get("/usage")
+def usage():
+    """Recent model requests for the workspace cost dashboard."""
+    from app.services import llm_usage
+    return llm_usage.dashboard()
+
+
 @app.get("/models")
 def models():
     """Model picker for the 'Ask anything about this session' composer.

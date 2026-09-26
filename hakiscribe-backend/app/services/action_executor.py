@@ -29,6 +29,8 @@ from app.models.schemas import (
 )
 from app.services import generation, integrations, storage, workspace
 
+_inflight_actions: dict[str, asyncio.Task[ActionResult]] = {}
+
 RESEARCH_SYSTEM_PROMPT = (
     "You are a Kenyan advocate's research assistant. Answer the question using ONLY "
     "the retrieved sources supplied below. Cite the source number inline like [1]. "
@@ -308,7 +310,7 @@ async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegme
     return LlmTaskResult(model=model, instruction=instruction, output=output).model_dump()
 
 
-async def execute_action(
+async def _execute_action(
     action: DetectedAction,
     transcript: list[TranscriptSegment] | None = None,
 ) -> ActionResult:
@@ -337,6 +339,23 @@ async def execute_action(
         return ActionResult(action_id=action.id, type=action.type, status="success", result=result)
     except Exception as exc:  # noqa: BLE001 — surface any failure per-action, not as a 500
         return ActionResult(action_id=action.id, type=action.type, status="error", result={}, error=str(exc))
+
+
+async def execute_action(
+    action: DetectedAction,
+    transcript: list[TranscriptSegment] | None = None,
+) -> ActionResult:
+    """Coalesce duplicate clicks and durable-worker retries for one action."""
+    key = str(action.id)
+    task = _inflight_actions.get(key)
+    if task is None:
+        task = asyncio.create_task(_execute_action(action, transcript=transcript))
+        _inflight_actions[key] = task
+    try:
+        return await task
+    finally:
+        if task.done() and _inflight_actions.get(key) is task:
+            _inflight_actions.pop(key, None)
 
 
 async def execute_actions(

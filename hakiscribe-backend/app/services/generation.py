@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DRAFTING_MODEL = os.environ.get("DRAFTING_MODEL", "openai/gpt-4o")
+LIGHTWEIGHT_MODEL = os.environ.get("LIGHTWEIGHT_MODEL", "openrouter/auto")
+LIGHTWEIGHT_FALLBACK_MODEL = os.environ.get("LIGHTWEIGHT_FALLBACK_MODEL", "openai/gpt-4o-mini")
+AUTO_ROUTER_COST_QUALITY_TRADEOFF = int(os.environ.get("AUTO_ROUTER_COST_QUALITY_TRADEOFF", "7"))
 
 
 def usable_transcript(transcript: list[TranscriptSegment] | None) -> list[TranscriptSegment]:
@@ -71,33 +74,45 @@ def _duration_hours(transcript: list[TranscriptSegment] | None, fallback: float 
     return round(hours, 2)
 
 
-async def complete_text(system_prompt: str, user_prompt: str, provider: str | None = None) -> str | None:
+async def complete_text(system_prompt: str, user_prompt: str, provider: str | None = None, *, task: str = "draft") -> str | None:
+    """Keep legal drafts premium; route bounded utility copy to a cheaper model."""
+    model = DRAFTING_MODEL if task == "draft" else LIGHTWEIGHT_MODEL
     selected_provider = (provider or os.environ.get("LLM_PROVIDER", "openrouter")).lower()
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim
-            return await nvidia_nim.complete(system_prompt, user_prompt)
+            return await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
         except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
             logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
     api_key = llm_client.api_key()
     if not api_key:
         return None
     try:
+        payload: dict = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        if model == "openrouter/auto":
+            # Keep low-stakes prose economical without sending legal drafting
+            # through a changing router. The fixed fallback protects availability.
+            payload["models"] = ["openrouter/auto", LIGHTWEIGHT_FALLBACK_MODEL]
+            payload["plugins"] = [{"id": "auto-router", "cost_quality_tradeoff": max(0, min(10, AUTO_ROUTER_COST_QUALITY_TRADEOFF))}]
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 OPENROUTER_URL,
                 headers={"Authorization": f"Bearer {api_key}", **openrouter_headers()},
-                json={
-                    "model": DRAFTING_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                },
+                json=payload,
             )
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
-            return (content or "").strip() or None
+            body = response.json()
+            content = body["choices"][0]["message"]["content"]
+            text = (content or "").strip() or None
+            from app.services import llm_usage
+            llm_usage.record(task=task, model=str(body.get("model") or model), provider="openrouter", prompt=user_prompt, response=text, usage=body.get("usage"))
+            return text
     except Exception:  # noqa: BLE001 — fall back to transcript-composed text
         return None
 
@@ -148,7 +163,7 @@ class DraftDocumentModel:
             f"Verified (non-redacted) transcript:\n{record or '(no non-redacted lines)'}\n\n"
             "Draft the complete document now."
         )
-        document_text = await complete_text(self.SYSTEM_PROMPT, prompt)
+        document_text = await complete_text(self.SYSTEM_PROMPT, prompt, task="draft")
         if not document_text or len(document_text) < 400:
             document_text = documents.compose_document(kind, action, transcript)
         document_text += documents.compliance_footer(kind)
@@ -178,6 +193,7 @@ class CalendarEventModel:
         description = await complete_text(
             self.SYSTEM_PROMPT,
             f"Event title: {title}\nPreview: {action.preview}\n\nTranscript:\n{record or action.preview}",
+            task="calendar",
         )
         if not description:
             who = f" Attendees on the record: {', '.join(attendees)}." if attendees else ""
@@ -261,6 +277,7 @@ class TimeEntryModel:
             self.SYSTEM_PROMPT,
             f"Matter: {matter_name or 'unspecified'}\nDuration hours: {hours}\n"
             f"Activity: {seed}\n\nTranscript:\n{record or seed}",
+            task="time_entry",
         )
         if not narrative:
             speakers = speakers_from_transcript(transcript)

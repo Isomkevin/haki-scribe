@@ -60,10 +60,15 @@ async def generate_actions(session_id: uuid.UUID, payload: GenerateActionsReques
     row = require_session_access(client, session_id, organisation_id, user.id)
     detail = session_detail(client, row)
     actions = {item.id: item for item in detail.detected_actions}
-    selected = [actions[action_id] for action_id in payload.action_ids if action_id in actions]
-    if not selected:
+    completed = {item.action_id: item for item in detail.action_results if item.status == "success"}
+    reused = [completed[action_id] for action_id in payload.action_ids if action_id in completed and not payload.field_overrides.get(str(action_id))]
+    selected = [
+        actions[action_id] for action_id in payload.action_ids
+        if action_id in actions and (action_id not in completed or payload.field_overrides.get(str(action_id)))
+    ]
+    if not selected and not reused:
         raise HTTPException(status_code=400, detail="Select at least one available action")
-    results = await action_executor.execute_actions(selected, transcript=detail.transcript)
+    results = [*reused, *await action_executor.execute_actions(selected, transcript=detail.transcript)]
     for result in results:
         append_record(client, session_id, user.id, "result", result.model_dump(mode="json"))
         action = actions[result.action_id]
