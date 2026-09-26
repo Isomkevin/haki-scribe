@@ -748,6 +748,15 @@ function OmiProviderCard({
         </>
       )}
 
+      {provider.connected && health.last_checked_at ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Last checked{" "}
+          {new Date(
+            health.last_checked_at.endsWith("Z") ? health.last_checked_at : `${health.last_checked_at}Z`,
+          ).toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" })}
+        </p>
+      ) : null}
+
       <Details open={open} id={toggleId}>
         <p className="text-[11px] leading-5 text-muted-foreground">{provider.what_it_does}</p>
         {provider.capabilities.length > 0 ? (
@@ -1068,14 +1077,6 @@ function ProviderCard({
             Sign-in is not switched on for this service yet. Add the app credentials on the server, using the redirect
             address <span className="break-all font-mono">{provider.oauth_setup?.redirect_uri}</span>. You can still
             paste a token manually.
-          </p>
-        ) : null}
-        {provider.connected && health.last_checked_at ? (
-          <p className="text-[11px] text-muted-foreground">
-            Last checked{" "}
-            {new Date(
-              health.last_checked_at.endsWith("Z") ? health.last_checked_at : `${health.last_checked_at}Z`,
-            ).toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" })}
           </p>
         ) : null}
         {provider.connected && provider.connected_at ? (
