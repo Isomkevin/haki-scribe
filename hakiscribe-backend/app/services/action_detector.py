@@ -367,6 +367,8 @@ async def detect_actions(
             if actions:
                 return _stamp_mode(actions, "model")
         except Exception as exc:  # noqa: BLE001 — tray still populates from the transcript
+            # OpenRouter credential/access failures (including 403) intentionally
+            # fall through to transcript heuristics below.
             logger.warning("Detection model failed (%s); using transcript heuristics", exc)
 
     return _stamp_mode(

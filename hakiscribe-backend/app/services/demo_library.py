@@ -9,6 +9,7 @@ detect/generate in the background so a page load is not blocked.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import Any
@@ -183,6 +184,72 @@ async def detect(detail):
     )
 
 
+def _trigger_result_error(action: DetectedAction, message: str) -> ActionResult:
+    return ActionResult(
+        action_id=action.id,
+        type=action.type,
+        status="error",
+        result={},
+        error=message,
+    )
+
+
+def _normalise_trigger_results(trigger_output: Any, actions: list[DetectedAction]) -> list[ActionResult]:
+    """Convert Trigger's JSON/object result variants into ActionResult models."""
+    payload = trigger_output
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            logger.error("Trigger generate-actions returned a non-JSON string result")
+            payload = []
+
+    if isinstance(payload, dict):
+        payload = payload.get("results", payload.get("output", [payload]))
+
+    if not isinstance(payload, list):
+        logger.error(
+            "Trigger generate-actions returned %s, expected a result list",
+            type(payload).__name__,
+        )
+        payload = []
+
+    if len(payload) != len(actions):
+        logger.error(
+            "Trigger generate-actions returned %s result(s) for %s action(s)",
+            len(payload),
+            len(actions),
+        )
+
+    results: list[ActionResult] = []
+    for index, action in enumerate(actions):
+        item = payload[index] if index < len(payload) else None
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except json.JSONDecodeError:
+                logger.error("Trigger generate-actions result %s was not valid JSON", index)
+                results.append(_trigger_result_error(action, "Trigger returned a non-JSON result item"))
+                continue
+
+        if not isinstance(item, dict):
+            logger.error(
+                "Trigger generate-actions result %s was %s, expected an object",
+                index,
+                type(item).__name__,
+            )
+            results.append(_trigger_result_error(action, "Trigger returned an invalid result item"))
+            continue
+
+        try:
+            results.append(ActionResult(**item))
+        except Exception as exc:  # Validation errors are shown on that action card.
+            logger.error("Trigger generate-actions result %s was invalid: %s", index, exc)
+            results.append(_trigger_result_error(action, "Trigger returned an invalid action result"))
+
+    return results
+
+
 async def generate(detail, actions):
     payload = {
         "actions": [action.model_dump(mode="json") for action in actions],
@@ -190,7 +257,7 @@ async def generate(detail, actions):
     }
     trigger_output = await trigger_client.trigger_and_wait("generate-actions", payload, timeout_s=240.0)
     if trigger_output is not None:
-        return [ActionResult(**item) for item in trigger_output]
+        return _normalise_trigger_results(trigger_output, actions)
     return await action_executor.execute_actions(actions, transcript=detail.transcript)
 
 
