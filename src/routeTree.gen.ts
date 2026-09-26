@@ -18,6 +18,7 @@ import { Route as OmiRouteImport } from './routes/omi'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrackerRouteImport } from './routes/tracker'
+import { Route as ContactsContactIdRouteImport } from './routes/contacts_.$contactId'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
 import { Route as SessionsSessionIdChatIndexRouteImport } from './routes/sessions_.$sessionId.chat.index'
 import { Route as SessionsSessionIdChatThreadIdRouteImport } from './routes/sessions_.$sessionId.chat.$threadId'
@@ -67,6 +68,11 @@ const TrackerRoute = TrackerRouteImport.update({
   path: '/tracker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContactsContactIdRoute = ContactsContactIdRouteImport.update({
+  id: '/contacts_/$contactId',
+  path: '/contacts/$contactId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   id: '/sessions/$sessionId',
   path: '/sessions/$sessionId',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
+  '/contacts/$contactId': typeof ContactsContactIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/sessions/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
   '/sessions/$sessionId/chat/': typeof SessionsSessionIdChatIndexRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
+  '/contacts/$contactId': typeof ContactsContactIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/sessions/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
   '/sessions/$sessionId/chat': typeof SessionsSessionIdChatIndexRoute
@@ -124,6 +132,7 @@ export interface FileRoutesById {
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
+  '/contacts_/$contactId': typeof ContactsContactIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/sessions_/$sessionId/chat/$threadId': typeof SessionsSessionIdChatThreadIdRoute
   '/sessions_/$sessionId/chat/': typeof SessionsSessionIdChatIndexRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/research'
     | '/settings'
     | '/tracker'
+    | '/contacts/$contactId'
     | '/sessions/$sessionId'
     | '/sessions/$sessionId/chat/$threadId'
     | '/sessions/$sessionId/chat/'
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
     | '/research'
     | '/settings'
     | '/tracker'
+    | '/contacts/$contactId'
     | '/sessions/$sessionId'
     | '/sessions/$sessionId/chat/$threadId'
     | '/sessions/$sessionId/chat'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '/research'
     | '/settings'
     | '/tracker'
+    | '/contacts_/$contactId'
     | '/sessions/$sessionId'
     | '/sessions_/$sessionId/chat/$threadId'
     | '/sessions_/$sessionId/chat/'
@@ -183,6 +195,7 @@ export interface RootRouteChildren {
   ResearchRoute: typeof ResearchRoute
   SettingsRoute: typeof SettingsRoute
   TrackerRoute: typeof TrackerRoute
+  ContactsContactIdRoute: typeof ContactsContactIdRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   SessionsSessionIdChatThreadIdRoute: typeof SessionsSessionIdChatThreadIdRoute
   SessionsSessionIdChatIndexRoute: typeof SessionsSessionIdChatIndexRoute
@@ -253,6 +266,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrackerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contacts_/$contactId': {
+      id: '/contacts_/$contactId'
+      path: '/contacts/$contactId'
+      fullPath: '/contacts/$contactId'
+      preLoaderRoute: typeof ContactsContactIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
       path: '/sessions/$sessionId'
@@ -287,6 +307,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResearchRoute: ResearchRoute,
   SettingsRoute: SettingsRoute,
   TrackerRoute: TrackerRoute,
+  ContactsContactIdRoute: ContactsContactIdRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   SessionsSessionIdChatThreadIdRoute: SessionsSessionIdChatThreadIdRoute,
   SessionsSessionIdChatIndexRoute: SessionsSessionIdChatIndexRoute,

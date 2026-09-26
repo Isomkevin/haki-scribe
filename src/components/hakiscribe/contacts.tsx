@@ -268,7 +268,7 @@ export function ContactsPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Contacts</p>
           <h1 className="mt-2 font-serif text-3xl font-semibold leading-tight sm:text-4xl">Everyone across your matters</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Clients, witnesses, counsel and counterparts gathered from every session, with their details and the matter they belong to.
+            Clients, witnesses, counsel and counterparts gathered from every session. Anyone named as a speaker in a mic or Omi recording is added automatically; open a person to see their full record or edit their details.
           </p>
         </header>
         <ContactDirectory quickAdd />
