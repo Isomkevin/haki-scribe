@@ -126,7 +126,7 @@ export function ContactDirectory({ quickAdd = false }: { quickAdd?: boolean }) {
   );
 }
 
-function ContactCard({ contact, matter }: { contact: Contact; matter?: Matter }) {
+function ContactCard({ contact, matter }: { contact: Contact; matter?: Matter | undefined }) {
   const role = field(contact, "role", "title");
   const email = field(contact, "email");
   const phone = field(contact, "phone", "phone_number");
@@ -194,10 +194,10 @@ function QuickAdd({ matters }: { matters: Matter[] }) {
   const add = useMutation({
     mutationFn: () => {
       const updates: Record<string, unknown> = { source: "contacts_directory" };
-      if (role.trim()) updates.role = role.trim();
-      if (email.trim()) updates.email = email.trim();
-      if (phone.trim()) updates.phone = phone.trim();
-      return hakiApi.createContact({ name: name.trim(), updates, matter_id: matterId === NONE ? undefined : matterId });
+      if (role.trim()) updates["role"] = role.trim();
+      if (email.trim()) updates["email"] = email.trim();
+      if (phone.trim()) updates["phone"] = phone.trim();
+      return hakiApi.createContact(matterId === NONE ? { name: name.trim(), updates } : { name: name.trim(), updates, matter_id: matterId });
     },
     onSuccess: () => {
       toast.success(`${name.trim()} added`);
