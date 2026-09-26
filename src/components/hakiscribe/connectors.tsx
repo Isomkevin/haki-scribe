@@ -782,6 +782,7 @@ function ProviderCard({
   isConnecting: boolean;
   isDisconnecting: boolean;
 }) {
+  const isAmbiguous = provider.provider_id === "ambiguous";
   const signInLabel = provider.oauth
     ? provider.provider_id === "dropbox"
       ? "Sign in with Dropbox"
@@ -833,7 +834,17 @@ function ProviderCard({
 
       {provider.connected && provider.source === "workspace" ? (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Using the workspace {provider.name} key from server config. Ask routes through this connector.
+          {isAmbiguous
+            ? "Using the workspace Ambiguous AI key from server config. Generated documents, dates, matters, contacts, and review pings can be mirrored to your workspace."
+            : provider.group === "ai"
+              ? `Using the workspace ${provider.name} key from server config. Ask routes through this connector.`
+              : `Using the workspace ${provider.name} key from server config.`}
+        </p>
+      ) : null}
+      {isAmbiguous ? (
+        <p className="mt-3 rounded-md border border-border bg-muted/30 p-2 text-[11px] leading-5 text-muted-foreground">
+          HakiScribe sends only generated, reviewed artifacts to Ambiguous — never the raw transcript. Documents go to Docs,
+          dates to Calendar, matters and contacts to CRM, and completion notices to Chat when a channel is configured.
         </p>
       ) : null}
       {provider.connected && provider.account ? (
