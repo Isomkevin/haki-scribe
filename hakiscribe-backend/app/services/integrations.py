@@ -1455,4 +1455,8 @@ def connected_llm_models() -> list[dict[str, str]]:
                 add(mid, f"{mid} ({label} · OpenRouter)")
     if get_connection("claude_custom"):
         add("claude_custom:gpt-4o", "Custom endpoint (your key)")
+    nim = get_creds("nvidia_nim") or {}
+    if nim.get("llm_endpoint"):
+        nim_model = str(nim.get("llm_model") or "").strip() or "meta/llama-3.1-8b-instruct"
+        add(f"nvidia_nim:{nim_model}", f"{nim_model} · NVIDIA NIM")
     return models
