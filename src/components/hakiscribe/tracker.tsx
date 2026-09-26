@@ -9,6 +9,7 @@ import { filterDemoSessions } from "@/lib/demo-mode";
 import { hakiApi, friendlyErrorMessage, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
+import { ContactDirectory } from "./contacts";
 
 const REFRESH_MS = 20_000;
 
@@ -176,7 +177,18 @@ export function TrackerPage() {
             <TabsTrigger value="sessions">Sessions</TabsTrigger>
             <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
             <TabsTrigger value="diary">Diary ({upcoming.length})</TabsTrigger>
+            <TabsTrigger value="contacts">Contacts</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="contacts">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+              <SectionHeading eyebrow="People" title="Contacts across matters" />
+              <Button asChild variant="outline" size="sm">
+                <Link to="/contacts">Open contacts directory</Link>
+              </Button>
+            </div>
+            <ContactDirectory />
+          </TabsContent>
 
           <TabsContent value="documents">
             <SectionHeading eyebrow="Artifacts" title="Generated documents" />
