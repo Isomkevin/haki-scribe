@@ -16,7 +16,7 @@ import { PageShell, WorkspaceFooter } from "./shell";
 const ALL = "__all";
 const NONE = "__none";
 
-function field(contact: Contact, ...keys: string[]): string | null {
+export function field(contact: Contact, ...keys: string[]): string | null {
   for (const key of keys) {
     const value = contact.updates?.[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -140,7 +140,13 @@ function ContactCard({ contact, matter }: { contact: Contact; matter?: Matter | 
           <UserRound className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-serif text-base font-semibold">{contact.name}</p>
+          <Link
+            to="/contacts/$contactId"
+            params={{ contactId: contact.id }}
+            className="block truncate font-serif text-base font-semibold underline-offset-4 hover:text-primary hover:underline"
+          >
+            {contact.name}
+          </Link>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {role ? <Badge variant="secondary" className="text-[11px] capitalize">{role}</Badge> : null}
             {org ? <Badge variant="outline" className="text-[11px]">{org}</Badge> : null}
@@ -174,6 +180,9 @@ function ContactCard({ contact, matter }: { contact: Contact; matter?: Matter | 
         ) : (
           <span className="text-muted-foreground">Not linked</span>
         )}
+        <Link to="/contacts/$contactId" params={{ contactId: contact.id }} className="ml-auto font-medium text-primary underline-offset-4 hover:underline">
+          Open profile{(contact.session_ids?.length ?? 0) > 0 ? ` · ${contact.session_ids!.length} session${contact.session_ids!.length === 1 ? "" : "s"}` : ""}
+        </Link>
         {!matter && sessionId ? (
           <Link to="/sessions/$sessionId" params={{ sessionId }} search={{ fresh: false }} className="text-primary underline-offset-4 hover:underline">
             Open session
@@ -191,19 +200,25 @@ function QuickAdd({ matters }: { matters: Matter[] }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [matterId, setMatterId] = useState(NONE);
+  const [sessionId, setSessionId] = useState(NONE);
+  const sessionsQ = useQuery({ queryKey: ["sessions", "contact-source"], queryFn: () => hakiApi.listSessions({ includeDemo: true }), retry: false });
   const add = useMutation({
     mutationFn: () => {
       const updates: Record<string, unknown> = { source: "contacts_directory" };
       if (role.trim()) updates["role"] = role.trim();
       if (email.trim()) updates["email"] = email.trim();
       if (phone.trim()) updates["phone"] = phone.trim();
-      return hakiApi.createContact(matterId === NONE ? { name: name.trim(), updates } : { name: name.trim(), updates, matter_id: matterId });
+      const body: { name: string; updates: Record<string, unknown>; matter_id?: string; session_id?: string } = { name: name.trim(), updates };
+      if (matterId !== NONE) body.matter_id = matterId;
+      if (sessionId !== NONE) body.session_id = sessionId;
+      return hakiApi.createContact(body);
     },
     onSuccess: () => {
       toast.success(`${name.trim()} added`);
       setName(""); setRole(""); setEmail(""); setPhone("");
       void qc.invalidateQueries({ queryKey: ["contacts"] });
       void qc.invalidateQueries({ queryKey: ["matters"] });
+      void qc.invalidateQueries({ queryKey: ["session"] });
     },
     onError: (e) => toast.error(friendlyErrorMessage(e, "The contact could not be saved.")),
   });
@@ -228,6 +243,16 @@ function QuickAdd({ matters }: { matters: Matter[] }) {
       </div>
       <div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="qa-email">Email</Label><Input id="qa-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
       <div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="qa-phone">Phone</Label><Input id="qa-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+      <div className="grid gap-1.5 sm:col-span-4">
+        <Label>Session source</Label>
+        <Select value={sessionId} onValueChange={setSessionId}>
+          <SelectTrigger aria-label="Session source"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>Not from a session</SelectItem>
+            {(sessionsQ.data ?? []).map((s) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
       <Button type="submit" className="sm:col-span-2" disabled={!name.trim() || add.isPending}>
         <Plus className="size-4" />{add.isPending ? "Saving…" : "Add contact"}
       </Button>
@@ -243,7 +268,7 @@ export function ContactsPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Contacts</p>
           <h1 className="mt-2 font-serif text-3xl font-semibold leading-tight sm:text-4xl">Everyone across your matters</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Clients, witnesses, counsel and counterparts gathered from every session, with their details and the matter they belong to.
+            Clients, witnesses, counsel and counterparts gathered from every session. Anyone named as a speaker in a mic or Omi recording is added automatically; open a person to see their full record or edit their details.
           </p>
         </header>
         <ContactDirectory quickAdd />
