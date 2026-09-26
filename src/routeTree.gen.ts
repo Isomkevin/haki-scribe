@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as OmiRouteImport } from './routes/omi'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const ConnectorsRoute = ConnectorsRouteImport.update({
   id: '/connectors',
   path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactsRoute = ContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -82,6 +88,7 @@ const SessionsSessionIdChatThreadIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connectors'
+    | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connectors'
+    | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/connectors'
+    | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
@@ -164,6 +176,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  ContactsRoute: typeof ContactsRoute
   LoginRoute: typeof LoginRoute
   NewRoute: typeof NewRoute
   OmiRoute: typeof OmiRoute
@@ -189,6 +202,13 @@ declare module '@tanstack/react-router' {
       path: '/connectors'
       fullPath: '/connectors'
       preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contacts': {
+      id: '/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof ContactsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -260,6 +280,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectorsRoute: ConnectorsRoute,
+  ContactsRoute: ContactsRoute,
   LoginRoute: LoginRoute,
   NewRoute: NewRoute,
   OmiRoute: OmiRoute,
