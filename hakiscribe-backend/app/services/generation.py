@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
+import logging
 from datetime import datetime, timedelta
 
 import httpx
@@ -29,6 +30,8 @@ from app.models.schemas import (
 
 from app.integrations import llm_client
 from app.services.integrations import openrouter_headers
+
+logger = logging.getLogger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DRAFTING_MODEL = os.environ.get("DRAFTING_MODEL", "openai/gpt-4o")
@@ -68,7 +71,14 @@ def _duration_hours(transcript: list[TranscriptSegment] | None, fallback: float 
     return round(hours, 2)
 
 
-async def complete_text(system_prompt: str, user_prompt: str) -> str | None:
+async def complete_text(system_prompt: str, user_prompt: str, provider: str | None = None) -> str | None:
+    selected_provider = (provider or os.environ.get("LLM_PROVIDER", "openrouter")).lower()
+    if selected_provider == "nvidia_nim":
+        try:
+            from app.services import nvidia_nim
+            return await nvidia_nim.complete(system_prompt, user_prompt)
+        except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
+            logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
     api_key = llm_client.api_key()
     if not api_key:
         return None

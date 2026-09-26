@@ -92,7 +92,7 @@ def root():
 @app.get("/health")
 async def health():
     from app.integrations import ambiguous_client
-    from app.services import db, integrations, object_store, omi_pairing
+    from app.services import db, integrations, nvidia_nim, object_store, omi_pairing
 
     omi_linked = bool(omi_pairing.linked_uid())
     return {
@@ -109,6 +109,7 @@ async def health():
             "omi_linked": omi_linked,
             "omi_secret": bool(os.environ.get("OMI_SHARED_SECRET")),
         },
+        "nvidia_nim": await nvidia_nim.check_nvidia_nim_health(),
         "environments": ["room:mic", "room:omi", "pocket:whatsapp", "desk:ambiguous", "desk:legal-intel"],
         "webhook": "/webhooks/omi?session_id=<session-uuid>",
         "omi_miniapp": {

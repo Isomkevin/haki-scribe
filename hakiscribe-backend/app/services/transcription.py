@@ -9,9 +9,12 @@ code-switch sessions via `transcribe_file` (legal court-hearing mode).
 """
 
 import asyncio
+import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptionResult:
@@ -195,6 +198,45 @@ class OpenAIWhisperProvider(TranscriptionProvider):
         return TranscriptionResult(text=resp.text)
 
 
+class NvidiaNimWhisperProvider(TranscriptionProvider):
+    """NVIDIA NIM ASR with an OpenRouter Whisper fallback for live captions."""
+
+    async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
+        from app.services import nvidia_nim
+
+        url = nvidia_nim.asr_endpoint()
+        try:
+            if not url:
+                raise RuntimeError("NVIDIA_NIM_ASR_ENDPOINT is not configured")
+            mime = {"webm": "audio/webm", "ogg": "audio/ogg", "wav": "audio/wav", "mp4": "audio/mp4"}.get(
+                audio_format(audio_bytes), "application/octet-stream"
+            )
+            data: dict[str, str] = {"model": os.environ.get("ASR_MODEL", "openai/whisper-large-v3")}
+            language = whisper_language(language_hint)
+            if language:
+                data["language"] = language
+            prompt = whisper_prompt(language_hint)
+            if prompt:
+                data["prompt"] = prompt
+            import httpx
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(
+                    url,
+                    headers=nvidia_nim.headers(),
+                    files={"file": (chunk_filename(audio_bytes), audio_bytes, mime)},
+                    data=data,
+                )
+                response.raise_for_status()
+                body = response.json()
+            return TranscriptionResult(text=body.get("text") or "", raw=body if isinstance(body, dict) else {})
+        except Exception as exc:  # noqa: BLE001 — NIM is optional at runtime
+            logger.warning("NVIDIA NIM ASR failed (%s); falling back to OpenRouter Whisper", exc)
+            from app.integrations import llm_client
+            if llm_client.api_key():
+                return await OpenRouterWhisperProvider().transcribe_chunk(audio_bytes, language_hint)
+            return TranscriptionResult(text="", raw={"error": "nvidia_nim_transcription_failed", "detail": str(exc)})
+
+
 class IntronVoiceProvider(TranscriptionProvider):
     """Intron Sahara v2.5 — African code-switching ASR.
 
@@ -347,4 +389,6 @@ def get_provider() -> TranscriptionProvider:
         return OpenAIWhisperProvider() if os.environ.get("OPENAI_API_KEY") else UnavailableProvider()
     if name == "intron":
         return IntronVoiceProvider() if intron_configured() else UnavailableProvider()
+    if name == "nvidia_nim":
+        return NvidiaNimWhisperProvider()
     raise ValueError(f"Unknown ASR_PROVIDER: {name}")

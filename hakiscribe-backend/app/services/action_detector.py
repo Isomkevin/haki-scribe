@@ -334,6 +334,7 @@ async def detect_actions(
     flags: list[FlaggedMoment] | None = None,
     known_matters: list[Matter] | None = None,
     session_title: str | None = None,
+    provider: str | None = None,
 ) -> list[DetectedAction]:
     usable_segments = [seg for seg in transcript if not seg.redacted]
     flags = flags or []
@@ -344,6 +345,17 @@ async def detect_actions(
     )
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
+
+    selected_provider = (provider or os.environ.get("LLM_PROVIDER", "openrouter")).lower()
+    if selected_provider == "nvidia_nim":
+        try:
+            from app.services import nvidia_nim
+            content = await nvidia_nim.complete(DETECTION_SYSTEM_PROMPT, user_content)
+            actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(content or ""))
+            if actions:
+                return _stamp_mode(actions, "model")
+        except Exception as exc:  # noqa: BLE001 — NIM must not interrupt detection
+            logger.warning("NVIDIA NIM detection failed (%s); falling back to OpenRouter GPT-4o", exc)
 
     api_key = llm_client.api_key()
     if api_key:
