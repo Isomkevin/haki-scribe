@@ -274,7 +274,12 @@ automatically as keys are added.
 
 - **OpenAI + OpenRouter** — `DETECTION_MODEL`/`DRAFTING_MODEL` default
   to `openai/gpt-4o`, routed through OpenRouter (`action_detector.py`,
-  `action_executor.py`). `ASR_PROVIDER` defaults to OpenRouter Whisper
+  `action_executor.py`). `LIGHTWEIGHT_MODEL` defaults to `openrouter/auto`
+  for calendar descriptions and time narratives, with
+  `LIGHTWEIGHT_FALLBACK_MODEL=openai/gpt-4o-mini`. The premium path remains
+  fixed for detection and legal drafts. Completed action output is reused and
+  concurrent duplicate action requests are coalesced. `GET /usage` exposes the
+  in-process token ledger used by Settings → AI usage. `ASR_PROVIDER` defaults to OpenRouter Whisper
   (`openai/whisper-large-v3` via `/api/v1/audio/transcriptions` in
   `transcription.py`), so live captions share the same key. Direct
   OpenAI or Groq Whisper remain available by switching `ASR_PROVIDER`.

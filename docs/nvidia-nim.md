@@ -24,15 +24,12 @@ NVIDIA_NIM_API_KEY=
 The ASR route is `/v1/audio/transcriptions` and the LLM route is
 `/v1/chat/completions`. If either selected NIM service cannot be reached,
 times out, or returns a non-2xx response, HakiScribe logs a warning and uses
-the existing OpenRouter Whisper or GPT-4o request path instead. `GET /health`
-includes a `nvidia_nim` object with the configured endpoint statuses.
+the existing OpenRouter Whisper or configured premium/utility LLM path
+instead. `GET /health` includes a `nvidia_nim` object with configured endpoint
+statuses. NIM is configured through backend environment variables; it is not a
+Settings connector.
 
-## Connecting from the UI
-
-Connectors → **NVIDIA NIM** accepts the same settings without touching the
-server environment: language-model endpoint, model name, optional ASR
-endpoint and optional bearer token. Connecting verifies each endpoint's
-`/v1/models` route and shows Valid / Needs attention on the card, and the
-configured model appears in the Ask model picker as `nvidia_nim:<model>`.
-Values saved on the card take precedence over the matching environment
-variables; env values show the card as connected from workspace config.
+When `LLM_PROVIDER=nvidia_nim`, both detection and generation use the NIM LLM.
+With the default `LLM_PROVIDER=openrouter`, detection and legal drafting use
+their configured fixed models while calendar/time-entry prose follows the
+OpenRouter Auto Router policy described in the backend README.

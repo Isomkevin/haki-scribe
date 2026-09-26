@@ -96,8 +96,8 @@ Phone / laptop mic                    Omi wearable
                           │
               ┌───────────┴───────────┐
               ▼                       ▼
-     Detect  (OpenRouter → GPT-4o)   Generate
-     + Exa counterparty context      (OpenRouter → GPT-4o)
+     Detect  (premium model)         Generate
+     + Exa counterparty context      draft: premium · utility copy: Auto Router
               │                       │
               └───────────┬───────────┘
                           ▼
@@ -145,8 +145,8 @@ Private routes use `RequireAuth`. Signed-out visits go to `/login?next=…` and 
 | Frontend | React 19, TanStack Start, Vite, Tailwind CSS — mobile-first, built in Lovable |
 | Backend | FastAPI, WebSockets; in-memory + local JSON by default, optional `DATABASE_URL` (Postgres), optional S3 draft archive |
 | Capture | Browser MediaRecorder → `/sessions/{id}/stream`, or Omi Miniapp / legacy webhook |
-| Speech | OpenRouter Whisper (`openai/whisper-large-v3`) by default; optional OpenAI / Groq Whisper; **Intron Sahara** for code-switch / legal refine (`ASR_PROVIDER=intron` or Settings → Connectors) |
-| Agent | OpenRouter → OpenAI GPT-4o for detection and drafting |
+| Speech | OpenRouter Whisper (`openai/whisper-large-v3`) by default; optional OpenAI / Groq Whisper / NVIDIA NIM; **Intron Sahara** for code-switch / legal refine |
+| Agent | Premium fixed models for detection and legal drafting; OpenRouter Auto Router for calendar and time-entry prose, with a fixed low-cost fallback |
 | Durability | Trigger.dev at repo root (`src/trigger/`) — `detect-actions`, `generate-actions`, `research-actions` |
 | Enrichment | Exa company search, citation crawl, and news monitors — context only, never drafted as fact |
 | Connectors | Google Drive / Calendar, Dropbox, OneDrive (OAuth); Gemini (Vertex OAuth); Anthropic / OpenAI / Intron (verified keys) |
@@ -162,8 +162,9 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 
 | Tool | What it does here |
 |---|---|
-| **OpenAI** | GPT-4o for detection and drafting (via OpenRouter). Whisper when `ASR_PROVIDER=openai`. |
-| **OpenRouter** | Single routing layer for live captions, `/detect`, and `/generate`. |
+| **OpenAI** | Default premium model for detection and drafting (via OpenRouter). Whisper when `ASR_PROVIDER=openai`. |
+| **OpenRouter** | Live captions plus premium, Auto Router, and fallback model routing for `/detect` and `/generate`. |
+| **NVIDIA NIM** | Optional self-hosted ASR and LLM services on Brev, with OpenRouter fallback. See [`docs/nvidia-nim.md`](./docs/nvidia-nim.md). |
 | **Trigger.dev** | Durable, retried background execution of detect, generate, and research. Falls back in-process. |
 | **Exa** | Counterparty lookup on Action Tray cards; research / citation crawl; news monitors. |
 | **Ambiguous AI** | Real Docs, Calendar events, CRM deals/contacts, and a Chat ping when a draft is ready for a human — never auto-sent. |

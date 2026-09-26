@@ -51,6 +51,18 @@ After analysis, HakiScribe can propose the following types of work:
 
 The system uses two separate AI stages: a detection pass proposes possible work; a type-specific generation pass performs work only for the actions the user selected.
 
+### Model routing and cost controls
+
+- Detection and legal document drafting keep the premium fixed-model path so
+  legal quality and the complete verified record are not traded for savings.
+- Calendar descriptions and time-entry narratives use OpenRouter Auto Router
+  with a configurable cost/quality preference and a fixed low-cost fallback.
+- A completed action is reused, and concurrent duplicate requests are merged,
+  preventing duplicate model calls from double-clicks or worker retries.
+- **Settings → AI usage** shows the backend process's request and token totals
+  by task and model. Counts are exact when supplied by the provider and
+  otherwise labeled as estimates.
+
 ### Case, research, and workspace experience
 
 - A private session library lets users reopen prior work.

@@ -18,7 +18,7 @@ Prefer `.env.local` for secrets (loaded by `app/main.py`). Do not commit keys.
 The repo-root `render.yaml` Blueprint deploys this folder as a Python web service.
 
 - Binds to `0.0.0.0:$PORT` (required on Render)
-- Health check: `GET /health`
+- Health check: `GET /health`; model usage dashboard data: `GET /usage`
 - Root directory: `hakiscribe-backend`
 - Storage defaults to in-memory (+ local JSON); set `DATABASE_URL` for Postgres. Free-tier spin-downs still clear ephemeral disk.
 
@@ -26,7 +26,7 @@ Create from the Blueprint (after this file is on `main`):
 
 <https://dashboard.render.com/blueprint/new?repo=https://github.com/Isomkevin/haki-scribe>
 
-Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and drafting use the same key. Model slugs like `openai/gpt-4o` are OpenRouter IDs, not a second vendor account. Other sponsor keys are optional and fall back to local-only behavior. The Lovable frontend already points at `https://hakiscribe-backend.onrender.com` via the repo-root `.env` (`VITE_API_BASE_URL`).
+Fill `OPENROUTER_API_KEY` when prompted — that is the only required key. Live captions use OpenRouter's speech-to-text endpoint (`openai/whisper-large-v3`); detection and legal drafting use the same key and default to `openai/gpt-4o`. Calendar descriptions and time narratives default to `openrouter/auto`, with `openai/gpt-4o-mini` as their fixed fallback. Model slugs are OpenRouter IDs, not separate vendor accounts. Other sponsor keys are optional and fall back to local-only behavior. The Lovable frontend already points at `https://hakiscribe-backend.onrender.com` via the repo-root `.env` (`VITE_API_BASE_URL`).
 
 Everything works with zero sponsor keys configured — Ambiguous AI,
 Trigger.dev, and Exa all no-op gracefully and the pipeline falls back to
@@ -77,6 +77,34 @@ Scope today: one shared workspace for all signed-in users (not per-lawyer vaults
 | Google / Dropbox / Microsoft | OAuth connectors (`/integrations/oauth/…`) | Cards show "not configured"; exports stay local / Ambiguous-only |
 | Gemini (Vertex) | OAuth via same Google client (`gemini_oauth`) | Use key-based Gemini or skip |
 | Intron Sahara | Code-switch ASR + legal refine (`transcription.py::IntronVoiceProvider`) | Default stays OpenRouter Whisper; multilingual Stop skips Sahara refine |
+| NVIDIA NIM | Optional self-hosted ASR and LLM endpoints (`nvidia_nim.py`) | The selected request falls back to OpenRouter when NIM is unavailable |
+
+## Model routing and token controls
+
+HakiScribe preserves the premium model path for action detection and legal
+drafting. It uses OpenRouter Auto Router only for bounded utility copy:
+calendar descriptions and time-entry narratives. Set these optional variables
+in `.env.local` or Render:
+
+```env
+DETECTION_MODEL=openai/gpt-4o
+DRAFTING_MODEL=openai/gpt-4o
+LIGHTWEIGHT_MODEL=openrouter/auto
+LIGHTWEIGHT_FALLBACK_MODEL=openai/gpt-4o-mini
+AUTO_ROUTER_COST_QUALITY_TRADEOFF=7
+```
+
+The tradeoff is `0` for maximum quality through `10` for lowest cost. A value
+of `7` is the balanced default. Completed action results are reused and
+simultaneous retries for one action are coalesced, so a duplicate click or
+worker retry does not create another model request. The frontend exposes the
+in-process usage ledger at **Settings → AI usage**; `GET /usage` returns the
+same request/token breakdown. It reports exact token counts when a provider
+returns them and marks other counts as estimates. The ledger resets when the
+backend restarts.
+
+For self-hosted NVIDIA NIM configuration, see
+[`../docs/nvidia-nim.md`](../docs/nvidia-nim.md).
 
 See `trigger/README.md` (and the repo-root Trigger worker) for deploying
 Trigger.dev tasks — they need a **publicly reachable** `BACKEND_INTERNAL_URL`,
