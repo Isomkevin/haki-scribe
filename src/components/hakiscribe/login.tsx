@@ -81,8 +81,9 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     const access_token = values.get("access_token");
     const refresh_token = values.get("refresh_token");
     if (!access_token || !refresh_token) return;
+    const expiresIn = Number(values.get("expires_in")) || undefined;
     void productionAuthApi
-      .establishRecoverySession({ access_token, refresh_token, expires_in: Number(values.get("expires_in")) || undefined })
+      .establishRecoverySession({ access_token, refresh_token, ...(expiresIn ? { expires_in: expiresIn } : {}) })
       .then(() => {
         window.history.replaceState({}, document.title, window.location.pathname);
         setPassword("");
@@ -95,11 +96,11 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     mutationFn: (body: { email: string; password: string }) =>
       productionAuthEnabled ? productionAuthApi.login(body) : hakiApi.login(body),
     onSuccess: (data) => {
-      if (productionAuthEnabled) {
-        const production = data as Awaited<ReturnType<typeof productionAuthApi.login>>;
+      if ("email" in data) {
+        const production = data;
         signIn({ token: "", user: { email: production.email || email, name: production.email || email } });
       } else {
-        const demoSession = data as Awaited<ReturnType<typeof hakiApi.login>>;
+        const demoSession = data;
         signIn({ token: demoSession.token, user: demoSession.user });
       }
       const target = next && next.startsWith("/") ? next : "/new";
