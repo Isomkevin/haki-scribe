@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Loader2, MessageSquarePlus, Scale, SendHorizonal, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquarePlus, SendHorizonal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { friendlyErrorMessage, hakiApi, type ChatMessage, type ChatThread } from "@/lib/hakiscribe";
+import { BrandIcon } from "./brand";
 import { PageShell } from "./shell";
 
 const SUGGESTIONS = [
@@ -114,7 +115,7 @@ export function ChatPage({ sessionId, threadId }: { sessionId: string; threadId:
         <section className="flex min-h-[70svh] flex-col rounded-lg border border-border bg-card">
           <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground"><Scale className="size-4" /></span>
+              <span className="grid size-8 place-items-center overflow-hidden rounded-md bg-intelligence"><BrandIcon className="size-7" /></span>
               <div className="min-w-0">
                 <p className="truncate font-serif font-semibold">{thread.data?.title ?? "Conversation"}</p>
                 <p className="text-[11px] text-muted-foreground">Uses the verified record only — locked lines are never sent.</p>

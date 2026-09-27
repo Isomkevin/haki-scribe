@@ -733,7 +733,9 @@ function SecuritySection() {
     setMfaBusy(true);
     try {
       const factor = await productionAuthApi.enrollTotp();
-      setEnrolment({ id: factor.id, qr: factor.totp?.qr_code, secret: factor.totp?.secret });
+      const qr = factor.totp?.qr_code;
+      const secret = factor.totp?.secret;
+      setEnrolment({ id: factor.id, ...(qr ? { qr } : {}), ...(secret ? { secret } : {}) });
       toast.message("Scan the authenticator code, then enter its six-digit code.");
     } catch (error) {
       toast.error(friendlyErrorMessage(error, "Could not start two-factor setup."));
