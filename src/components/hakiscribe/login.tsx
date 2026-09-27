@@ -21,7 +21,9 @@ import {
   hasApiConfiguration,
   productionAuthApi,
   productionAuthEnabled,
+  type AuthUser,
   type DemoCredentials,
+  type ProductionLoginResult,
   warmWorkspace,
 } from "@/lib/hakiscribe";
 import { signIn } from "@/lib/auth";
@@ -92,7 +94,11 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       .catch(() => setError("This password-reset link is invalid or has expired. Request a new one."));
   }, []);
 
-  const login = useMutation({
+  const login = useMutation<
+    ProductionLoginResult | { token: string; user: AuthUser },
+    Error,
+    { email: string; password: string }
+  >({
     mutationFn: (body: { email: string; password: string }) =>
       productionAuthEnabled ? productionAuthApi.login(body) : hakiApi.login(body),
     onSuccess: (data) => {
