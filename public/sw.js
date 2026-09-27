@@ -1,13 +1,12 @@
 /* HakiScribe app-shell service worker.
  * Caches the installable shell only. Never caches API transcripts or legal work.
  */
-const CACHE_VERSION = "hakiscribe-shell-v1";
+const CACHE_VERSION = "hakiscribe-shell-v2";
 const SHELL_URLS = [
   "/",
   "/offline.html",
   "/manifest.webmanifest",
   "/favicon.png",
-  "/favicon.ico",
   "/apple-touch-icon.png",
   "/pwa-192.png",
   "/pwa-512.png",

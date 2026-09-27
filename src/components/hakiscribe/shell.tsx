@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Headphones, LogOut, Mic, Scale, Settings2 } from "lucide-react";
+import { ArrowLeft, Headphones, LogOut, Mic, Settings2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { currentSession, signOut } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { productionAuthApi, productionAuthEnabled, type SessionStatus } from "@/lib/hakiscribe";
-import { Brand, SecureBadge } from "./brand";
+import { Brand, BrandIcon, SecureBadge } from "./brand";
 import { InstallAppButton } from "./pwa-register";
 
 /** Only appears once a session exists in this browser. */
@@ -156,8 +156,8 @@ export function WorkspaceFooter() {
     <footer className="mt-16 border-t border-border bg-card/60">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-7 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-8">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-md bg-primary text-primary-foreground">
-            <Scale className="size-4" />
+          <span className="grid size-9 place-items-center overflow-hidden rounded-md bg-intelligence">
+            <BrandIcon className="size-8" />
           </span>
           <div className="min-w-0">
             <p className="font-serif text-lg font-semibold">Leave the room with the work begun.</p>

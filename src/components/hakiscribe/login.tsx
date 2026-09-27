@@ -8,7 +8,6 @@ import {
   Loader2,
   Mic,
   RefreshCw,
-  Scale,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +27,7 @@ import {
 import { signIn } from "@/lib/auth";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { Brand, TrustLine } from "./brand";
+import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
 
 const trustPoints = [
   "Privilege stays in the room until you approve work",
@@ -187,20 +187,10 @@ export function LoginPage({ next }: { next?: string | undefined }) {
             <div className="hidden lg:block">
               <Link
                 to="/"
-                className="inline-flex items-center gap-2.5 text-intelligence-foreground"
+                className="inline-flex items-center text-intelligence-foreground"
                 aria-label="HakiScribe home"
               >
-                <span className="grid size-10 place-items-center rounded-md bg-intelligence-accent text-intelligence">
-                  <Scale className="size-5" strokeWidth={1.8} />
-                </span>
-                <span className="leading-none">
-                  <span className="block font-serif text-xl font-semibold tracking-tight">
-                    Haki<span className="text-intelligence-accent">Scribe</span>
-                  </span>
-                  <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-[0.16em] text-intelligence-muted">
-                    by HakiChain
-                  </span>
-                </span>
+                <img src={logoAsset.url} alt="HakiScribe" className="h-20 w-auto object-contain" />
               </Link>
             </div>
 
