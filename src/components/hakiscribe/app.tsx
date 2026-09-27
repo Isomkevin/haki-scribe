@@ -99,7 +99,7 @@ import { filterDemoContacts, filterDemoMatters, filterDemoSessions } from "@/lib
 import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
-import { BrandIcon, TrustLine } from "./brand";
+import { TrustLine } from "./brand";
 import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
 import {
   FlowProgress,
