@@ -195,6 +195,39 @@ const lawyerPersonas = [
   },
 ];
 
+const landingFaqs = [
+  {
+    question: "What does HakiScribe do after a conversation?",
+    answer:
+      "It turns the verified spoken record into a reviewable action tray: drafts, notes, diary dates, matter or contact updates, time entries, and research prompts. Nothing is sent on its own — a legal professional chooses and reviews the work first.",
+  },
+  {
+    question: "Can it handle Kenyan and African language code-switching?",
+    answer:
+      "Yes. HakiScribe is designed for conversations that move between English and African languages. You can set a language hint, review the transcript, and use Sahara refinement for supported African-language and code-switched sessions when it is connected.",
+  },
+  {
+    question: "How is privilege protected?",
+    answer:
+      "Before detection or drafting, you can name speakers and mark a line as privileged or off-record. Marked lines remain visible in the record for authorised review, but are excluded from analysis and generation until restored.",
+  },
+  {
+    question: "Does HakiScribe give legal advice or send documents automatically?",
+    answer:
+      "No. It prepares source-traceable work for professional review. The advocate, clerk, or authorised reviewer decides what is correct, what should be edited, and whether anything should be exported or sent.",
+  },
+  {
+    question: "Can I use a microphone, Omi, or the tools my firm already uses?",
+    answer:
+      "HakiScribe supports microphone capture and Omi workflows. Approved work can connect to document, calendar, storage, CRM, and legal-intelligence tools, with each connection controlled from the workspace.",
+  },
+  {
+    question: "Is this a demo or ready for a law firm?",
+    answer:
+      "The public experience can run in demo mode with sample data. The production path is designed for verified accounts, firms, workspaces, MFA, and tenant-scoped records; a firm should only enable it after its Supabase security setup and migration have been completed.",
+  },
+];
+
 function ConnectionError({ message, retry }: { message: string; retry?: () => void }) {
   return (
     <Alert variant="destructive" className="border-destructive/30 bg-card">
@@ -527,6 +560,54 @@ export function LandingPage() {
               practice desks — wherever spoken work still outruns paperwork.
             </p>
             <PersonasCarousel />
+          </div>
+        </section>
+
+        <section id="faq" className="border-t border-border bg-card">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] lg:gap-16">
+              <div className="lg:sticky lg:top-28 lg:self-start">
+                <SectionEyebrow>Common questions</SectionEyebrow>
+                <h2 className="mt-3 font-serif text-3xl font-semibold leading-tight sm:text-5xl">
+                  Clear about the record. Clear about the role.
+                </h2>
+                <p className="mt-5 max-w-md text-base leading-7 text-muted-foreground">
+                  HakiScribe supports legal work; it does not replace professional judgment. Here is how the workspace treats your conversation, your review, and your tools.
+                </p>
+                <div className="mt-7 flex flex-wrap gap-2" aria-label="HakiScribe principles">
+                  {[
+                    "Review before release",
+                    "Privilege first",
+                    "Source-traceable work",
+                  ].map((principle) => (
+                    <span key={principle} className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                      {principle}
+                    </span>
+                  ))}
+                </div>
+                <Button asChild variant="outline" className="mt-8 w-full sm:w-auto">
+                  <Link to="/new">
+                    <Mic /> Open a private workspace
+                  </Link>
+                </Button>
+              </div>
+
+              <div className="divide-y divide-border rounded-2xl border border-border bg-background px-5 sm:px-7">
+                {landingFaqs.map(({ question, answer }, index) => (
+                  <details key={question} name="hakiscribe-faq" open={index === 0} className="group">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-5 py-5 text-left font-serif text-lg font-semibold leading-snug marker:content-none sm:py-6 sm:text-xl">
+                      <span>{question}</span>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-full border border-border text-primary transition-transform duration-200 group-open:rotate-180">
+                        <ChevronDown className="size-4" aria-hidden />
+                      </span>
+                    </summary>
+                    <div className="max-w-2xl pb-6 pr-10 text-sm leading-7 text-muted-foreground sm:pb-7 sm:text-base">
+                      {answer}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
       </main>
