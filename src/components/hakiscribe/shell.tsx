@@ -160,7 +160,7 @@ export function WorkspaceFooter() {
             <Scale className="size-4" />
           </span>
           <div className="min-w-0">
-            <p className="font-serif text-lg font-semibold">Leave the room with the work begun.</p>
+            <p className="font-serif text-lg font-semibold">Leave the room with your legal work begun.</p>
             <p className="text-xs text-muted-foreground">A listening instrument of HakiChain · Nairobi</p>
           </div>
         </div>
