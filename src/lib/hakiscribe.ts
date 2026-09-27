@@ -476,7 +476,7 @@ export interface UsageMetric {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  cost_usd: number;
+  cost_usd?: number;
 }
 
 function csrfHeader(): Record<string, string> {

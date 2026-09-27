@@ -8,7 +8,6 @@ import {
   Loader2,
   Mic,
   RefreshCw,
-  Scale,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,12 +21,15 @@ import {
   hasApiConfiguration,
   productionAuthApi,
   productionAuthEnabled,
+  type AuthUser,
   type DemoCredentials,
+  type ProductionLoginResult,
   warmWorkspace,
 } from "@/lib/hakiscribe";
 import { signIn } from "@/lib/auth";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { Brand, TrustLine } from "./brand";
+import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
 
 const trustPoints = [
   "Privilege stays in the room until you approve work",
@@ -81,8 +83,9 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     const access_token = values.get("access_token");
     const refresh_token = values.get("refresh_token");
     if (!access_token || !refresh_token) return;
+    const expiresIn = Number(values.get("expires_in")) || undefined;
     void productionAuthApi
-      .establishRecoverySession({ access_token, refresh_token, expires_in: Number(values.get("expires_in")) || undefined })
+      .establishRecoverySession({ access_token, refresh_token, ...(expiresIn ? { expires_in: expiresIn } : {}) })
       .then(() => {
         window.history.replaceState({}, document.title, window.location.pathname);
         setPassword("");
@@ -91,15 +94,19 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       .catch(() => setError("This password-reset link is invalid or has expired. Request a new one."));
   }, []);
 
-  const login = useMutation({
+  const login = useMutation<
+    ProductionLoginResult | { token: string; user: AuthUser },
+    Error,
+    { email: string; password: string }
+  >({
     mutationFn: (body: { email: string; password: string }) =>
       productionAuthEnabled ? productionAuthApi.login(body) : hakiApi.login(body),
     onSuccess: (data) => {
-      if (productionAuthEnabled) {
-        const production = data as Awaited<ReturnType<typeof productionAuthApi.login>>;
+      if ("email" in data) {
+        const production = data;
         signIn({ token: "", user: { email: production.email || email, name: production.email || email } });
       } else {
-        const demoSession = data as Awaited<ReturnType<typeof hakiApi.login>>;
+        const demoSession = data;
         signIn({ token: demoSession.token, user: demoSession.user });
       }
       const target = next && next.startsWith("/") ? next : "/new";
@@ -187,20 +194,10 @@ export function LoginPage({ next }: { next?: string | undefined }) {
             <div className="hidden lg:block">
               <Link
                 to="/"
-                className="inline-flex items-center gap-2.5 text-intelligence-foreground"
+                className="inline-flex items-center text-intelligence-foreground"
                 aria-label="HakiScribe home"
               >
-                <span className="grid size-10 place-items-center rounded-md bg-intelligence-accent text-intelligence">
-                  <Scale className="size-5" strokeWidth={1.8} />
-                </span>
-                <span className="leading-none">
-                  <span className="block font-serif text-xl font-semibold tracking-tight">
-                    Haki<span className="text-intelligence-accent">Scribe</span>
-                  </span>
-                  <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-[0.16em] text-intelligence-muted">
-                    by HakiChain
-                  </span>
-                </span>
+                <img src={logoAsset.url} alt="HakiScribe" className="h-20 w-auto object-contain" />
               </Link>
             </div>
 

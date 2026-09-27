@@ -100,6 +100,7 @@ import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
+import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
 import {
   FlowProgress,
   PageShell,
@@ -1479,7 +1480,7 @@ function RecordingScreen({
     <div className="relative flex min-h-[100svh] flex-col overflow-hidden bg-primary text-primary-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,oklch(1_0_0/0.08),transparent_42%)]" />
       <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-primary-foreground/15 px-4 py-3 sm:px-8 sm:py-4">
-        <span className="font-serif text-xl font-semibold">HakiScribe</span>
+        <img src={logoAsset.url} alt="HakiScribe" className="h-11 w-auto object-contain" />
         <div className="flex flex-wrap items-center justify-end gap-2">
           {mixBadge && willAutoRefine ? (
             <span className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-full border border-action/40 bg-action/15 px-3 py-1 text-[10px] leading-snug text-primary-foreground sm:max-w-none sm:text-xs">
