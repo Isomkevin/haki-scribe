@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections import Counter, deque
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -36,23 +36,40 @@ def record(*, task: str, model: str, provider: str, prompt: str, response: str |
 
 def dashboard() -> dict[str, Any]:
     events = [*_seed_events, *_events]
-    by_task: dict[str, dict[str, int]] = {}
-    for task, items in _group(events, "task").items():
-        by_task[task] = _totals(items)
+    breakdowns = {
+        dimension: {name: _totals(items) for name, items in _group(events, dimension).items()}
+        for dimension in ("task", "model", "provider")
+    }
+    timeline = [
+        {"date": date, **_totals(items)}
+        for date, items in sorted(_group(events, "date").items())
+    ]
+    summary = _totals(events)
     return {
         "window": "imported OpenRouter history plus this backend process",
-        **_totals(events),
-        "by_task": by_task,
-        "models": dict(Counter({model: sum(int(item.get("requests", 1)) for item in events if item["model"] == model) for model in {item["model"] for item in events}})),
+        **summary,  # Legacy top-level fields for existing clients.
+        "by_task": breakdowns["task"],
+        "models": {name: values["requests"] for name, values in breakdowns["model"].items()},
         "estimated_requests": sum(int(item.get("requests", 1)) for item in events if item["estimated"]),
         "historical_requests": sum(int(item.get("requests", 1)) for item in events if item.get("historical")),
+        # Add future metrics to these named sections instead of changing the
+        # dashboard's established summary/breakdown contract.
+        "summary": summary,
+        "breakdowns": breakdowns,
+        "timeline": timeline,
+        "data_quality": {
+            "historical_requests": sum(int(item.get("requests", 1)) for item in events if item.get("historical")),
+            "live_requests": sum(int(item.get("requests", 1)) for item in events if not item.get("historical")),
+            "estimated_requests": sum(int(item.get("requests", 1)) for item in events if item["estimated"]),
+        },
     }
 
 
 def _group(items: list[dict], key: str) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = {}
     for item in items:
-        grouped.setdefault(str(item[key]), []).append(item)
+        value = item.get("at", "")[:10] if key == "date" else item[key]
+        grouped.setdefault(str(value), []).append(item)
     return grouped
 
 

@@ -461,6 +461,22 @@ export interface LlmUsageSummary {
   historical_requests: number;
   by_task: Record<string, { requests: number; prompt_tokens: number; completion_tokens: number; total_tokens: number }>;
   models: Record<string, number>;
+  summary?: UsageMetric;
+  breakdowns?: {
+    task: Record<string, UsageMetric>;
+    model: Record<string, UsageMetric>;
+    provider: Record<string, UsageMetric>;
+  };
+  timeline?: Array<{ date: string } & UsageMetric>;
+  data_quality?: { historical_requests: number; live_requests: number; estimated_requests: number };
+}
+
+export interface UsageMetric {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
 }
 
 function csrfHeader(): Record<string, string> {

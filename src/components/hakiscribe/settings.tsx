@@ -31,6 +31,7 @@ import {
   productionTenancyApi,
   type Integration,
   type LlmUsageSummary,
+  type UsageMetric,
   type Session,
   type SessionSource,
 } from "@/lib/hakiscribe";
@@ -115,32 +116,89 @@ function UsageSection() {
   const usage = useQuery({ queryKey: ["llm-usage"], queryFn: hakiApi.usage, enabled: hasApiConfiguration, retry: false });
   const data: LlmUsageSummary | undefined = usage.data;
   const number = new Intl.NumberFormat();
+  const summary = data?.summary ?? data;
+  const taskRows = sortUsage(data?.breakdowns?.task ?? data?.by_task ?? {});
+  const modelRows = sortUsage(data?.breakdowns?.model ?? {});
+  const providerRows = sortUsage(data?.breakdowns?.provider ?? {});
+  const timeline = data?.timeline ?? [];
+  const inputShare = summary?.total_tokens ? Math.round((summary.prompt_tokens / summary.total_tokens) * 100) : 0;
   return (
     <section>
-      <SectionIntro eyebrow="AI usage" title="Token use and model routing" copy="Counts are recorded by this backend process. OpenRouter supplies exact usage when available; otherwise HakiScribe labels the estimate." />
+      <SectionIntro eyebrow="AI usage" title="Token use and model routing" copy="A unified view of imported OpenRouter history and new HakiScribe requests. Future usage metrics extend the same summary, breakdown, timeline, and data-quality structure." />
       {usage.isLoading ? <p className="text-sm text-muted-foreground">Loading usage…</p> : null}
       {usage.isError ? <p className="text-sm text-muted-foreground">Usage data is unavailable until the backend is reachable.</p> : null}
-      {data ? <>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <UsageCard label="Requests" value={number.format(data.requests)} />
-          <UsageCard label="Input tokens" value={number.format(data.prompt_tokens)} />
-          <UsageCard label="Recorded cost" value={data.cost_usd ? `$${data.cost_usd.toFixed(2)}` : "Pending"} />
+      {data && summary ? <>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <UsageCard label="Requests" value={number.format(summary.requests)} detail="Model calls recorded" />
+          <UsageCard label="Total tokens" value={number.format(summary.total_tokens)} detail="Input + output" />
+          <UsageCard label="Input tokens" value={number.format(summary.prompt_tokens)} detail={`${inputShare}% of total`} />
+          <UsageCard label="Output tokens" value={number.format(summary.completion_tokens)} detail={`${100 - inputShare}% of total`} />
+          <UsageCard label="Recorded cost" value={summary.cost_usd ? `$${summary.cost_usd.toFixed(2)}` : "Not reported"} detail="Provider-reported cost" />
         </div>
-        <div className="mt-6 rounded-xl border border-border bg-card p-4 sm:p-5">
-          <p className="text-sm font-semibold">By task</p>
-          <div className="mt-3 space-y-2 text-sm">
-            {Object.entries(data.by_task).length ? Object.entries(data.by_task).map(([task, item]) => <div key={task} className="flex justify-between gap-4"><span className="capitalize text-muted-foreground">{task.replaceAll("_", " ")} · {item.requests} requests</span><span>{number.format(item.total_tokens)} tokens</span></div>) : <p className="text-muted-foreground">No model requests have been recorded since this process started.</p>}
-          </div>
-          {data.estimated_requests ? <p className="mt-4 text-xs text-muted-foreground">{data.estimated_requests} request{data.estimated_requests === 1 ? "" : "s"} used a character-based estimate because the provider did not return token usage.</p> : null}
-          {data.historical_requests ? <p className="mt-2 text-xs text-muted-foreground">Includes {number.format(data.historical_requests)} imported OpenRouter requests from 15 Sep 2026.</p> : null}
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+          <UsagePanel title="Token composition" subtitle="Where model context is being consumed">
+            <div className="flex items-end justify-between gap-4"><div><p className="text-3xl font-semibold">{inputShare}%</p><p className="mt-1 text-sm text-muted-foreground">input context</p></div><p className="text-right text-sm text-muted-foreground">{number.format(summary.completion_tokens)} output tokens</p></div>
+            <div className="mt-5 h-3 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${inputShare}%` }} /></div>
+            <div className="mt-3 flex justify-between text-xs text-muted-foreground"><span>Input {number.format(summary.prompt_tokens)}</span><span>Output {number.format(summary.completion_tokens)}</span></div>
+          </UsagePanel>
+          <UsagePanel title="Data quality" subtitle={data.window}>
+            <UsageLine label="Imported history" value={number.format(data.data_quality?.historical_requests ?? data.historical_requests)} />
+            <UsageLine label="Live this process" value={number.format(data.data_quality?.live_requests ?? 0)} />
+            <UsageLine label="Estimated requests" value={number.format(data.data_quality?.estimated_requests ?? data.estimated_requests)} />
+            <p className="mt-4 text-xs leading-5 text-muted-foreground">Exact token counts and cost appear when the provider returns usage. Imported CSV totals are retained as a separate baseline.</p>
+          </UsagePanel>
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+          <UsageBreakdown title="Usage by task" subtitle="Which product workflow consumed model capacity" rows={taskRows} formatter={number} />
+          <UsageBreakdown title="Model routing" subtitle="Actual returned model where available" rows={modelRows} formatter={number} compact />
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+          <UsagePanel title="Usage over time" subtitle="Daily totals; expands automatically as more days are recorded">
+            {timeline.length ? <div className="mt-5 flex h-36 items-end gap-3">{timeline.map((item) => <TimelineBar key={item.date} item={item} max={Math.max(...timeline.map((row) => row.total_tokens), 1)} formatter={number} />)}</div> : <EmptyUsage />}
+          </UsagePanel>
+          <UsageBreakdown title="Provider mix" subtitle="Inference provider reported by the usage source" rows={providerRows} formatter={number} compact />
+        </div>
+
+        <div className="mt-5 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+          Imported historical usage remains visible after restart. New live events are retained for the current backend process; persist the ledger before relying on it for firm billing or monthly controls.
         </div>
       </> : null}
     </section>
   );
 }
 
-function UsageCard({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>;
+function sortUsage(rows: Record<string, UsageMetric>) {
+  return Object.entries(rows).sort(([, left], [, right]) => right.total_tokens - left.total_tokens);
+}
+
+function UsagePanel({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+  return <div className="rounded-xl border border-border bg-card p-4 sm:p-5"><p className="text-sm font-semibold">{title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{subtitle}</p>{children}</div>;
+}
+
+function UsageBreakdown({ title, subtitle, rows, formatter, compact = false }: { title: string; subtitle: string; rows: [string, UsageMetric][]; formatter: Intl.NumberFormat; compact?: boolean }) {
+  const max = Math.max(...rows.map(([, item]) => item.total_tokens), 1);
+  return <UsagePanel title={title} subtitle={subtitle}>
+    {rows.length ? <div className="mt-4 space-y-4">{rows.slice(0, compact ? 4 : 6).map(([name, item]) => <div key={name}>
+      <div className="flex items-start justify-between gap-3 text-sm"><span className="min-w-0 truncate capitalize text-foreground">{name.replaceAll("_", " ")}</span><span className="shrink-0 text-muted-foreground">{formatter.format(item.total_tokens)} tokens</span></div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary/80" style={{ width: `${Math.max((item.total_tokens / max) * 100, 3)}%` }} /></div>
+      <p className="mt-1 text-xs text-muted-foreground">{formatter.format(item.requests)} requests{item.cost_usd ? ` · $${item.cost_usd.toFixed(2)}` : ""}</p>
+    </div>)}</div> : <EmptyUsage />}
+  </UsagePanel>;
+}
+
+function TimelineBar({ item, max, formatter }: { item: { date: string } & UsageMetric; max: number; formatter: Intl.NumberFormat }) {
+  const height = Math.max((item.total_tokens / max) * 100, 8);
+  return <div className="group flex min-w-0 flex-1 flex-col justify-end"><p className="mb-2 text-center text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">{formatter.format(item.total_tokens)}</p><div className="rounded-t-md bg-primary/85" style={{ height: `${height}%` }} title={`${item.date}: ${formatter.format(item.total_tokens)} tokens`} /><p className="mt-2 truncate text-center text-[10px] text-muted-foreground">{item.date.slice(5)}</p></div>;
+}
+
+function UsageLine({ label, value }: { label: string; value: string }) { return <div className="mt-3 flex justify-between gap-4 text-sm"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>; }
+function EmptyUsage() { return <p className="mt-4 text-sm text-muted-foreground">No usage has been recorded for this view yet.</p>; }
+
+function UsageCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
 function useStoredSettings() {
