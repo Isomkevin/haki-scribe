@@ -8,7 +8,7 @@ A legal work agent for the rooms where justice is spoken — client meetings, ch
 
 Built for [AI Tinkerers Nairobi — Agents, Everywhere](https://nairobi.aitinkerers.org/). Built for lawyers, judges, and clerks. Built as the listening instrument of [HakiChain](https://hakichain.com).
 
-[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [Sahara CodeSwitch](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) · [Sahara demo video](https://youtu.be/FjsZqMBsCfs) · [Architecture / SPEC](./SPEC.md) · [Roadmap](./roadmap.md)
+[Repository](https://github.com/Isomkevin/haki-scribe) · [HakiChain](https://hakichain.com) · [Backend API docs](./hakiscribe-backend/README.md) · [Connector OAuth setup](./docs/CONNECTOR_OAUTH_SETUP.md) · [Judge submission](./SUBMISSION.md) · [GOMYCODE submission package](./Hackathon_Submission/README.md) · [Sahara CodeSwitch](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) · [Sahara demo video](https://youtu.be/FjsZqMBsCfs) · [Architecture / SPEC](./SPEC.md) · [Roadmap](./roadmap.md)
 
 ---
 
