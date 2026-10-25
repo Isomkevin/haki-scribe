@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Use the supplied HakiScribe microphone-and-gavel logo assets for brand identity; keep functional legal-context icons separate. This preserves the approved brand while retaining clear interface meaning.
+- Dual deployment (Lovable + Vercel) comes from nitro's preset detection — Lovable builds `cloudflare-module`, Vercel builds the Build Output API from the same source. Never add platform-specific build config (e.g. `vercel.json`) unless a verified failure requires it, and keep `bun.lock` and `package-lock.json` in sync so either package manager can install on either platform.

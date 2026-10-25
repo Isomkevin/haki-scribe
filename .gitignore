@@ -35,6 +35,9 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Vercel local build output (nitro writes this when the target is Vercel)
+.vercel/
+
 # Environment and secrets — keep *.example committed.
 # Lovable embeds VITE_* from the root .env at preview/publish time.
 # That file only holds the public API URL, so it is tracked on purpose.
