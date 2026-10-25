@@ -14,6 +14,7 @@
 - [x] Add live connector status checks, search and filters, the Groq connector, and plain-language sign-in failure and token-expiry guidance.
 - [x] Add multi-thread AI chat per session, and an Omi setup page with pairing steps, conversation import and live-transcript routing.
 - [x] Add grid/list view and expandable Show more / Show less details to the Connectors page.
+- [x] Make the repository dual-deployable on Lovable and Vercel: verified a Vercel-preset (Build Output API) build locally and documented setup in DEPLOYMENT.md.
 
 ## External setup
 
