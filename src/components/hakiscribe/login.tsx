@@ -29,7 +29,7 @@ import {
 import { signIn } from "@/lib/auth";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { Brand, TrustLine } from "./brand";
-import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
+import logoAsset from "@/assets/hakiscribe-logo.png";
 
 const trustPoints = [
   "Privilege stays in the room until you approve work",
@@ -197,7 +197,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                 className="inline-flex items-center text-intelligence-foreground"
                 aria-label="HakiScribe home"
               >
-                <img src={logoAsset.url} alt="HakiScribe" className="h-20 w-auto object-contain" />
+                <img src={logoAsset} alt="HakiScribe" className="h-20 w-auto object-contain" />
               </Link>
             </div>
 

@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
-import iconAsset from "@/assets/hakiscribe-icon.png.asset.json";
+import logoAsset from "@/assets/hakiscribe-logo.png";
+import iconAsset from "@/assets/hakiscribe-icon.png";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link to="/" className="inline-flex items-center" aria-label="HakiScribe home">
       <img
-        src={compact ? iconAsset.url : logoAsset.url}
+        src={compact ? iconAsset : logoAsset}
         alt="HakiScribe"
         className={cn("w-auto object-contain", compact ? "h-9" : "h-12")}
       />
@@ -25,7 +25,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 export function BrandIcon({ className = "" }: { className?: string }) {
-  return <img src={iconAsset.url} alt="" className={cn("object-contain", className)} aria-hidden />;
+  return <img src={iconAsset} alt="" className={cn("object-contain", className)} aria-hidden />;
 }
 
 export function TrustLine({ className = "" }: { className?: string }) {
