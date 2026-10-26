@@ -100,7 +100,7 @@ import { detectLanguageMix, detectedModeLabel } from "@/lib/language-detect";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { TrustLine } from "./brand";
-import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
+import logoAsset from "@/assets/hakiscribe-logo.png";
 import {
   FlowProgress,
   PageShell,

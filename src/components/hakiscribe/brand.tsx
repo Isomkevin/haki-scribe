@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
-import iconAsset from "@/assets/hakiscribe-icon.png.asset.json";
+import logoAsset from "@/assets/hakiscribe-logo.png";
+import iconAsset from "@/assets/hakiscribe-icon.png";
 import {
   Dialog,
   DialogContent,

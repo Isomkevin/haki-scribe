@@ -29,7 +29,7 @@ import {
 import { signIn } from "@/lib/auth";
 import legalRoomImage from "@/assets/hakiscribe-legal-room.jpg";
 import { Brand, TrustLine } from "./brand";
-import logoAsset from "@/assets/hakiscribe-logo.png.asset.json";
+import logoAsset from "@/assets/hakiscribe-logo.png";
 
 const trustPoints = [
   "Privilege stays in the room until you approve work",
