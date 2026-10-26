@@ -197,7 +197,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
                 className="inline-flex items-center text-intelligence-foreground"
                 aria-label="HakiScribe home"
               >
-                <img src={logoAsset.url} alt="HakiScribe" className="h-20 w-auto object-contain" />
+                <img src={logoAsset} alt="HakiScribe" className="h-20 w-auto object-contain" />
               </Link>
             </div>
 
