@@ -139,7 +139,7 @@ async def resolve_model(tier: str) -> str:
 
 def _clean_text(text: str) -> str:
     """Strip reasoning tags and code fences the model may wrap output in."""
-    text = re.sub(r", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = text.replace("</think>", "").strip()
     stripped = text.strip()
     if stripped.startswith("```"):
