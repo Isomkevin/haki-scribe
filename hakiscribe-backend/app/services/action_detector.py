@@ -123,18 +123,35 @@ def _stamp_mode(actions: list[DetectedAction], mode: str) -> list[DetectedAction
 
 
 def _actions_from_raw(session_id: uuid.UUID, usable_segments: list[TranscriptSegment], raw_actions: list[dict]) -> list[DetectedAction]:
-    actions = []
+    """Model output → DetectedActions, with privilege rules enforced in code.
+
+    An action is dropped when its type is unknown, its title is missing, or
+    its source quote does not resolve to a real, non-privileged transcript
+    line. Identical type+title pairs are de-duplicated.
+    """
+    actions: list[DetectedAction] = []
+    seen: set[tuple[str, str]] = set()
     for raw in raw_actions:
         try:
             action_type = ActionType(raw["type"])
         except (KeyError, ValueError):
             continue
+        title = str(raw.get("title") or "").strip()
+        if not title:
+            continue
         source_segment_id = _find_source_segment(usable_segments, raw.get("source_quote"))
+        if source_segment_id is None:
+            # No citation to a real, non-privileged line → not verifiable.
+            continue
+        key = (action_type.value, title.lower())
+        if key in seen:
+            continue
+        seen.add(key)
         actions.append(
             DetectedAction(
                 session_id=session_id,
                 type=action_type,
-                title=raw.get("title") or action_type.value.replace("_", " ").title(),
+                title=title,
                 preview=raw.get("preview") or "",
                 confidence=float(raw.get("confidence", 0.5)),
                 confidence_reason=raw.get("confidence_reason"),
@@ -346,7 +363,29 @@ async def detect_actions(
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
 
-    selected_provider = (provider or os.environ.get("LLM_PROVIDER", "openrouter")).lower()
+    if provider:
+        selected_provider = provider.lower()
+    else:
+        env_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+        if env_provider:
+            selected_provider = env_provider
+        else:
+            # Nemotron on Nebius Token Factory is the default AI compute when
+            # its connector is live; OpenRouter remains the fallback default.
+            from app.services import nebius as nebius_service
+            selected_provider = "nebius" if nebius_service.is_connected() else "openrouter"
+    if selected_provider == "nebius":
+        try:
+            from app.services import nebius as nebius_service
+            result = await nebius_service.complete(
+                nebius_service.tier_for_task("detection"), DETECTION_SYSTEM_PROMPT, user_content,
+                task="detection", json_mode=True,
+            )
+            actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(result["text"]))
+            if actions:
+                return _stamp_mode(actions, "model")
+        except Exception as exc:  # noqa: BLE001 — Nemotron must not interrupt detection
+            logger.warning("Nemotron detection failed (%s); falling back to OpenRouter", exc)
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim

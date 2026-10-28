@@ -133,6 +133,74 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "nebius",
+        "name": "NVIDIA Nemotron · Nebius Token Factory",
+        "group": "ai",
+        "badge": "Sovereign / open-weight AI compute",
+        "what_it_does": "HakiScribe's default AI compute for Action Tray detection, document drafting and research synthesis, on NVIDIA's open-weight Nemotron models.",
+        "capabilities": ["Action Tray detection", "Draft documents", "Research synthesis", "Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Nebius API key",
+                "type": "password",
+                "help": "Found in Nebius Token Factory → API keys. The workspace NEBIUS_API_KEY is used automatically when set.",
+                "placeholder": "nvapi-…",
+                "mask": True,
+            },
+            {
+                "id": "base_url",
+                "label": "Base URL",
+                "type": "text",
+                "help": "Leave blank for https://api.tokenfactory.nebius.com/v1.",
+                "placeholder": "https://api.tokenfactory.nebius.com/v1",
+                "mask": False,
+            },
+            {
+                "id": "ultra_model",
+                "label": "Ultra model override (drafting)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'ultra' model from your account.",
+                "placeholder": "…",
+                "mask": False,
+            },
+            {
+                "id": "super_model",
+                "label": "Super model override (tray + research)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'super' model.",
+                "placeholder": "…",
+                "mask": False,
+            },
+            {
+                "id": "nano_model",
+                "label": "Nano model override (utility)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'nano' model.",
+                "placeholder": "…",
+                "mask": False,
+            },
+        ],
+    },
+    {
+        "id": "tavily",
+        "name": "Tavily",
+        "group": "research",
+        "badge": "External authorities (not evidence)",
+        "what_it_does": "Advanced web search across Kenyan legal sources (kenyalaw.org, the Judiciary, the Law Society) to ground research synthesis.",
+        "capabilities": ["Legal research"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Tavily API key",
+                "type": "password",
+                "help": "Found in app.tavily.com → API Keys. The workspace TAVILY_API_KEY is used automatically when set.",
+                "placeholder": "tvly-…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "mistral",
         "name": "Mistral",
         "group": "ai",
@@ -456,6 +524,14 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
+    "nebius": {
+        "api_key": "NEBIUS_API_KEY",
+        "base_url": "NEBIUS_BASE_URL",
+        "ultra_model": "NEBIUS_ULTRA_MODEL",
+        "super_model": "NEBIUS_SUPER_MODEL",
+        "nano_model": "NEBIUS_NANO_MODEL",
+    },
+    "tavily": {"api_key": "TAVILY_API_KEY"},
     "nvidia_nim": {
         "llm_endpoint": "NVIDIA_NIM_LLM_ENDPOINT",
         "asr_endpoint": "NVIDIA_NIM_ASR_ENDPOINT",
@@ -483,7 +559,7 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
         return None
     if provider_id == "openai" and not creds.get("api_key"):
         return None
-    if provider_id in {"intron", "groq", "ambiguous"} and not creds.get("api_key"):
+    if provider_id in {"intron", "groq", "ambiguous", "nebius", "tavily"} and not creds.get("api_key"):
         return None
     if provider_id == "nvidia_nim" and not (creds.get("llm_endpoint") or creds.get("asr_endpoint")):
         return None
@@ -739,6 +815,41 @@ async def _verify_groq(creds: dict[str, Any]) -> dict[str, Any]:
             return {"ok": False, "error": f"Groq returned {resp.status_code}: {resp.text[:200]}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
+
+
+async def _verify_nebius(creds: dict[str, Any]) -> dict[str, Any]:
+    """GET {base}/models and report how many Nemotron models were found."""
+    key = str(creds.get("api_key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "Missing Nebius API key"}
+    raw = str(creds.get("base_url") or "").strip().rstrip("/")
+    base = raw or "https://api.tokenfactory.nebius.com/v1"
+    if not re.search(r"/v\d+$", base):
+        base = f"{base}/v1"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+        if resp.status_code in (401, 403):
+            return {"ok": False, "error": "Nebius rejected the API key. Re-check it on the connector card."}
+        if resp.status_code >= 400:
+            return {"ok": False, "error": f"Nebius Token Factory returned {resp.status_code}: {resp.text[:200]}"}
+        items = resp.json().get("data") or resp.json().get("models") or []
+        ids = [str(i.get("id") or "") for i in items if isinstance(i, dict) and i.get("id")]
+        nemotron = [m for m in ids if "nemotron" in m.lower()]
+        detail = f"Account has {len(ids)} model(s); {len(nemotron)} Nemotron model(s) found"
+        if nemotron:
+            detail += f": {', '.join(nemotron[:6])}"
+        else:
+            detail += ". Set the Ultra / Super / Nano overrides on this card."
+        return {"ok": True, "error": None, "detail": detail}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_tavily(creds: dict[str, Any]) -> dict[str, Any]:
+    from app.services import tavily
+    result = await tavily.verify(creds)
+    return {"ok": result["ok"], "error": result.get("error"), "detail": result.get("detail")}
 
 
 async def _verify_openai(creds: dict[str, Any]) -> dict[str, Any]:
@@ -1075,6 +1186,8 @@ _VERIFIERS = {
     "gemini": _verify_gemini,
     "mistral": _verify_mistral,
     "groq": _verify_groq,
+    "nebius": _verify_nebius,
+    "tavily": _verify_tavily,
     "openrouter": _verify_openrouter,
     "nvidia_nim": _verify_nvidia_nim,
     "intron": _verify_intron,
@@ -1272,6 +1385,21 @@ async def complete_with_provider(
             )
         elif provider_id == "gemini_oauth":
             return await _complete_vertex_gemini(creds, system_prompt, user_prompt, model or "gemini-2.0-flash", timeout_s)
+        elif provider_id == "nebius":
+            base = str(creds.get("base_url") or "").strip().rstrip("/") or "https://api.tokenfactory.nebius.com/v1"
+            if not re.search(r"/v\d+$", base):
+                base = f"{base}/v1"
+            model_id = model
+            if not model_id:
+                from app.services import nebius
+                override = str(creds.get("super_model") or "").strip()
+                try:
+                    model_id = override or await nebius.resolve_model("super")
+                except Exception:  # noqa: BLE001 — Ask must not break on discovery errors
+                    model_id = None
+            if not model_id:
+                return None
+            return await _complete_openai(creds, system_prompt, user_prompt, model_id, timeout_s, base)
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
@@ -1442,6 +1570,11 @@ def connected_llm_models() -> list[dict[str, str]]:
     if get_connection("groq"):
         add("groq:llama-3.3-70b-versatile", "Llama 3.3 70B · Groq")
         add("groq:llama-3.1-8b-instant", "Llama 3.1 8B Instant · Groq")
+    nebius_creds = get_creds("nebius") or {}
+    if nebius_creds.get("api_key"):
+        add("nebius:nemotron-super", "Nemotron Super · Nebius Token Factory")
+        add("nebius:nemotron-ultra", "Nemotron Ultra · Nebius Token Factory")
+        add("nebius:nemotron-nano", "Nemotron Nano · Nebius Token Factory")
     if get_creds("openrouter"):
         for item in llm_client.CURATED_MODELS:
             add(item["id"], f"{item['label']} · OpenRouter")
