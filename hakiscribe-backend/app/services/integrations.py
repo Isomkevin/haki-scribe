@@ -133,6 +133,74 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "nebius",
+        "name": "NVIDIA Nemotron · Nebius Token Factory",
+        "group": "ai",
+        "badge": "Sovereign / open-weight AI compute",
+        "what_it_does": "HakiScribe's default AI compute for Action Tray detection, document drafting and research synthesis, on NVIDIA's open-weight Nemotron models.",
+        "capabilities": ["Action Tray detection", "Draft documents", "Research synthesis", "Ask an AI model"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Nebius API key",
+                "type": "password",
+                "help": "Found in Nebius Token Factory → API keys. The workspace NEBIUS_API_KEY is used automatically when set.",
+                "placeholder": "nvapi-…",
+                "mask": True,
+            },
+            {
+                "id": "base_url",
+                "label": "Base URL",
+                "type": "text",
+                "help": "Leave blank for https://api.tokenfactory.nebius.com/v1.",
+                "placeholder": "https://api.tokenfactory.nebius.com/v1",
+                "mask": False,
+            },
+            {
+                "id": "ultra_model",
+                "label": "Ultra model override (drafting)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'ultra' model from your account.",
+                "placeholder": "…",
+                "mask": False,
+            },
+            {
+                "id": "super_model",
+                "label": "Super model override (tray + research)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'super' model.",
+                "placeholder": "…",
+                "mask": False,
+            },
+            {
+                "id": "nano_model",
+                "label": "Nano model override (utility)",
+                "type": "text",
+                "help": "Optional. Leave blank to auto-pick the Nemotron 'nano' model.",
+                "placeholder": "…",
+                "mask": False,
+            },
+        ],
+    },
+    {
+        "id": "tavily",
+        "name": "Tavily",
+        "group": "research",
+        "badge": "External authorities (not evidence)",
+        "what_it_does": "Advanced web search across Kenyan legal sources (kenyalaw.org, the Judiciary, the Law Society) to ground research synthesis.",
+        "capabilities": ["Legal research"],
+        "fields": [
+            {
+                "id": "api_key",
+                "label": "Tavily API key",
+                "type": "password",
+                "help": "Found in app.tavily.com → API Keys. The workspace TAVILY_API_KEY is used automatically when set.",
+                "placeholder": "tvly-…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "mistral",
         "name": "Mistral",
         "group": "ai",
@@ -456,6 +524,14 @@ _ENV_CREDENTIAL_FIELDS: dict[str, dict[str, str]] = {
     "openai": {"api_key": "OPENAI_API_KEY"},
     "intron": {"api_key": "INTRON_API_KEY"},
     "groq": {"api_key": "GROQ_API_KEY"},
+    "nebius": {
+        "api_key": "NEBIUS_API_KEY",
+        "base_url": "NEBIUS_BASE_URL",
+        "ultra_model": "NEBIUS_ULTRA_MODEL",
+        "super_model": "NEBIUS_SUPER_MODEL",
+        "nano_model": "NEBIUS_NANO_MODEL",
+    },
+    "tavily": {"api_key": "TAVILY_API_KEY"},
     "nvidia_nim": {
         "llm_endpoint": "NVIDIA_NIM_LLM_ENDPOINT",
         "asr_endpoint": "NVIDIA_NIM_ASR_ENDPOINT",
@@ -483,7 +559,7 @@ def _env_creds(provider_id: str) -> Optional[dict[str, str]]:
         return None
     if provider_id == "openai" and not creds.get("api_key"):
         return None
-    if provider_id in {"intron", "groq", "ambiguous"} and not creds.get("api_key"):
+    if provider_id in {"intron", "groq", "ambiguous", "nebius", "tavily"} and not creds.get("api_key"):
         return None
     if provider_id == "nvidia_nim" and not (creds.get("llm_endpoint") or creds.get("asr_endpoint")):
         return None
