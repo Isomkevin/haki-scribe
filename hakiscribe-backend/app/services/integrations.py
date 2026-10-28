@@ -817,6 +817,41 @@ async def _verify_groq(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+async def _verify_nebius(creds: dict[str, Any]) -> dict[str, Any]:
+    """GET {base}/models and report how many Nemotron models were found."""
+    key = str(creds.get("api_key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "Missing Nebius API key"}
+    raw = str(creds.get("base_url") or "").strip().rstrip("/")
+    base = raw or "https://api.tokenfactory.nebius.com/v1"
+    if not re.search(r"/v\d+$", base):
+        base = f"{base}/v1"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+        if resp.status_code in (401, 403):
+            return {"ok": False, "error": "Nebius rejected the API key. Re-check it on the connector card."}
+        if resp.status_code >= 400:
+            return {"ok": False, "error": f"Nebius Token Factory returned {resp.status_code}: {resp.text[:200]}"}
+        items = resp.json().get("data") or resp.json().get("models") or []
+        ids = [str(i.get("id") or "") for i in items if isinstance(i, dict) and i.get("id")]
+        nemotron = [m for m in ids if "nemotron" in m.lower()]
+        detail = f"Account has {len(ids)} model(s); {len(nemotron)} Nemotron model(s) found"
+        if nemotron:
+            detail += f": {', '.join(nemotron[:6])}"
+        else:
+            detail += ". Set the Ultra / Super / Nano overrides on this card."
+        return {"ok": True, "error": None, "detail": detail}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_tavily(creds: dict[str, Any]) -> dict[str, Any]:
+    from app.services import tavily
+    result = await tavily.verify(creds)
+    return {"ok": result["ok"], "error": result.get("error"), "detail": result.get("detail")}
+
+
 async def _verify_openai(creds: dict[str, Any]) -> dict[str, Any]:
     key = creds.get("api_key", "")
     if not key:
@@ -1151,6 +1186,8 @@ _VERIFIERS = {
     "gemini": _verify_gemini,
     "mistral": _verify_mistral,
     "groq": _verify_groq,
+    "nebius": _verify_nebius,
+    "tavily": _verify_tavily,
     "openrouter": _verify_openrouter,
     "nvidia_nim": _verify_nvidia_nim,
     "intron": _verify_intron,
