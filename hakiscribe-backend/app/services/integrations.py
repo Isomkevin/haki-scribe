@@ -1385,6 +1385,21 @@ async def complete_with_provider(
             )
         elif provider_id == "gemini_oauth":
             return await _complete_vertex_gemini(creds, system_prompt, user_prompt, model or "gemini-2.0-flash", timeout_s)
+        elif provider_id == "nebius":
+            base = str(creds.get("base_url") or "").strip().rstrip("/") or "https://api.tokenfactory.nebius.com/v1"
+            if not re.search(r"/v\d+$", base):
+                base = f"{base}/v1"
+            model_id = model
+            if not model_id:
+                from app.services import nebius
+                override = str(creds.get("super_model") or "").strip()
+                try:
+                    model_id = override or await nebius.resolve_model("super")
+                except Exception:  # noqa: BLE001 — Ask must not break on discovery errors
+                    model_id = None
+            if not model_id:
+                return None
+            return await _complete_openai(creds, system_prompt, user_prompt, model_id, timeout_s, base)
         elif provider_id == "claude_custom":
             base = (creds.get("base_url") or "").strip().rstrip("/")
             return await _complete_openai(creds, system_prompt, user_prompt, model or "gpt-4o", timeout_s, base)
@@ -1555,6 +1570,11 @@ def connected_llm_models() -> list[dict[str, str]]:
     if get_connection("groq"):
         add("groq:llama-3.3-70b-versatile", "Llama 3.3 70B · Groq")
         add("groq:llama-3.1-8b-instant", "Llama 3.1 8B Instant · Groq")
+    nebius_creds = get_creds("nebius") or {}
+    if nebius_creds.get("api_key"):
+        add("nebius:nemotron-super", "Nemotron Super · Nebius Token Factory")
+        add("nebius:nemotron-ultra", "Nemotron Ultra · Nebius Token Factory")
+        add("nebius:nemotron-nano", "Nemotron Nano · Nebius Token Factory")
     if get_creds("openrouter"):
         for item in llm_client.CURATED_MODELS:
             add(item["id"], f"{item['label']} · OpenRouter")
