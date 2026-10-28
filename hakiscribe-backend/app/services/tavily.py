@@ -92,18 +92,14 @@ async def search(
     return hits
 
 
-def verify(creds_payload: dict[str, Any]) -> dict[str, Any]:
-    """Sync credential probe for the connector verifier (run via asyncio)."""
-    import asyncio
-
+async def verify(creds_payload: dict[str, Any]) -> dict[str, Any]:
+    """Credential probe for the connector verifier."""
     try:
-        hits = asyncio.get_event_loop().run_until_complete(
-            search("Kenya Evidence Act burden of proof", max_results=1, creds_override=creds_payload)
-        )
+        hits = await search("Kenya Evidence Act burden of proof", max_results=1, creds_override=creds_payload)
     except RuntimeError as exc:
         return {"ok": False, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, error := None} if False else {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc)}
     if not hits:
         return {"ok": True, "error": None, "detail": "Key accepted; no results for the probe query."}
     return {"ok": True, "error": None, "detail": f"Key accepted; probe returned {len(hits)} result(s)."}
