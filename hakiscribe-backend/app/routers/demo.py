@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import SessionDetail, SessionLibraryItem
-from app.services import demo_library, showcase
+from app.services import demo_library, live_nemotron_demo, showcase
 
 router = APIRouter()
 
@@ -15,14 +15,28 @@ class DemoSyncResult(BaseModel):
     sessions: list[SessionLibraryItem]
 
 
+@router.post("/live-nemotron", response_model=SessionDetail)
+async def ensure_live_nemotron(rebuild: bool = Query(default=False)):
+    """Short Kilimani intake for a live Nebius Token Factory demo.
+
+    Speakers and privilege are already set. Detected actions and drafts are
+    intentionally empty — the judge clicks Detect then Generate so Nemotron
+    Super / Ultra and Tavily run at request time. Pass rebuild=true to clear
+    a previous tray and restore the short transcript.
+    """
+    detail, _created = await live_nemotron_demo.ensure_live_nemotron_demo(rebuild=rebuild)
+    if detail is None:
+        raise HTTPException(status_code=500, detail="The live Nemotron demo session could not be built.")
+    return detail
+
+
 @router.post("/showcase", response_model=SessionDetail)
 async def ensure_showcase(rebuild: bool = Query(default=False)):
-    """Return a completed Kenyan client-meeting session for judges.
+    """Return a completed Kenyan client-meeting session (saved sample).
 
-    Reuses an existing Wanjiru showcase when the library already has one;
-    otherwise builds transcript, flags, privilege lock, tray, and results
-    in-process so a live mic is not required. Pass rebuild=true to force
-    a fresh detect/generate (used after wiring Ambiguous or Trigger).
+    Prefer POST /demo/live-nemotron for the Nebius hackathon demo — that path
+    forces live Token Factory calls. This showcase may reuse pre-generated
+    results and a long padded catalog transcript.
     """
     detail, _created = await showcase.ensure_showcase(rebuild=rebuild)
     if detail is None:

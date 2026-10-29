@@ -1,5 +1,7 @@
 # HakiScribe — Agents, Everywhere (Nairobi)
 
+> **Nebius × NVIDIA Global AI Hackathon:** use [`docs/NEBIUS_SUBMISSION.md`](./docs/NEBIUS_SUBMISSION.md) and [`docs/DEMO_SCRIPT_NEBIUS.md`](./docs/DEMO_SCRIPT_NEBIUS.md). This file remains the earlier AI Tinkerers Nairobi packet and still mentions OpenRouter GPT-4o as that event’s stack.
+
 **Title:** HakiScribe — the legal work agent in the room
 
 **For:** Lawyers, judges, and clerks in Kenya. Built as the listening instrument of [HakiChain](https://hakichain.com).

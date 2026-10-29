@@ -188,16 +188,19 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 
 ---
 
-## For judges (Agents, Everywhere)
+## For judges (Nebius × NVIDIA Global AI Hackathon)
 
-The written description, demo path, and rubric mapping live in [`SUBMISSION.md`](./SUBMISSION.md).
+Track: **Best Apps and Agents** (also eligible for **Best Use of Tavily**). Full packet: [`docs/NEBIUS_SUBMISSION.md`](./docs/NEBIUS_SUBMISSION.md). Demo script: [`docs/DEMO_SCRIPT_NEBIUS.md`](./docs/DEMO_SCRIPT_NEBIUS.md).
 
 1. Open [hakiscribe.lovable.app](https://hakiscribe.lovable.app/) (public landing).
-2. **Sign in** → use **Use demo credentials** (temporary judging account), or email/password.
-3. On `/new`, click **Open a completed judge demo** — Wanjiru Holdings client meeting (English/Kiswahili), privilege locked, Action Tray + generated letter.
-4. Optional live path: start a mic or Omi session, flag a moment, name speakers, redact, detect, generate.
+2. **Sign in** → **Use demo credentials** (temporary judging account), or email/password.
+3. On `/new`, click **Run live Nemotron demo** — short Kilimani intake, speakers named, privilege locked. **Do not** use “Open saved sample” for eligibility; that path may reuse pre-generated results.
+4. Continue → Detect (Nemotron **Super** on Nebius Token Factory) → select the demand letter → Generate (**Ultra**) → open the research card (Tavily authorities + Super synthesis). Confirm the Nemotron model id in the draft footer / Settings → AI Compute.
+5. Optional: mic or Omi live capture; Settings → Connectors → Test connection for Nebius and Tavily.
 
-Omi: preferred path is the private Miniapp under **Settings → Connectors → Omi**. Legacy demos still work with `/webhooks/omi?session_id=<HakiScribe UUID>`. Share drafts over WhatsApp; chosen work can land in Ambiguous Docs, Calendar, and CRM, or in connected Drive / Dropbox / OneDrive / Google Calendar.
+Backend API: [hakiscribe-backend.onrender.com/health](https://hakiscribe-backend.onrender.com/health). Deploy + secrets: [`docs/DEPLOY_NEBIUS.md`](./docs/DEPLOY_NEBIUS.md).
+
+Older Nairobi Agents Everywhere notes remain in [`SUBMISSION.md`](./SUBMISSION.md).
 
 ---
 
@@ -208,8 +211,13 @@ Omi: preferred path is the private Miniapp under **Settings → Connectors → O
 ```bash
 cd hakiscribe-backend
 pip install -r requirements.txt
-cp .env.example .env.local   # at least OPENROUTER_API_KEY
+cp .env.example .env.local
+# For the Nebius hackathon demo (required for eligibility):
+#   NEBIUS_API_KEY=…          # Token Factory — never commit
+#   TAVILY_API_KEY=…          # research / Best Use of Tavily
+#   # OPENROUTER_API_KEY remains a fallback when Nebius is not connected
 uvicorn app.main:app --reload --port 8000
+python scripts/smoke_nebius.py   # live Super/Ultra (+ Tavily) check
 ```
 
 **Frontend**
@@ -244,7 +252,10 @@ Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: 
 | [`src/routes/README.md`](./src/routes/README.md) | TanStack file-based routing conventions |
 | [`SPEC.md`](./SPEC.md) | Architecture, data model, API contract |
 | [`docs/CONNECTOR_OAUTH_SETUP.md`](./docs/CONNECTOR_OAUTH_SETUP.md) | Google / Dropbox / Microsoft / Gemini OAuth on Render |
-| [`SUBMISSION.md`](./SUBMISSION.md) | AI Tinkerers Nairobi judge path |
+| [`docs/NEBIUS_SUBMISSION.md`](./docs/NEBIUS_SUBMISSION.md) | Nebius × NVIDIA hackathon packet + Devpost copy |
+| [`docs/DEMO_SCRIPT_NEBIUS.md`](./docs/DEMO_SCRIPT_NEBIUS.md) | Under-3-minute demo / video script |
+| [`docs/DEPLOY_NEBIUS.md`](./docs/DEPLOY_NEBIUS.md) | Render secrets + deploy checklist |
+| [`SUBMISSION.md`](./SUBMISSION.md) | AI Tinkerers Nairobi judge path (legacy) |
 | [`Sahara_CodeSwitch_Africa_Challenge_submission/`](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) | Sahara CodeSwitch Africa challenge packet |
 | [`hakiscribe-backend/benchmarking/README.md`](./hakiscribe-backend/benchmarking/README.md) | ASR benchmark harness |
 | [`roadmap.md`](./roadmap.md) | Done checklist + remaining external setup |
@@ -253,16 +264,18 @@ Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: 
 
 ## What was significantly updated during the submission period
 
-For the **Nebius × NVIDIA Global AI Hackathon** (Best Apps and Agents; also Best Use of Tavily):
+HakiScribe existed before the Nebius × NVIDIA Global AI Hackathon Submission Period (it was built for AI Tinkerers Nairobi and related challenges). During this period we significantly updated the AI compute and demo path so the product **runs on Nebius Token Factory** with **NVIDIA Nemotron** in the core Action Tray journey:
 
-- **Nebius / NVIDIA inference layer** — Nemotron on Token Factory as first-class Connectors compute (live model discovery, Ultra/Super/Nano, no hardcoded model IDs).
+- **Nebius / NVIDIA inference layer** — Nemotron on Token Factory as first-class Connectors compute (live `GET /models` discovery, Ultra/Super/Nano, no hardcoded model IDs). Runtime calls go to `https://api.tokenfactory.nebius.com/v1`.
+- **Provider precedence** — a connected Nebius key overrides a stale `LLM_PROVIDER=openrouter` deploy default so production stays eligible; explicit `nvidia_nim` still wins when set.
 - **Privilege-first prompt construction** — `redacted` lines stripped in code before any Nebius or Tavily call; interception test with marker `ZEBRA-PRIVILEGED-7731`.
 - **Citation validator** — tray actions must cite real non-privileged transcript lines; confidence clamped; duplicates dropped.
 - **Tavily research path** — Kenyan legal domains → Nemotron Super synthesis; authorities labelled “External authorities (not evidence)”.
-- **Backend sync and diagnostics** — Settings → Backend + Connectors AI Compute panel share `provider_settings` / `ai_runs` (metadata only); Run diagnostics for secrets, `/models`, tiers, and function health.
+- **Live Nemotron demo** — short Kilimani session (`POST /demo/live-nemotron`) with empty tray so Detect/Generate are live Token Factory calls (not the padded saved sample).
+- **Backend diagnostics** — Settings → AI Compute / Run diagnostics; `ai_runs` metadata only (no transcript bodies).
 - **No silent fallback** from Nebius to OpenRouter when Nebius is the selected provider (errors surface with Retry).
 
-E2E notes and live commands: [`docs/E2E_REPORT.md`](./docs/E2E_REPORT.md). Feedback placeholders: [`docs/FEEDBACK.md`](./docs/FEEDBACK.md).
+E2E notes: [`docs/E2E_REPORT.md`](./docs/E2E_REPORT.md). Feedback: [`docs/FEEDBACK.md`](./docs/FEEDBACK.md). Deploy: [`docs/DEPLOY_NEBIUS.md`](./docs/DEPLOY_NEBIUS.md).
 
 ---
 

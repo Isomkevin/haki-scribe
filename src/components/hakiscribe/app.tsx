@@ -670,6 +670,21 @@ export function NewSessionPage() {
         search: { fresh: true },
       }),
   });
+  const liveNemotron = useMutation({
+    mutationFn: () => hakiApi.ensureLiveNemotronDemo(true),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["matters"] });
+      void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      toast.success("Short live demo ready — continue to Detect for Nemotron Super");
+      navigate({
+        to: "/sessions/$sessionId",
+        params: { sessionId: session.id },
+        search: { fresh: false },
+      });
+    },
+    onError: (error) => toast.error(friendlyErrorMessage(error)),
+  });
   const showcase = useMutation({
     mutationFn: hakiApi.ensureShowcase,
     onSuccess: (session) => {
@@ -948,14 +963,28 @@ export function NewSessionPage() {
                 {demoDataEnabled ? (
                   <>
                     <Button
+                      variant="warm"
+                      className="mt-2 h-11 w-full"
+                      onClick={() => liveNemotron.mutate()}
+                      disabled={liveNemotron.isPending || !hasApiConfiguration}
+                    >
+                      {liveNemotron.isPending
+                        ? "Opening live Nemotron demo…"
+                        : "Run live Nemotron demo"}
+                    </Button>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      Short Kilimani intake with privilege locked. You click Detect and Generate —
+                      Nemotron Super / Ultra on Nebius Token Factory, Tavily for authorities.
+                    </p>
+                    <Button
                       variant="outline"
                       className="mt-2 h-11 w-full"
                       onClick={() => showcase.mutate()}
                       disabled={showcase.isPending || !hasApiConfiguration}
                     >
                       {showcase.isPending
-                        ? "Building the Wanjiru showcase…"
-                        : "Open a completed judge demo"}
+                        ? "Building saved sample…"
+                        : "Open saved sample (not live AI)"}
                     </Button>
                     <Button
                       variant="outline"
@@ -974,6 +1003,14 @@ export function NewSessionPage() {
                     {friendlyErrorMessage(
                       create.error,
                       "The session could not be opened. Try again.",
+                    )}
+                  </p>
+                )}
+                {demoDataEnabled && liveNemotron.error && (
+                  <p className="mt-3 text-sm text-destructive">
+                    {friendlyErrorMessage(
+                      liveNemotron.error,
+                      "The live Nemotron demo could not be opened. Try again.",
                     )}
                   </p>
                 )}
@@ -1113,17 +1150,17 @@ export function NewSessionPage() {
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {demoDataEnabled
-                    ? "Open the completed Wanjiru client meeting, or start listening."
+                    ? "Run the live Nemotron demo, or start listening."
                     : "Start a private session to begin capturing work. Demo samples stay hidden while Use Demo Data is off."}
                 </p>
                 {demoDataEnabled ? (
                   <Button
                     className="mt-5"
-                    variant="outline"
-                    onClick={() => showcase.mutate()}
-                    disabled={showcase.isPending || !hasApiConfiguration}
+                    variant="warm"
+                    onClick={() => liveNemotron.mutate()}
+                    disabled={liveNemotron.isPending || !hasApiConfiguration}
                   >
-                    {showcase.isPending ? "Building showcase…" : "Load judge demo"}
+                    {liveNemotron.isPending ? "Opening…" : "Run live Nemotron demo"}
                   </Button>
                 ) : null}
               </div>
@@ -1940,12 +1977,20 @@ function AnalyzingScreen({
         <h1 className="mt-10 font-serif text-3xl font-semibold">Reviewing what happened…</h1>
         <p className="mt-3 leading-7 text-muted-foreground">
           Checking the verified record for documents, dates, matters, contacts, notes, and billable
-          work. Flagged moments are weighed first. Redacted lines stay out.
+          work on NVIDIA Nemotron (Nebius Token Factory) when connected. Flagged moments are weighed
+          first. Redacted lines stay out.
         </p>
         <TrustLine className="mt-5" />
         {error && (
           <div className="mt-8 w-full">
-            <ConnectionError message={error} retry={() => window.location.reload()} />
+            <ConnectionError
+              message={
+                /nebius|token factory|nemotron/i.test(error)
+                  ? error
+                  : `${error} If Nebius is connected, check Settings → Connectors → NVIDIA Nemotron · Nebius Token Factory.`
+              }
+              retry={() => window.location.reload()}
+            />
           </div>
         )}
       </main>

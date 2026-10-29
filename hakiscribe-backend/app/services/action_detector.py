@@ -359,19 +359,12 @@ async def detect_actions(
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
 
-    if provider:
-        selected_provider = provider.lower()
-    else:
-        env_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
-        if env_provider:
-            selected_provider = env_provider
-        else:
-            # Nemotron on Nebius Token Factory is the default AI compute when connected.
-            from app.services import nebius as nebius_service
-            selected_provider = "nebius" if nebius_service.is_connected() else "openrouter"
+    from app.services import nebius as nebius_service
+
+    # Connected Nebius overrides a stale LLM_PROVIDER=openrouter on Render.
+    selected_provider = nebius_service.select_provider(provider)
 
     if selected_provider == "nebius":
-        from app.services import nebius as nebius_service
         # No silent fallback: surface Nebius failures so the demo stays honest.
         result = await nebius_service.complete(
             nebius_service.tier_for_task("detection"),

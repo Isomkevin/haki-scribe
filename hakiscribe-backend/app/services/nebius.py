@@ -62,6 +62,30 @@ def is_connected() -> bool:
     return bool(str(c.get("api_key") or "").strip())
 
 
+def select_provider(explicit: str | None = None) -> str:
+    """Resolve which LLM backend to use for detection / drafting.
+
+    Precedence:
+    1. Explicit per-call ``provider`` argument.
+    2. ``LLM_PROVIDER=nvidia_nim`` — keep the NIM path when someone opted in.
+    3. Connected Nebius Token Factory key — wins over a stale
+       ``LLM_PROVIDER=openrouter`` on Render so the demo stays eligible.
+    4. Any other ``LLM_PROVIDER`` value, else OpenRouter.
+    """
+    import os
+
+    if explicit:
+        return explicit.strip().lower()
+    env_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if env_provider == "nvidia_nim":
+        return "nvidia_nim"
+    if is_connected():
+        return "nebius"
+    if env_provider:
+        return env_provider
+    return "openrouter"
+
+
 def base_url(c: dict[str, Any] | None = None) -> str:
     c = c if c is not None else creds()
     raw = str(c.get("base_url") or "").strip().rstrip("/") or DEFAULT_BASE_URL

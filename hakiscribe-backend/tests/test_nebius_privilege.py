@@ -125,5 +125,35 @@ class IsConnectedTests(unittest.TestCase):
             self.assertFalse(nebius.is_connected())
 
 
+class SelectProviderTests(unittest.TestCase):
+    def test_connected_nebius_overrides_openrouter_env(self) -> None:
+        with patch.object(nebius, "is_connected", return_value=True):
+            with patch.dict("os.environ", {"LLM_PROVIDER": "openrouter"}, clear=False):
+                self.assertEqual(nebius.select_provider(), "nebius")
+
+    def test_disconnected_keeps_openrouter_env(self) -> None:
+        with patch.object(nebius, "is_connected", return_value=False):
+            with patch.dict("os.environ", {"LLM_PROVIDER": "openrouter"}, clear=False):
+                self.assertEqual(nebius.select_provider(), "openrouter")
+
+    def test_nvidia_nim_env_wins_even_when_nebius_connected(self) -> None:
+        with patch.object(nebius, "is_connected", return_value=True):
+            with patch.dict("os.environ", {"LLM_PROVIDER": "nvidia_nim"}, clear=False):
+                self.assertEqual(nebius.select_provider(), "nvidia_nim")
+
+    def test_explicit_provider_wins(self) -> None:
+        with patch.object(nebius, "is_connected", return_value=True):
+            with patch.dict("os.environ", {"LLM_PROVIDER": "openrouter"}, clear=False):
+                self.assertEqual(nebius.select_provider("openrouter"), "openrouter")
+
+    def test_no_env_no_key_defaults_openrouter(self) -> None:
+        with patch.object(nebius, "is_connected", return_value=False):
+            with patch.dict("os.environ", {}, clear=False):
+                # Ensure LLM_PROVIDER is absent for this assertion.
+                env = {k: v for k, v in __import__("os").environ.items() if k != "LLM_PROVIDER"}
+                with patch.dict("os.environ", env, clear=True):
+                    self.assertEqual(nebius.select_provider(), "openrouter")
+
+
 if __name__ == "__main__":
     unittest.main()

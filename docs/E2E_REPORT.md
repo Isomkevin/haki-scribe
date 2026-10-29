@@ -17,10 +17,10 @@ Live Token Factory / Tavily calls were **not** run. Do not treat any demo as liv
 
 ```text
 cd hakiscribe-backend
-python -m unittest tests.test_tray_logic tests.test_nebius_privilege -v
+python -m unittest tests.test_tray_logic tests.test_nebius_privilege tests.test_live_nemotron_demo -v
 ```
 
-Result: **7 passed** (OK), including:
+Result: **12+ passed** (OK), including:
 
 - Privileged lines absent from `build_transcript_block`
 - Actions citing only privileged/nonexistent quotes dropped
@@ -29,14 +29,22 @@ Result: **7 passed** (OK), including:
 - **Privilege interception** (`ZEBRA-PRIVILEGED-7731` absent from mocked Nebius request body and `ai_runs`)
 - Tier resolution failure message lists available Nemotron models
 - `is_connected()` false when only `base_url` is set
+- **`select_provider`**: connected Nebius overrides `LLM_PROVIDER=openrouter`; `nvidia_nim` env still wins; disconnected keeps openrouter
+- Live Nemotron demo spec is short (12–25 lines), privilege-indexed, `generate=False`, no working-session padding
 
-## Live chain — commands for you
+Smoke without key:
 
-```bash
+```text
+python scripts/smoke_nebius.py
+→ SKIP: NEBIUS_API_KEY is not set (exit 2)
+```
+
+## Live chain — commands for you (BLOCKER for eligibility)
+
+```powershell
 cd hakiscribe-backend
-# Windows PowerShell
 $env:NEBIUS_API_KEY="…"
-$env:TAVILY_API_KEY="…"   # optional, for research step
+$env:TAVILY_API_KEY="…"   # optional, for research step / Tavily bonus evidence
 python scripts/smoke_nebius.py
 ```
 
@@ -54,26 +62,23 @@ Also:
 curl -s -H "Authorization: Bearer $NEBIUS_API_KEY" https://api.tokenfactory.nebius.com/v1/models
 ```
 
-Apply production migration (if using Supabase Postgres):
+## Hosted backend (observed 2026-10-29)
 
-```text
-hakiscribe-backend/migrations/002_provider_settings_ai_runs.sql
-```
+`GET https://hakiscribe-backend.onrender.com/health` → `status: ok`, `mode: demo`.  
+Integrations report OpenRouter / Trigger / Exa / Ambiguous present. Nebius is **not** confirmed connected on that instance until `NEBIUS_API_KEY` is set in the Render dashboard and the provider-precedence fix is deployed.
 
-Redeploy backend (Render) then frontend (Lovable/Vercel). Confirm Connectors → Test connection lists Nemotron tiers; Backend → Run diagnostics all green.
+## Manual UI walk-through (after keys + deploy)
 
-## Manual UI walk-through (no Playwright in repo)
-
-1. Start backend + `npm run dev`.  
+1. Start backend + `npm run dev` (or use hosted frontend).  
 2. Settings → Connectors → NVIDIA Nemotron · Nebius Token Factory → paste key → Test connection.  
 3. Confirm AI Compute panel shows Connected + tiers.  
-4. New session → record or load demo → lock one line as privileged → Stop.  
-5. Tray appears pre-checked; banner shows “N privileged lines excluded from AI”.  
-6. Click a Source chip → Record tab highlights the line.  
-7. Untick one action → Generate selected → edit draft; footer shows model id.  
-8. Research action → “External authorities (not evidence)”.  
+4. `/new` → **Run live Nemotron demo** (not the saved sample).  
+5. Confirm speakers → privilege (tax line already struck) → Detect.  
+6. Tray appears; banner / footer shows Nemotron Super. Click Source chip.  
+7. Generate demand letter → Ultra footer with model id.  
+8. Research action → “External authorities (not evidence)” with Tavily URLs.  
 9. Settings → Backend → Run diagnostics → all green when keys set.  
-10. Disconnect Nebius → demo/heuristic path still works without key.
+10. Disconnect Nebius → demo/heuristic path still works without key; with Nebius connected, failures must surface (no silent OpenRouter switch).
 
 ## Failure drills (expected behaviour)
 
@@ -87,11 +92,12 @@ Redeploy backend (Render) then frontend (Lovable/Vercel). Confirm Connectors →
 
 ## Lint / build
 
-- `npm run lint` reports a large number of pre-existing `prettier/prettier` CRLF (`Delete ␍`) issues across the repo (15k+); not introduced by the Nebius finish. Prefer `npm run build` as the ship check.
-- Unit tests: `python -m unittest tests.test_tray_logic tests.test_nebius_privilege -v` → **7 passed**.
+- `npm run lint` reports a large number of pre-existing `prettier/prettier` CRLF (`Delete ␍`) issues across the repo; not introduced by the Nebius finish. Prefer `npm run build` as the ship check.
+- Unit tests above: **PASS**. Live smoke: **UNVERIFIED** (keys unset).
 
-## Known issues
+## Known issues / submission blockers remaining
 
-- Live Nebius/Tavily chain not captured in this file (keys unset here).  
+- Live Nebius/Tavily chain not captured (keys unset here).  
+- Hosted Render must receive `NEBIUS_API_KEY` + `TAVILY_API_KEY` via dashboard and a deploy of the precedence + live-demo code.  
 - Frontend has no `typecheck`/`test` npm scripts.  
 - Reference Edge Function tree remains gitignored under `reference/` (not shipped).

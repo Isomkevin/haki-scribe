@@ -665,6 +665,10 @@ export const hakiApi = {
       `/integrations/${sessionId}/documents/${actionId}/export`,
       { method: "POST", body: JSON.stringify({ provider }) },
     ),
+  ensureLiveNemotronDemo: (rebuild = true) =>
+    request<SessionDetail>(`/demo/live-nemotron${rebuild ? "?rebuild=true" : ""}`, {
+      method: "POST",
+    }),
   ensureShowcase: () => request<SessionDetail>("/demo/showcase", { method: "POST" }),
   ensureSaharaDemo: () => request<SessionDetail>("/demo/sahara", { method: "POST" }),
   syncDemoLibrary: () =>

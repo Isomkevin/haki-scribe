@@ -90,18 +90,12 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
     Privileged lines are never present in the prompt — callers pass usable transcript only.
     """
     global _last_completion
-    if provider:
-        selected_provider = provider.lower()
-    else:
-        env_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
-        if env_provider:
-            selected_provider = env_provider
-        else:
-            from app.services import nebius as nebius_service
-            selected_provider = "nebius" if nebius_service.is_connected() else "openrouter"
+    from app.services import nebius as nebius_service
+
+    # Connected Nebius overrides a stale LLM_PROVIDER=openrouter on Render.
+    selected_provider = nebius_service.select_provider(provider)
 
     if selected_provider == "nebius":
-        from app.services import nebius as nebius_service
         # privileged_lines_excluded is 0 here; callers already stripped redacted lines.
         tier = nebius_service.tier_for_task(task)
         result = await nebius_service.complete(
