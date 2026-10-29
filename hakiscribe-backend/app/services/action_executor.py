@@ -13,6 +13,7 @@ used when configured; otherwise results stay local.
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import UUID
 
 from urllib.parse import quote
@@ -28,6 +29,8 @@ from app.models.schemas import (
     TranscriptSegment,
 )
 from app.services import generation, integrations, storage, workspace
+
+logger = logging.getLogger(__name__)
 
 _inflight_actions: dict[str, asyncio.Task[ActionResult]] = {}
 

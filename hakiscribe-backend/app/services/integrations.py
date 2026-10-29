@@ -575,6 +575,7 @@ def _provider_meta(provider: dict[str, Any]) -> dict[str, Any]:
         "provider_id": pid,
         "name": provider["name"],
         "group": provider["group"],
+        "badge": provider.get("badge"),
         "what_it_does": provider["what_it_does"],
         "capabilities": provider["capabilities"],
         "fields": provider["fields"],
