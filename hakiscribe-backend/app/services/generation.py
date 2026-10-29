@@ -74,16 +74,52 @@ def _duration_hours(transcript: list[TranscriptSegment] | None, fallback: float 
     return round(hours, 2)
 
 
+_last_completion: dict[str, Any] | None = None
+
+
+def last_completion() -> dict[str, Any] | None:
+    """Provenance of the most recent completion, for result footers."""
+    return dict(_last_completion) if _last_completion else None
+
+
 async def complete_text(system_prompt: str, user_prompt: str, provider: str | None = None, *, task: str = "draft") -> str | None:
-    """Keep legal drafts premium; route bounded utility copy to a cheaper model."""
-    model = DRAFTING_MODEL if task == "draft" else LIGHTWEIGHT_MODEL
-    selected_provider = (provider or os.environ.get("LLM_PROVIDER", "openrouter")).lower()
+    """Keep legal drafts premium; route bounded utility copy to a cheaper model.
+
+    Nemotron on Nebius Token Factory is the default compute when its
+    connector is live; OpenRouter stays the fallback. Privileged lines are
+    never present in the prompt — callers pass the usable transcript only.
+    """
+    global _last_completion
+    if provider:
+        selected_provider = provider.lower()
+    else:
+        env_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+        if env_provider:
+            selected_provider = env_provider
+        else:
+            from app.services import nebius as nebius_service
+            selected_provider = "nebius" if nebius_service.is_connected() else "openrouter"
+    if selected_provider == "nebius":
+        try:
+            from app.services import nebius as nebius_service
+            tier = nebius_service.tier_for_task(task)
+            result = await nebius_service.complete(tier, system_prompt, user_prompt, task=task)
+            _last_completion = {
+                "provider": "NVIDIA Nemotron (Nebius Token Factory)",
+                "tier": tier,
+                "model": result["model"],
+                "latency_ms": result["latency_ms"],
+            }
+            return result["text"]
+        except Exception as exc:  # noqa: BLE001 — Nemotron must not interrupt generation
+            logger.warning("Nemotron %s failed (%s); falling back to OpenRouter", task, exc)
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim
             return await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
         except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
             logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
+    model = DRAFTING_MODEL if task == "draft" else LIGHTWEIGHT_MODEL
     api_key = llm_client.api_key()
     if not api_key:
         return None
@@ -112,6 +148,8 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
             text = (content or "").strip() or None
             from app.services import llm_usage
             llm_usage.record(task=task, model=str(body.get("model") or model), provider="openrouter", prompt=user_prompt, response=text, usage=body.get("usage"))
+            if text:
+                _last_completion = {"provider": "OpenRouter", "tier": None, "model": str(body.get("model") or model), "latency_ms": None}
             return text
     except Exception:  # noqa: BLE001 — fall back to transcript-composed text
         return None
@@ -164,6 +202,7 @@ class DraftDocumentModel:
             "Draft the complete document now."
         )
         document_text = await complete_text(self.SYSTEM_PROMPT, prompt, task="draft")
+        used_model = bool(document_text and len(document_text) >= 400)
         if not document_text or len(document_text) < 400:
             document_text = documents.compose_document(kind, action, transcript)
         document_text += documents.compliance_footer(kind)
@@ -172,6 +211,7 @@ class DraftDocumentModel:
             document_text=document_text,
             document_kind=kind,
             source="transcript",
+            provenance=last_completion() if used_model else None,
         )
 
 
