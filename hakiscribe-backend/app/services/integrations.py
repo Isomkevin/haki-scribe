@@ -401,16 +401,24 @@ _PROVIDERS: list[dict[str, Any]] = [
         "id": "hakichain",
         "name": "HakiChain",
         "group": "practice",
-        "what_it_does": "Sync matters and sessions to your HakiChain workspace.",
-        "capabilities": ["Sync matters"],
+        "what_it_does": "Sync matters, drafts, and court dates into your HakiChain workspace.",
+        "capabilities": ["Sync matters", "Export documents", "Add calendar events"],
         "fields": [
             {
                 "id": "api_key",
                 "label": "HakiChain API token",
                 "type": "password",
-                "help": "Found in HakiChain → Workspace → API tokens.",
+                "help": "Create this in HakiChain → Settings → HakiScribe, then paste it here.",
                 "placeholder": "hkc_…",
                 "mask": True,
+            },
+            {
+                "id": "base_url",
+                "label": "Ingress URL (optional)",
+                "type": "text",
+                "help": "Overrides HAKICHAIN_API_BASE. Usually leave blank — the server already knows the HakiChain function URL.",
+                "placeholder": "https://….supabase.co/functions/v1/hakiscribe-ingress",
+                "mask": False,
             },
         ],
     },
@@ -1079,12 +1087,17 @@ async def _verify_onedrive(creds: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _verify_hakichain(creds: dict[str, Any]) -> dict[str, Any]:
-    key = creds.get("api_key", "")
+    key = str(creds.get("api_key") or "").strip()
     if not key:
         return {"ok": False, "error": "Missing API token"}
-    # HakiChain API endpoint — we accept the token and confirm it's non-empty.
-    # The real HakiChain API will be wired once the endpoint is published.
-    return {"ok": True, "error": None}
+    from app.integrations import hakichain_client
+
+    result = await hakichain_client.me(key, base_url=str(creds.get("base_url") or "").strip() or None)
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error") or "HakiChain rejected that token"}
+    if result.get("account"):
+        creds["account"] = str(result["account"])
+    return {"ok": True, "error": None, "account": result.get("account")}
 
 
 async def _verify_ambiguous(creds: dict[str, Any]) -> dict[str, Any]:
@@ -1212,7 +1225,15 @@ async def verify(provider_id: str, creds: dict[str, Any]) -> dict[str, Any]:
 # Document export — storage providers receive the generated artifact
 # ---------------------------------------------------------------------------
 
-async def export_document(provider_id: str, text: str, title: str) -> dict[str, Any]:
+async def export_document(
+    provider_id: str,
+    text: str,
+    title: str,
+    *,
+    session_id: str | None = None,
+    action_id: str | None = None,
+    client_id: str | None = None,
+) -> dict[str, Any]:
     """Upload a drafted document to the connected storage provider.
     Returns {"ok": bool, "url": str|None, "error": str|None}."""
     creds = await get_fresh_creds(provider_id)
@@ -1225,6 +1246,31 @@ async def export_document(provider_id: str, text: str, title: str) -> dict[str, 
         return await _export_dropbox(creds, text, title)
     elif provider_id == "onedrive":
         return await _export_onedrive(creds, text, title)
+    elif provider_id == "hakichain":
+        from app.integrations import hakichain_client
+
+        if not session_id:
+            return {"ok": False, "url": None, "error": "Missing session id for HakiChain export"}
+        filed = await hakichain_client.file_document(
+            action_key=f"export-doc:{action_id or title}:{session_id}",
+            session_id=str(session_id),
+            title=title,
+            document_text=text,
+            client_id=client_id,
+            matter_name=title,
+        )
+        if not filed:
+            return {
+                "ok": False,
+                "url": None,
+                "error": hakichain_client.last_error() or "HakiChain export failed",
+            }
+        return {
+            "ok": True,
+            "url": filed.get("workspace_url") or hakichain_client.workspace_url(filed.get("client_id")),
+            "error": None,
+            "client_id": filed.get("client_id"),
+        }
     return {"ok": False, "url": None, "error": f"Provider {provider_id} does not support document export"}
 
 

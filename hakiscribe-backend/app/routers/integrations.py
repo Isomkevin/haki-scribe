@@ -22,7 +22,7 @@ class ConnectRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    provider: str  # "google_drive" | "dropbox" | "onedrive"
+    provider: str  # "google_drive" | "dropbox" | "onedrive" | "hakichain" | "google_calendar"
 
 
 @router.get("", response_model=list[dict[str, Any]])
@@ -298,10 +298,14 @@ async def connect_integration(provider_id: str, payload: ConnectRequest):
         raise HTTPException(status_code=400, detail="Add the Omi user id or an Omi developer API key")
     if provider_id == "ambiguous" and not creds.get("api_key"):
         raise HTTPException(status_code=400, detail="Add an Ambiguous AI API key")
+    if provider_id == "hakichain" and not creds.get("api_key"):
+        raise HTTPException(status_code=400, detail="Add a HakiChain connection token from Settings → HakiScribe")
 
     result = await integrations.verify(provider_id, creds)
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result.get("error") or "Verification failed")
+    if result.get("account"):
+        creds["account"] = str(result["account"])
 
     if provider_id == "omi":
         omi_pairing.save_credentials(uid=creds.get("uid"), api_key=creds.get("api_key"))
@@ -384,17 +388,52 @@ async def export_document(session_id: uuid.UUID, action_id: uuid.UUID, payload: 
         storage.upsert_action_results(session_id, [result])
         return {"ok": True, "url": event.get("url"), "provider": payload.provider}
 
+    if payload.provider == "hakichain" and payload_data.get("start"):
+        from app.integrations import hakichain_client
+
+        filed = await hakichain_client.file_reminder(
+            action_key=f"export-reminder:{action_id}:{session_id}",
+            session_id=str(session_id),
+            title=str(payload_data.get("title") or result.type.value),
+            start=str(payload_data.get("start")),
+            description=str(payload_data.get("description") or ""),
+            client_id=str(payload_data.get("hakichain_client_id") or "") or None,
+        )
+        if not filed:
+            raise HTTPException(
+                status_code=400,
+                detail=hakichain_client.last_error() or "Could not file the date in HakiChain",
+            )
+        url = filed.get("workspace_url") or hakichain_client.workspace_url(filed.get("client_id"))
+        payload_data.setdefault("exports", [])
+        payload_data["exports"].append({"provider": "hakichain", "url": url})
+        if filed.get("client_id"):
+            payload_data["hakichain_client_id"] = filed["client_id"]
+            payload_data["hakichain_url"] = url
+        storage.upsert_action_results(session_id, [result])
+        return {"ok": True, "url": url, "provider": payload.provider}
+
     text = payload_data.get("document_text")
     if not isinstance(text, str) or not text.strip():
         raise HTTPException(status_code=400, detail="This action has no document text to export")
 
     title = result.result.get("document_kind") or result.type.value
-    export = await integrations.export_document(payload.provider, text, str(title).replace(" ", "-"))
+    export = await integrations.export_document(
+        payload.provider,
+        text,
+        str(title).replace(" ", "-"),
+        session_id=str(session_id),
+        action_id=str(action_id),
+        client_id=str(payload_data.get("hakichain_client_id") or "") or None,
+    )
 
     if export["ok"]:
         result.result.setdefault("exports", [])
         export_record = {"provider": payload.provider, "url": export.get("url")}
         result.result["exports"].append(export_record)
+        if export.get("client_id"):
+            result.result["hakichain_client_id"] = export["client_id"]
+            result.result["hakichain_url"] = export.get("url")
         storage.upsert_action_results(session_id, [result])
         return {"ok": True, "url": export.get("url"), "provider": payload.provider}
 

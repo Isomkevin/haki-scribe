@@ -17,7 +17,7 @@ from uuid import UUID
 
 from urllib.parse import quote
 
-from app.integrations import ambiguous_client, exa_client, llm_client
+from app.integrations import ambiguous_client, exa_client, hakichain_client, llm_client
 from app.models.schemas import (
     ActionResult,
     ActionType,
@@ -74,6 +74,29 @@ async def _generate_draft_document(action: DetectedAction, transcript: list[Tran
         )
     elif ambiguous_client.configured():
         result["workspace_error"] = ambiguous_client.last_error()
+
+    if hakichain_client.configured():
+        session = storage.get_session(action.session_id)
+        matter_client_id = None
+        if session and session.matters:
+            matter_client_id = f"hs-{session.matters[0].id}"
+        filed = await hakichain_client.file_document(
+            action_key=f"draft:{action.id}",
+            session_id=str(action.session_id),
+            title=action.title,
+            document_text=drafted.document_text,
+            client_id=matter_client_id,
+            matter_name=action.title,
+        )
+        if filed:
+            result["hakichain_client_id"] = filed.get("client_id")
+            result["hakichain_url"] = filed.get("workspace_url") or hakichain_client.workspace_url(
+                filed.get("client_id")
+            )
+            result["workspace_url"] = result.get("workspace_url") or result["hakichain_url"]
+        elif hakichain_client.last_error():
+            result["hakichain_error"] = hakichain_client.last_error()
+
     return _attach_handoff(result, title=action.title, body=drafted.document_text)
 
 
@@ -89,6 +112,31 @@ async def _generate_calendar_event(action: DetectedAction, transcript: list[Tran
         result["workspace_url"] = remote.get("url") or ambiguous_client.event_url(remote.get("id"))
     elif ambiguous_client.configured():
         result["workspace_error"] = ambiguous_client.last_error()
+
+    if hakichain_client.configured():
+        session = storage.get_session(action.session_id)
+        matter_client_id = None
+        if session and session.matters:
+            matter_client_id = f"hs-{session.matters[0].id}"
+        filed = await hakichain_client.file_reminder(
+            action_key=f"calendar:{action.id}",
+            session_id=str(action.session_id),
+            title=event.title,
+            start=event.start,
+            description=event.description or "",
+            client_id=matter_client_id,
+            matter_name=event.title,
+            reminder_type="meeting",
+        )
+        if filed:
+            result["hakichain_client_id"] = filed.get("client_id")
+            result["hakichain_url"] = filed.get("workspace_url") or hakichain_client.workspace_url(
+                filed.get("client_id")
+            )
+            result["workspace_url"] = result.get("workspace_url") or result["hakichain_url"]
+        elif hakichain_client.last_error():
+            result["hakichain_error"] = hakichain_client.last_error()
+
     body = f"{event.title}\n{event.start} – {event.end}\n{event.description}"
     return _attach_handoff(result, title=event.title, body=body)
 
@@ -141,6 +189,33 @@ async def _generate_workspace_matter(action: DetectedAction, transcript: list[Tr
         matter_id=matter.id,
     )
 
+    hakichain_url = None
+    hakichain_client_id = None
+    if hakichain_client.configured():
+        filed = await hakichain_client.file_matter(
+            action_key=f"matter:{action.id}",
+            scribe_matter_id=str(matter.id),
+            matter_name=matter.matter_name,
+            client_name=matter.client_name,
+            session_id=str(action.session_id),
+        )
+        if filed:
+            hakichain_client_id = filed.get("client_id")
+            hakichain_url = filed.get("workspace_url") or hakichain_client.workspace_url(
+                filed.get("client_id")
+            )
+        elif hakichain_client.last_error():
+            # Surface on the card without failing the local matter.
+            pass
+
+    note = (
+        f"{'linked to existing' if outcome == 'linked' else 'new'} matter persisted via /matters"
+        + (" and mirrored to Ambiguous CRM" if deal else "")
+        + (" and filed to HakiChain" if hakichain_url else "")
+    )
+    if hakichain_client.configured() and not hakichain_url and hakichain_client.last_error():
+        note = f"{note} (HakiChain: {hakichain_client.last_error()})"
+
     return _attach_handoff(
         {
             "matter_id": str(matter.id),
@@ -149,11 +224,11 @@ async def _generate_workspace_matter(action: DetectedAction, transcript: list[Tr
             "contact_id": str(contact.id),
             "contact_name": contact.name,
             "ambiguous_deal_id": matter.ambiguous_deal_id,
-            "workspace_url": ambiguous_client.deal_url(matter.ambiguous_deal_id),
-            "note": (
-                f"{'linked to existing' if outcome == 'linked' else 'new'} matter persisted via /matters"
-                + (" and mirrored to Ambiguous CRM" if deal else "")
-            ),
+            "workspace_url": hakichain_url or ambiguous_client.deal_url(matter.ambiguous_deal_id),
+            "hakichain_url": hakichain_url,
+            "hakichain_client_id": hakichain_client_id,
+            "hakichain_error": hakichain_client.last_error() if hakichain_client.configured() and not hakichain_url else None,
+            "note": note,
         },
         title=matter.matter_name,
         body=f"Matter: {matter.matter_name}\nClient: {matter.client_name}",

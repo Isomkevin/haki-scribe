@@ -3188,7 +3188,9 @@ function ResultCard({
     select: (items) =>
       items.filter(
         (item) =>
-          item.group === "storage" && item.connected && item.provider_id !== "google_calendar",
+          item.connected &&
+          item.provider_id !== "google_calendar" &&
+          (item.group === "storage" || item.provider_id === "hakichain"),
       ),
     retry: false,
   });
@@ -3200,6 +3202,9 @@ function ResultCard({
     retry: false,
   });
   const [exportOpen, setExportOpen] = useState(false);
+  const hakiChainProviderConnected = Boolean(
+    storageProviders.data?.some((item) => item.provider_id === "hakichain"),
+  );
   const exportDoc = useMutation({
     mutationFn: ({ provider }: { provider: string }) =>
       hakiApi.exportDocument(sessionId, result.action_id, provider),
@@ -3273,6 +3278,20 @@ function ResultCard({
       : null;
   const workspaceUrl =
     typeof result.result["workspace_url"] === "string" ? result.result["workspace_url"] : null;
+  const hakiChainUrl =
+    typeof result.result["hakichain_url"] === "string"
+      ? (result.result["hakichain_url"] as string)
+      : workspaceUrl && workspaceUrl.includes("/workspace?ws=")
+        ? workspaceUrl
+        : null;
+  const ambiguousUrl =
+    typeof result.result["ambiguous_document_url"] === "string"
+      ? (result.result["ambiguous_document_url"] as string)
+      : workspaceUrl && !hakiChainUrl
+        ? workspaceUrl
+        : workspaceUrl && hakiChainUrl && workspaceUrl !== hakiChainUrl
+          ? workspaceUrl
+          : null;
   const shareUrl =
     typeof result.result["whatsapp_share_url"] === "string"
       ? result.result["whatsapp_share_url"]
@@ -3375,17 +3394,20 @@ function ResultCard({
                   <MessageCircle /> WhatsApp
                 </a>
               </Button>
-              {(workspaceUrl || typeof result.result["ambiguous_document_url"] === "string") && (
+              {hakiChainUrl ? (
                 <Button asChild variant="outline" size="sm" className="h-10 shrink-0">
-                  <a
-                    href={(workspaceUrl || result.result["ambiguous_document_url"]) as string}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <a href={hakiChainUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink /> Open in HakiChain
+                  </a>
+                </Button>
+              ) : null}
+              {ambiguousUrl ? (
+                <Button asChild variant="outline" size="sm" className="h-10 shrink-0">
+                  <a href={ambiguousUrl} target="_blank" rel="noreferrer">
                     <FileText /> Ambiguous
                   </a>
                 </Button>
-              )}
+              ) : null}
               {storageProviders.data && storageProviders.data.length > 0 && (
                 <div className="relative shrink-0">
                   <Button
@@ -3561,13 +3583,30 @@ function ResultCard({
                 <MessageCircle /> WhatsApp
               </a>
             </Button>
-            {workspaceUrl && (
+            {hakiChainUrl ? (
               <Button asChild variant="outline" className="h-10 shrink-0">
-                <a href={workspaceUrl} target="_blank" rel="noreferrer">
+                <a href={hakiChainUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink /> Open in HakiChain
+                </a>
+              </Button>
+            ) : null}
+            {hakiChainProviderConnected && result.type === "calendar_event" ? (
+              <Button
+                variant="outline"
+                className="h-10 shrink-0"
+                disabled={exportDoc.isPending}
+                onClick={() => exportDoc.mutate({ provider: "hakichain" })}
+              >
+                File in HakiChain
+              </Button>
+            ) : null}
+            {ambiguousUrl && ambiguousUrl !== hakiChainUrl ? (
+              <Button asChild variant="outline" className="h-10 shrink-0">
+                <a href={ambiguousUrl} target="_blank" rel="noreferrer">
                   Open in Ambiguous
                 </a>
               </Button>
-            )}
+            ) : null}
           </ResultActions>
         </div>
       )}
