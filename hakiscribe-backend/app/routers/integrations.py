@@ -35,6 +35,13 @@ async def integrations_health():
     return await integrations.check_all_health()
 
 
+@router.get("/compute")
+async def ai_compute_status():
+    """Status do painel 'AI Compute': Nemotron/Nebius e Tavily."""
+    from app.services import nebius, tavily
+    return {"nebius": nebius.status(), "tavily": tavily.status()}
+
+
 @router.post("/{provider_id}/check")
 async def check_integration(provider_id: str):
     if integrations.provider_def(provider_id) is None:
