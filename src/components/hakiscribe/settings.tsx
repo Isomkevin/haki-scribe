@@ -10,6 +10,7 @@ import {
   KeyRound,
   LockKeyhole,
   Plug,
+  Server,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   productionAuthApi,
   productionAuthEnabled,
   productionTenancyApi,
+  type DiagnosticsResult,
   type Integration,
   type LlmUsageSummary,
   type UsageMetric,
@@ -58,6 +60,7 @@ const NAV: { id: SettingsSection; label: string; icon: ComponentType<{ className
   { id: "usage", label: "AI usage", icon: ChartNoAxesCombined },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "connectors", label: "Connectors", icon: Plug },
+  { id: "backend", label: "Backend", icon: Server },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -104,6 +107,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
           {section === "usage" && <UsageSection />}
           {section === "security" && <SecuritySection />}
           {section === "connectors" && <ConnectorsSection />}
+          {section === "backend" && <BackendSection />}
           {section === "about" && <AboutSection />}
         </div>
       </main>
@@ -850,6 +854,158 @@ function SecuritySection() {
         {live.length > 0 && (
           <p className="mt-3 text-xs text-muted-foreground">Live integrations: {live.join(" · ")}</p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function BackendSection() {
+  const compute = useQuery({
+    queryKey: ["ai-compute"],
+    queryFn: hakiApi.aiComputeStatus,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
+  const [running, setRunning] = useState(false);
+
+  async function runDiagnostics() {
+    setRunning(true);
+    try {
+      const result = await hakiApi.runDiagnostics();
+      setDiagnostics(result);
+      toast.success(result.ok ? "Diagnostics passed" : "Diagnostics found issues");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Diagnostics could not run."));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const secrets = diagnostics?.secrets ?? compute.data?.secrets ?? {};
+  const functions =
+    diagnostics?.functions ??
+    ([
+      {
+        id: "action-tray",
+        route: "POST /sessions/{id}/detect",
+        purpose: "Action Tray proposals",
+        tier: "Super",
+      },
+      {
+        id: "generate-work",
+        route: "POST /sessions/{id}/generate",
+        purpose: "Drafts and selected work",
+        tier: "Ultra",
+      },
+      {
+        id: "legal-research",
+        route: "POST /sessions/{id}/generate (legal_research)",
+        purpose: "Tavily + Nemotron synthesis",
+        tier: "Super",
+      },
+    ] as DiagnosticsResult["functions"]);
+
+  return (
+    <section>
+      <SectionIntro
+        eyebrow="Backend"
+        title="Live service status"
+        copy="Functions, secrets (set/missing only), Nebius Token Factory tiers, and diagnostics — the same provider_settings the Connectors page uses."
+      />
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Button type="button" onClick={() => void runDiagnostics()} disabled={running || !hasApiConfiguration}>
+          {running ? "Running…" : "Run diagnostics"}
+        </Button>
+        <Button type="button" variant="outline" asChild>
+          <Link to="/settings" search={{ section: "connectors" }}>
+            Open Connectors
+          </Link>
+        </Button>
+      </div>
+
+      <div className="space-y-6">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="font-serif text-lg font-semibold">Functions</h3>
+          <ul className="mt-3 space-y-3">
+            {functions.map((fn) => (
+              <li key={fn.id} className="rounded-md border border-border/70 px-3 py-2.5 text-sm">
+                <p className="font-medium">{fn.id}</p>
+                <p className="text-muted-foreground">{fn.purpose}</p>
+                <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                  {fn.route} · tier {fn.tier}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="font-serif text-lg font-semibold">Secrets</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Values are never shown — only whether they are set.</p>
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+            {Object.entries(secrets).map(([key, status]) => (
+              <div key={key} className="flex items-center justify-between rounded-md border border-border/70 px-3 py-2 text-sm">
+                <dt className="font-mono text-xs">{key}</dt>
+                <dd className={status === "set" ? "text-success-foreground" : "text-muted-foreground"}>
+                  {status}
+                </dd>
+              </div>
+            ))}
+            {!Object.keys(secrets).length ? (
+              <p className="text-sm text-muted-foreground">Run diagnostics to load secret status.</p>
+            ) : null}
+          </dl>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="font-serif text-lg font-semibold">Architecture</h3>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            {(
+              diagnostics?.architecture ?? [
+                "Capture/transcription stays on the existing ASR pipeline (not Token Factory chat).",
+                "Privileged (redacted) lines are stripped before any Nebius or Tavily call.",
+                "Tray = Nemotron Super; Drafting = Ultra; Research = Tavily + Super.",
+                "ai_runs stores metadata only — never transcript text.",
+              ]
+            ).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {compute.data?.nebius ? (
+            <p className="mt-3 text-sm">
+              Nebius: {compute.data.nebius.connected ? "connected" : "not connected"} · base{" "}
+              <span className="break-all font-mono text-xs">{compute.data.nebius.base_url}</span>
+            </p>
+          ) : null}
+        </div>
+
+        {diagnostics ? (
+          <div className="rounded-lg border border-border bg-card p-4">
+            <h3 className="font-serif text-lg font-semibold">
+              Diagnostics {diagnostics.ok ? "(all green)" : "(issues found)"}
+            </h3>
+            <ul className="mt-3 space-y-2">
+              {diagnostics.checks.map((check) => (
+                <li
+                  key={check.name}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-sm",
+                    check.ok ? "border-success/40 bg-success/10" : "border-destructive/30 bg-destructive/5",
+                  )}
+                >
+                  <p className="font-medium">
+                    {check.ok ? "Pass" : "Fail"} — {check.name}
+                  </p>
+                  <p className="text-muted-foreground">{check.detail}</p>
+                  {!check.ok && check.fix ? (
+                    <p className="mt-1 text-xs text-foreground">Fix: {check.fix}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </section>
   );

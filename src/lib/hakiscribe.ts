@@ -181,7 +181,8 @@ export interface IntegrationOAuthSetup {
 export interface Integration {
   provider_id: string;
   name: string;
-  group: "ai" | "storage" | "practice";
+  group: "ai" | "storage" | "practice" | "research";
+  badge?: string | null;
   what_it_does: string;
   capabilities: string[];
   fields: IntegrationField[];
@@ -197,6 +198,46 @@ export interface Integration {
   health?: ConnectorHealthState;
   health_error?: string | null;
   last_checked_at?: string | null;
+}
+
+export interface AiComputeStatus {
+  nebius: {
+    provider: string;
+    connected: boolean;
+    base_url: string;
+    tiers: { tray: string; drafting: string; research: string };
+    last_call: {
+      at?: string;
+      task?: string;
+      tier?: string;
+      model?: string;
+      latency_ms?: number;
+      model_id?: string;
+    } | null;
+  };
+  tavily: {
+    configured: boolean;
+    domains?: string[];
+    label?: string;
+  };
+  provider_settings?: Record<string, unknown>[];
+  recent_runs?: {
+    task: string;
+    provider: string;
+    model_id: string;
+    latency_ms: number;
+    status: string;
+    privileged_lines_excluded: number;
+  }[];
+  secrets?: Record<string, string>;
+}
+
+export interface DiagnosticsResult {
+  ok: boolean;
+  checks: { name: string; ok: boolean; detail: string; fix: string }[];
+  functions: { id: string; route: string; purpose: string; tier: string }[];
+  secrets: Record<string, string>;
+  architecture: string[];
 }
 
 export type ConnectorHealthState = "valid" | "expired" | "invalid" | "unreachable" | "not_connected" | "unchecked";
@@ -613,6 +654,8 @@ export const hakiApi = {
   checkAllIntegrations: () => request<ConnectorHealth[]>("/integrations/health"),
   checkIntegration: (providerId: string) =>
     request<ConnectorHealth>(`/integrations/${providerId}/check`, { method: "POST" }),
+  aiComputeStatus: () => request<AiComputeStatus>("/integrations/compute"),
+  runDiagnostics: () => request<DiagnosticsResult>("/integrations/diagnostics"),
   disconnectIntegration: (providerId: string) =>
     request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {
       method: "DELETE",

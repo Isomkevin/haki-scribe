@@ -37,9 +37,119 @@ async def integrations_health():
 
 @router.get("/compute")
 async def ai_compute_status():
-    """Status do painel 'AI Compute': Nemotron/Nebius e Tavily."""
-    from app.services import nebius, tavily
-    return {"nebius": nebius.status(), "tavily": tavily.status()}
+    """AI Compute panel: Nemotron/Nebius and Tavily status."""
+    from app.services import ai_runs, nebius, provider_settings, tavily
+    return {
+        "nebius": nebius.status(),
+        "tavily": tavily.status(),
+        "provider_settings": provider_settings.list_settings(),
+        "recent_runs": ai_runs.recent(10),
+        "secrets": provider_settings.secrets_status(),
+    }
+
+
+@router.get("/diagnostics")
+async def run_diagnostics():
+    """Pass/fail checks for Nebius Token Factory + related functions."""
+    import time
+    from app.services import nebius, provider_settings, tavily
+
+    checks: list[dict[str, Any]] = []
+    secrets = provider_settings.secrets_status()
+
+    def add(name: str, ok: bool, detail: str, fix: str) -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail, "fix": fix if not ok else ""})
+
+    add(
+        "NEBIUS_API_KEY",
+        secrets.get("NEBIUS_API_KEY") == "set",
+        f"status={secrets.get('NEBIUS_API_KEY')}",
+        "Set NEBIUS_API_KEY in the environment or paste it on Connectors → NVIDIA Nemotron.",
+    )
+    add(
+        "TAVILY_API_KEY",
+        secrets.get("TAVILY_API_KEY") == "set",
+        f"status={secrets.get('TAVILY_API_KEY')}",
+        "Set TAVILY_API_KEY for legal research, or connect Tavily under Connectors.",
+    )
+
+    if nebius.is_connected():
+        started = time.monotonic()
+        try:
+            models = await nebius.list_models(force=True)
+            latency = int((time.monotonic() - started) * 1000)
+            nemotron = [m for m in models if "nemotron" in m.lower()]
+            add(
+                "GET /models",
+                True,
+                f"{len(models)} models, {len(nemotron)} Nemotron, {latency}ms",
+                "",
+            )
+            tiers = await nebius.resolve_tiers()
+            for tier, mid in tiers.items():
+                add(
+                    f"Resolve {tier}",
+                    bool(mid),
+                    mid or "not found",
+                    f"Set the {tier} model override on the Nebius connector card.",
+                )
+        except Exception as exc:  # noqa: BLE001
+            add("GET /models", False, str(exc), "Re-check the API key and base URL on the Nebius connector.")
+    else:
+        add("GET /models", False, "Nebius not connected", "Connect Nebius with a Token Factory API key.")
+        for tier in ("ultra", "super", "nano"):
+            add(f"Resolve {tier}", False, "skipped", "Connect Nebius first.")
+
+    add(
+        "action-tray (detect)",
+        True,
+        "POST /sessions/{id}/detect — Nebius Super when connected",
+        "Ensure the backend is reachable and Nebius is connected for Nemotron detection.",
+    )
+    add(
+        "generate-work",
+        True,
+        "POST /sessions/{id}/generate — Nebius Ultra for drafts when connected",
+        "Ensure Nebius is connected before Generate selected.",
+    )
+    add(
+        "legal-research",
+        tavily.is_configured() or not nebius.is_connected(),
+        "Tavily + Nebius Super synthesis when both connected",
+        "Connect Tavily for Kenyan legal authorities, or run research without Nebius via Exa.",
+    )
+
+    return {
+        "ok": all(c["ok"] for c in checks),
+        "checks": checks,
+        "functions": [
+            {
+                "id": "action-tray",
+                "route": "POST /sessions/{id}/detect",
+                "purpose": "Action Tray proposals from the verified transcript",
+                "tier": "Super",
+            },
+            {
+                "id": "generate-work",
+                "route": "POST /sessions/{id}/generate",
+                "purpose": "Draft documents and other selected tray actions",
+                "tier": "Ultra (drafts) / Super (utility)",
+            },
+            {
+                "id": "legal-research",
+                "route": "POST /sessions/{id}/generate (legal_research)",
+                "purpose": "Tavily search + Nemotron Super synthesis",
+                "tier": "Super",
+            },
+        ],
+        "secrets": secrets,
+        "architecture": [
+            "Capture/transcription stays on the existing ASR pipeline (not Token Factory chat).",
+            "Privileged (redacted) lines are stripped before any Nebius or Tavily call.",
+            "Tray = Nemotron Super; Drafting = Ultra; Research = Tavily + Super.",
+            "ai_runs stores metadata only — never transcript text.",
+        ],
+    }
 
 
 @router.post("/{provider_id}/check")

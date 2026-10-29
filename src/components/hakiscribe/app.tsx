@@ -1999,6 +1999,17 @@ function ActionWorkspace({
   }, [showResults]);
   const visibleActions = actions.filter((action) => showDismissed || action.status !== "dismissed");
   const failedIds = results.filter((item) => item.status === "error").map((item) => item.action_id);
+  const privilegedExcluded = session.transcript.filter((segment) => segment.redacted).length;
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const scrollToSource = (segmentId: string) => {
+    setTab("record");
+    setHighlightId(segmentId);
+    window.setTimeout(() => {
+      const el = document.querySelector(`[data-segment-id="${segmentId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+    window.setTimeout(() => setHighlightId(null), 2500);
+  };
   const generate = useMutation({
     mutationFn: (ids: string[]) => {
       const fieldOverrides = Object.fromEntries(
@@ -2015,11 +2026,27 @@ function ActionWorkspace({
         return Array.from(merged.values());
       });
       onResults();
-      toast.success("Selected work is ready to review.");
+      const failed = data.filter((item) => item.status === "error");
+      if (failed.length) {
+        toast.error(
+          `${failed.length} action${failed.length === 1 ? "" : "s"} failed. Transcript and tray were kept — use Retry.`,
+        );
+      } else {
+        toast.success("Selected work is ready to review.");
+      }
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
       void queryClient.invalidateQueries({ queryKey: ["session", session.id] });
       void queryClient.invalidateQueries({ queryKey: ["matters"] });
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      void queryClient.invalidateQueries({ queryKey: ["ai-compute"] });
+    },
+    onError: (error) => {
+      toast.error(
+        friendlyErrorMessage(
+          error,
+          "Generation failed. The transcript and tray were kept — switch provider manually if needed.",
+        ),
+      );
     },
   });
   const select = (id: string, checked: boolean) =>
@@ -2104,7 +2131,11 @@ function ActionWorkspace({
         )}
       </div>
       {tab === "record" ? (
-        <TranscriptPanel transcript={session.transcript} actions={visibleActions} />
+        <TranscriptPanel
+          transcript={session.transcript}
+          actions={visibleActions}
+          highlightId={highlightId}
+        />
       ) : tab === "results" && results.length ? (
         <>
           <ResultsList results={results} sessionId={session.id} />
@@ -2156,6 +2187,16 @@ function ActionWorkspace({
                 </Button>
               </div>
             </div>
+            {privilegedExcluded > 0 ? (
+              <div
+                role="status"
+                className="mb-4 rounded-lg border border-privileged-foreground/25 bg-privileged/40 px-4 py-3 text-sm text-foreground"
+              >
+                <LockKeyhole className="mr-2 inline size-4 text-privileged-foreground" />
+                {privilegedExcluded} privileged line{privilegedExcluded === 1 ? "" : "s"} excluded from
+                AI
+              </div>
+            ) : null}
             <div className="space-y-3">
               {visibleActions.map((action) => (
                 <ActionCard
@@ -2166,6 +2207,7 @@ function ActionWorkspace({
                   checked={selected.has(action.id)}
                   onChecked={(checked) => select(action.id, checked)}
                   onDismiss={() => void dismiss(action.id)}
+                  onScrollToSource={scrollToSource}
                   onFields={(fields) =>
                     setActions((current) =>
                       current.map((item) =>
@@ -2290,9 +2332,11 @@ function ActionWorkspace({
 function TranscriptPanel({
   transcript,
   actions,
+  highlightId,
 }: {
   transcript: TranscriptSegment[];
   actions: DetectedAction[];
+  highlightId?: string | null;
 }) {
   const cited = new Set(actions.map((action) => action.source_segment_id).filter(Boolean));
   return (
@@ -2300,10 +2344,12 @@ function TranscriptPanel({
       {transcript.map((segment) => (
         <div
           key={segment.id}
+          data-segment-id={segment.id}
           className={cn(
-            "px-4 py-4 sm:px-5",
+            "px-4 py-4 sm:px-5 transition-colors",
             segment.redacted && "bg-privileged/70 text-muted-foreground",
             cited.has(segment.id) && !segment.redacted && "bg-secondary/40",
+            highlightId === segment.id && "ring-2 ring-primary bg-secondary/70",
           )}
         >
           <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -2357,6 +2403,7 @@ function ActionCard({
   onChecked,
   onDismiss,
   onFields,
+  onScrollToSource,
 }: {
   action: DetectedAction;
   transcript: TranscriptSegment[];
@@ -2365,6 +2412,7 @@ function ActionCard({
   onChecked: (checked: boolean) => void;
   onDismiss: () => void;
   onFields: (fields: Record<string, unknown>) => void;
+  onScrollToSource?: (segmentId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -2372,6 +2420,7 @@ function ActionCard({
   const source = transcript.find((segment) => segment.id === action.source_segment_id);
   const flagged = nearestFlag(flags, source);
   const speculative = !action.pre_checked || action.confidence < 0.7;
+  const confidencePct = Math.round(Math.max(0, Math.min(1, action.confidence)) * 100);
   const background = action.extracted_fields["background_info"];
   const detectionMode = action.extracted_fields["detection_mode"];
   return (
@@ -2405,6 +2454,9 @@ function ActionCard({
             {action.confidence_reason ??
               (speculative ? "Suggested from context" : "Clear from the record")}
           </Badge>
+          <Badge variant="outline" aria-label={`Confidence ${confidencePct} percent`}>
+            {confidencePct}%
+          </Badge>
           {flagged && (
             <Badge variant="secondary">
               Honours flag{flagged.label ? `: ${flagged.label}` : ""}
@@ -2412,6 +2464,19 @@ function ActionCard({
           )}
           {detectionMode === "heuristic" && <Badge variant="outline">From the record</Badge>}
           {background !== undefined && <Badge variant="outline">External research</Badge>}
+          {source && (
+            <button
+              type="button"
+              className="inline-flex items-center rounded-md border border-primary/30 bg-secondary/50 px-2 py-0.5 font-semibold text-primary hover:bg-secondary"
+              onClick={() => {
+                setSourceOpen(true);
+                onScrollToSource?.(source.id);
+              }}
+              aria-label={`Jump to source line from ${source.speaker ?? "Speaker"}`}
+            >
+              Source · {source.speaker ?? "Speaker"} · {formatDuration(source.start_ms)}
+            </button>
+          )}
         </div>
         <div className="flex min-h-8 items-center justify-end gap-4">
           {source && (
@@ -2420,7 +2485,7 @@ function ActionCard({
               className="font-semibold text-primary hover:underline"
               onClick={() => setSourceOpen(!sourceOpen)}
             >
-              View source
+              {sourceOpen ? "Hide quote" : "View quote"}
             </button>
           )}
           {action.status !== "dismissed" && (
@@ -2980,10 +3045,46 @@ function BackgroundResearch({ value }: { value: unknown }) {
   );
 }
 
-function SourceList({ sources }: { sources: ResearchSource[] }) {
+function NemotronFooter({ result }: { result: Record<string, unknown> }) {
+  const provenance =
+    result["provenance"] && typeof result["provenance"] === "object"
+      ? (result["provenance"] as Record<string, unknown>)
+      : null;
+  const model =
+    (typeof provenance?.["model"] === "string" && provenance["model"]) ||
+    (typeof result["model"] === "string" && result["model"]) ||
+    null;
+  const tier =
+    (typeof provenance?.["tier"] === "string" && provenance["tier"]) ||
+    (typeof result["ai_tier"] === "string" && result["ai_tier"]) ||
+    null;
+  const provider =
+    (typeof provenance?.["provider"] === "string" && provenance["provider"]) || "";
+  if (!model || (!/nebius|nemotron/i.test(provider) && !/nemotron|nebius/i.test(model))) {
+    return null;
+  }
+  const tierLabel = tier ? String(tier).replace(/^\w/, (c) => c.toUpperCase()) : "Super";
+  return (
+    <span className="text-[11px] leading-5 text-muted-foreground">
+      Generated with NVIDIA Nemotron {tierLabel} on Nebius Token Factory · {model} · For professional
+      review
+    </span>
+  );
+}
+
+function SourceList({
+  sources,
+  heading = "Sources",
+}: {
+  sources: ResearchSource[];
+  heading?: string;
+}) {
   if (!sources.length) return null;
   return (
     <ol className="mt-5 space-y-3 border-t border-border pt-4">
+      <li className="list-none text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {heading}
+      </li>
       {sources.map((source, index) => (
         <li key={`${source.url ?? index}`} className="text-sm">
           <span className="mr-2 text-xs font-semibold text-muted-foreground">{index + 1}.</span>
@@ -3468,7 +3569,14 @@ function ResultCard({
               {displayValue(result.result["answer"])}
             </p>
           </div>
-          <SourceList sources={(result.result["sources"] as ResearchSource[] | undefined) ?? []} />
+          <SourceList
+            sources={(result.result["sources"] as ResearchSource[] | undefined) ?? []}
+            heading={
+              (typeof result.result["authorities_label"] === "string" &&
+                result.result["authorities_label"]) ||
+              "External authorities (not evidence)"
+            }
+          />
           <p className="text-xs leading-5 text-muted-foreground">
             {result.type === "legal_research"
               ? "Check every authority before relying on it. Research is never merged into a draft."
@@ -3612,11 +3720,14 @@ function ResultCard({
       )}
 
       <footer className="grid gap-3 border-t border-border bg-muted/30 px-4 py-3.5 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
-        <span className="inline-flex items-start gap-2 leading-5">
-          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" />
-          {savedExternally
-            ? "Saved to the Session Library and connected tools"
-            : "Saved as a local HakiScribe result until you export"}
+        <span className="inline-flex flex-col items-start gap-1 leading-5">
+          <span className="inline-flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            {savedExternally
+              ? "Saved to the Session Library and connected tools"
+              : "Saved as a local HakiScribe result until you export"}
+          </span>
+          <NemotronFooter result={result.result} />
         </span>
         {result.type !== "draft_document" &&
           result.type !== "calendar_event" &&

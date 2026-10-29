@@ -17,7 +17,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -827,7 +827,8 @@ async def _verify_groq(creds: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _verify_nebius(creds: dict[str, Any]) -> dict[str, Any]:
-    """GET {base}/models and report how many Nemotron models were found."""
+    """GET {base}/models and report Nemotron models + resolved Ultra/Super/Nano."""
+    import time
     key = str(creds.get("api_key") or "").strip()
     if not key:
         return {"ok": False, "error": "Missing Nebius API key"}
@@ -835,9 +836,11 @@ async def _verify_nebius(creds: dict[str, Any]) -> dict[str, Any]:
     base = raw or "https://api.tokenfactory.nebius.com/v1"
     if not re.search(r"/v\d+$", base):
         base = f"{base}/v1"
+    started = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+        latency_ms = int((time.monotonic() - started) * 1000)
         if resp.status_code in (401, 403):
             return {"ok": False, "error": "Nebius rejected the API key. Re-check it on the connector card."}
         if resp.status_code >= 400:
@@ -845,12 +848,39 @@ async def _verify_nebius(creds: dict[str, Any]) -> dict[str, Any]:
         items = resp.json().get("data") or resp.json().get("models") or []
         ids = [str(i.get("id") or "") for i in items if isinstance(i, dict) and i.get("id")]
         nemotron = [m for m in ids if "nemotron" in m.lower()]
-        detail = f"Account has {len(ids)} model(s); {len(nemotron)} Nemotron model(s) found"
+        # Temporarily apply these creds so resolve_tiers sees overrides from the card.
+        previous = _connections.get("nebius")
+        _connections["nebius"] = {"provider_id": "nebius", "connected_at": datetime.now(timezone.utc).isoformat(), "creds": creds}
+        try:
+            from app.services import nebius
+            nebius._models_cache = {"base": base, "fetched_at": time.monotonic(), "models": ids}
+            tiers = await nebius.resolve_tiers()
+        finally:
+            if previous is None:
+                _connections.pop("nebius", None)
+            else:
+                _connections["nebius"] = previous
+        tier_bits = []
+        for name in ("ultra", "super", "nano"):
+            mid = tiers.get(name)
+            tier_bits.append(f"{name.title()}={mid}" if mid else f"{name.title()}=unset")
+        detail = (
+            f"Account has {len(ids)} model(s); {len(nemotron)} Nemotron model(s) "
+            f"in {latency_ms}ms. Resolved: {'; '.join(tier_bits)}"
+        )
         if nemotron:
-            detail += f": {', '.join(nemotron[:6])}"
-        else:
+            detail += f". Seen: {', '.join(nemotron[:6])}"
+        elif not any(tiers.values()):
             detail += ". Set the Ultra / Super / Nano overrides on this card."
-        return {"ok": True, "error": None, "detail": detail}
+        return {
+            "ok": True,
+            "error": None,
+            "detail": detail,
+            "latency_ms": latency_ms,
+            "tiers": tiers,
+            "nemotron_models": nemotron,
+            "model_count": len(ids),
+        }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 

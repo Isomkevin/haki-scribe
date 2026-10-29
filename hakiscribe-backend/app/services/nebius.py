@@ -8,19 +8,21 @@ Model ids are never hardcoded — they are discovered from
 matches the requested tier ("ultra", "super" or "nano") is picked at call
 time unless the user set an explicit override on the connector card.
 
-Call contract: :func:`complete` returns ``{"text", "model", "latency_ms"}``
-or raises, so callers (detection, drafting, research) can fall back to the
-previous provider without ever losing the transcript or the tray.
+Call contract: :func:`complete` returns ``{"text", "model", "latency_ms", "tier"}``
+or raises. Callers must NOT silently fall back to another provider when Nebius
+was the selected compute — surface the error so the demo stays honest.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
+from uuid import UUID
 
 import httpx
 
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
 MODELS_CACHE_TTL_S = 600  # 10 minutes
+RETRY_BACKOFF_S = 0.75
 
 # Task → tier. Tray detection and research synthesis run on SUPER,
 # document drafting on ULTRA. NANO stays available for cheap utility tasks.
@@ -54,8 +57,9 @@ def creds() -> dict[str, Any]:
 
 
 def is_connected() -> bool:
+    """Connected only when an API key is present (env or connector store)."""
     c = creds()
-    return bool(str(c.get("api_key") or "").strip() or str(c.get("base_url") or "").strip())
+    return bool(str(c.get("api_key") or "").strip())
 
 
 def base_url(c: dict[str, Any] | None = None) -> str:
@@ -84,7 +88,9 @@ async def list_models(force: bool = False) -> list[str]:
         return list(_models_cache["models"])
 
     key = str(creds().get("api_key") or "").strip()
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    if not key:
+        raise RuntimeError("Nebius Token Factory is not connected. Add NEBIUS_API_KEY on the connector card.")
+    headers = {"Authorization": f"Bearer {key}"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(f"{base}/models", headers=headers)
     if resp.status_code in (401, 403):
@@ -113,6 +119,9 @@ async def resolve_model(tier: str) -> str:
     tier = tier.lower()
     c = creds()
     override = str(c.get(f"{tier}_model") or "").strip()
+    if not override:
+        import os
+        override = str(os.environ.get(f"NEMOTRON_{tier.upper()}_MODEL") or "").strip()
     if override:
         return override
     try:
@@ -133,8 +142,19 @@ async def resolve_model(tier: str) -> str:
     )
 
 
+async def resolve_tiers() -> dict[str, str | None]:
+    """Best-effort Ultra/Super/Nano resolution for Test connection / diagnostics."""
+    out: dict[str, str | None] = {"ultra": None, "super": None, "nano": None}
+    for tier in out:
+        try:
+            out[tier] = await resolve_model(tier)
+        except RuntimeError:
+            out[tier] = None
+    return out
+
+
 # ---------------------------------------------------------------------------
-# Completion — retry once on 429/5xx, JSON-mode fallback
+# Completion — retry once on 429/5xx with backoff, JSON-mode fallback, repair
 # ---------------------------------------------------------------------------
 
 def _clean_text(text: str) -> str:
@@ -149,15 +169,39 @@ def _clean_text(text: str) -> str:
 
 
 def _extract_json(text: str) -> str:
+    from app.services.tray_logic import extract_json
+    try:
+        parsed = extract_json(text)
+        return json.dumps(parsed)
+    except (ValueError, TypeError):
+        cleaned = _clean_text(text)
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start >= 0 and end > start:
+            return cleaned[start : end + 1]
+        return cleaned
+
+
+def _repair_json(text: str) -> str:
+    """One lightweight repair pass: strip fences/think, trim to outermost braces."""
     cleaned = _clean_text(text)
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start >= 0 and end > start:
         candidate = cleaned[start : end + 1]
+        candidate = re.sub(r",\s*}", "}", candidate)
+        candidate = re.sub(r",\s*]", "]", candidate)
         try:
-            import json
             json.loads(candidate)
             return candidate
-        except ValueError:
+        except json.JSONDecodeError:
+            pass
+    start_a, end_a = cleaned.find("["), cleaned.rfind("]")
+    if start_a >= 0 and end_a > start_a:
+        candidate = cleaned[start_a : end_a + 1]
+        candidate = re.sub(r",\s*]", "]", candidate)
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
             pass
     return cleaned
 
@@ -170,22 +214,25 @@ async def complete(
     task: str = "chat",
     json_mode: bool = False,
     timeout_s: float = 120.0,
+    privileged_lines_excluded: int = 0,
+    session_id: UUID | str | None = None,
 ) -> dict[str, Any]:
     """One chat completion on Nemotron via Nebius Token Factory.
 
-    Returns {"text", "model", "latency_ms"}; raises RuntimeError with a
-    plain-language message so callers can fall back safely.
+    Returns {"text", "json_text", "model", "latency_ms", "tier"}; raises
+    RuntimeError with a plain-language message. Does not log prompt text.
     """
     global _last_call
     c = creds()
-    if not (str(c.get("api_key") or "").strip() or is_connected()):
+    if not is_connected():
         raise RuntimeError("Nebius Token Factory is not connected.")
     model = await resolve_model(tier)
     base = base_url(c)
     key = str(c.get("api_key") or "").strip()
-    headers = {"Content-Type": "application/json"}
-    if key:
-        headers["Authorization"] = f"Bearer {key}"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {key}",
+    }
 
     def payload(with_json: bool) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -200,43 +247,100 @@ async def complete(
         return body
 
     started = time.monotonic()
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
-        resp = await client.post(f"{base}/chat/completions", headers=headers, json=payload(True))
-        # Retry once on rate limiting / server errors.
-        if resp.status_code == 429 or resp.status_code >= 500:
+    status = "ok"
+    resolved_model = model
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
             resp = await client.post(f"{base}/chat/completions", headers=headers, json=payload(True))
-        # If JSON mode is rejected, retry without it and parse from the text.
-        if json_mode and resp.status_code == 400:
-            resp = await client.post(f"{base}/chat/completions", headers=headers, json=payload(False))
-    latency_ms = int((time.monotonic() - started) * 1000)
+            # Retry once on rate limiting / server errors with backoff.
+            if resp.status_code == 429 or resp.status_code >= 500:
+                await asyncio.sleep(RETRY_BACKOFF_S)
+                resp = await client.post(f"{base}/chat/completions", headers=headers, json=payload(True))
+            # If JSON mode is rejected, retry without it and parse from the text.
+            if json_mode and resp.status_code == 400:
+                resp = await client.post(f"{base}/chat/completions", headers=headers, json=payload(False))
+        latency_ms = int((time.monotonic() - started) * 1000)
 
-    if resp.status_code in (401, 403):
-        raise RuntimeError(f"Nebius rejected the API key ({resp.status_code}). Re-check the key on the connector card.")
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Nebius Token Factory returned {resp.status_code}: {resp.text[:200]}")
+        if resp.status_code in (401, 403):
+            status = "auth_error"
+            raise RuntimeError(f"Nebius rejected the API key ({resp.status_code}). Re-check the key on the connector card.")
+        if resp.status_code >= 400:
+            status = "http_error"
+            raise RuntimeError(f"Nebius Token Factory returned {resp.status_code}: {resp.text[:200]}")
 
-    choices = resp.json().get("choices", [])
-    text = ""
-    if choices:
-        text = str((choices[0].get("message") or {}).get("content") or "")
-    if not text:
-        raise RuntimeError("Nebius Token Factory returned an empty response.")
+        choices = resp.json().get("choices", [])
+        text = ""
+        if choices:
+            text = str((choices[0].get("message") or {}).get("content") or "")
+        if not text:
+            status = "empty"
+            raise RuntimeError("Nebius Token Factory returned an empty response.")
 
-    returned_model = str(resp.json().get("model") or model)
-    _last_call = {
-        "at": datetime.now(timezone.utc).isoformat(),
-        "task": task,
-        "tier": tier,
-        "model": returned_model,
-        "latency_ms": latency_ms,
-    }
-    from app.services import llm_usage
-    llm_usage.record(
-        task=task, model=returned_model, provider="nebius",
-        prompt=user_prompt, response=text, usage=resp.json().get("usage"),
-        latency_ms=latency_ms,
-    )
-    return {"text": _clean_text(text), "json_text": _extract_json(text), "model": returned_model, "latency_ms": latency_ms}
+        returned_model = str(resp.json().get("model") or model)
+        cleaned = _clean_text(text)
+        json_text = _extract_json(text)
+        if json_mode:
+            try:
+                json.loads(json_text)
+            except json.JSONDecodeError:
+                json_text = _repair_json(text)
+                try:
+                    json.loads(json_text)
+                except json.JSONDecodeError:
+                    status = "json_invalid"
+                    # Still return text so callers can attempt their own parse,
+                    # but mark the run; do not silently switch providers.
+                    pass
+
+        _last_call = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "task": task,
+            "tier": tier,
+            "model": returned_model,
+            "latency_ms": latency_ms,
+        }
+        from app.services import ai_runs, llm_usage
+        # Token counts only — never store prompt/response bodies (privilege).
+        usage = resp.json().get("usage") or {}
+        llm_usage.record(
+            task=task,
+            model=returned_model,
+            provider="nebius",
+            prompt="",  # deliberately empty — do not persist transcript
+            response="",
+            usage=usage,
+        )
+        ai_runs.record(
+            task=task,
+            provider="nebius",
+            model_id=returned_model,
+            latency_ms=latency_ms,
+            status=status,
+            privileged_lines_excluded=privileged_lines_excluded,
+            session_id=session_id,
+        )
+        return {
+            "text": cleaned,
+            "json_text": json_text,
+            "model": returned_model,
+            "latency_ms": latency_ms,
+            "tier": tier,
+        }
+    except Exception:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if status == "ok":
+            status = "error"
+        from app.services import ai_runs
+        ai_runs.record(
+            task=task,
+            provider="nebius",
+            model_id=resolved_model,
+            latency_ms=latency_ms,
+            status=status,
+            privileged_lines_excluded=privileged_lines_excluded,
+            session_id=session_id,
+        )
+        raise
 
 
 def last_call() -> Optional[dict[str, Any]]:
@@ -246,10 +350,12 @@ def last_call() -> Optional[dict[str, Any]]:
 def status() -> dict[str, Any]:
     """Everything the Connectors page 'AI Compute' panel needs."""
     c = creds()
+    connected = is_connected()
+    from app.services import ai_runs
     return {
         "provider": "NVIDIA Nemotron (Nebius Token Factory)",
-        "connected": is_connected(),
-        "base_url": base_url(c) if is_connected() else DEFAULT_BASE_URL,
+        "connected": connected,
+        "base_url": base_url(c) if connected else DEFAULT_BASE_URL,
         "tiers": {"tray": "Super", "drafting": "Ultra", "research": "Super"},
-        "last_call": last_call(),
+        "last_call": last_call() or ai_runs.last_for_provider("nebius"),
     }

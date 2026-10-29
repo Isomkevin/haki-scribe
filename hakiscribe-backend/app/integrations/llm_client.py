@@ -40,7 +40,11 @@ def api_key() -> Optional[str]:
 
 def default_model() -> str:
     from app.services import integrations
+    from app.services import nebius as nebius_service
 
+    # NVIDIA Nemotron on Nebius is the Ask default when the connector is live.
+    if nebius_service.is_connected():
+        return "nebius:nemotron-super"
     creds = integrations.get_creds("openrouter") or {}
     return str(creds.get("default_model") or os.environ.get("ASK_MODEL") or "openai/gpt-4o").strip()
 
@@ -53,7 +57,8 @@ def _api_key() -> Optional[str]:
 
 
 def is_configured() -> bool:
-    return bool(api_key())
+    from app.services import nebius as nebius_service
+    return bool(api_key()) or nebius_service.is_connected()
 
 
 def available_models() -> dict[str, object]:

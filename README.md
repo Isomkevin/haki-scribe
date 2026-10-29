@@ -92,12 +92,14 @@ Phone / laptop mic                    Omi wearable
                     FastAPI backend
            session · speakers · redaction · flags
                           │
+              privilege filter (redacted lines never leave)
+                          │
            Trigger.dev (or in-process fallback)
                           │
               ┌───────────┴───────────┐
               ▼                       ▼
-     Detect  (premium model)         Generate
-     + Exa counterparty context      draft: premium · utility copy: Auto Router
+     Detect — Nemotron Super          Generate — Nemotron Ultra
+     (Nebius Token Factory)           Research — Tavily + Super
               │                       │
               └───────────┬───────────┘
                           ▼
@@ -114,10 +116,12 @@ Phone / laptop mic                    Omi wearable
                 (or local-only)
 ```
 
+**NVIDIA Nemotron on Nebius Token Factory** is the default AI compute when connected (Connectors → AI Compute). Tiers: **Super** for Action Tray detection and research synthesis; **Ultra** for legal drafting; **Nano** for cheap utility. Speech-to-text is **not** served by Token Factory’s chat API — capture/transcription stays on the existing ASR pipeline (Whisper / Intron Sahara / optional NIM).
+
 Two LLM passes after transcription, not one:
 
-1. **Detection** — reads the *non-redacted* transcript once, weighted by flagged moments and known matters, and proposes source-grounded artifacts.
-2. **Generation** — for each artifact the professional selects, does the type-specific work. Drafts stay editable. Calendar events produce a real `.ics`. Matters link instead of duplicating when the client is already known.
+1. **Detection** — reads the *non-redacted* transcript once, weighted by flagged moments and known matters, and proposes source-grounded artifacts (Nemotron Super by default).
+2. **Generation** — for each artifact the professional selects, does the type-specific work on Nemotron Ultra (drafts). Legal research uses Tavily (external authorities, never evidence) then Super synthesis.
 
 ---
 
@@ -146,10 +150,10 @@ Private routes use `RequireAuth`. Signed-out visits go to `/login?next=…` and 
 | Backend | FastAPI, WebSockets; in-memory + local JSON by default, optional `DATABASE_URL` (Postgres), optional S3 draft archive |
 | Capture | Browser MediaRecorder → `/sessions/{id}/stream`, or Omi Miniapp / legacy webhook |
 | Speech | OpenRouter Whisper (`openai/whisper-large-v3`) by default; optional OpenAI / Groq Whisper / NVIDIA NIM; **Intron Sahara** for code-switch / legal refine |
-| Agent | Premium fixed models for detection and legal drafting; OpenRouter Auto Router for calendar and time-entry prose, with a fixed low-cost fallback |
+| Agent | **NVIDIA Nemotron on Nebius Token Factory** (default when connected): Super = tray/research, Ultra = drafts; OpenRouter / Claude / GPT remain selectable; no silent fallback from Nebius |
 | Durability | Trigger.dev at repo root (`src/trigger/`) — `detect-actions`, `generate-actions`, `research-actions` |
-| Enrichment | Exa company search, citation crawl, and news monitors — context only, never drafted as fact |
-| Connectors | Google Drive / Calendar, Dropbox, OneDrive (OAuth); Gemini (Vertex OAuth); Anthropic / OpenAI / Intron (verified keys) |
+| Enrichment | **Tavily** (Kenyan legal domains) + Exa company/citation/news — external authorities only, never drafted as fact |
+| Connectors | Nebius / Tavily / Anthropic / OpenAI / Groq / Intron (verified keys); Google Drive / Calendar, Dropbox, OneDrive (OAuth) |
 | Delivery | Ambiguous AI Docs, Calendar, CRM, and Chat review notifications; WhatsApp handoff for review |
 | Auth | Server accounts + signed browser token (`POST /auth/login`) — not Supabase Auth |
 | Deploy | Render Blueprint (`render.yaml`) — binds `0.0.0.0:$PORT` |
@@ -162,11 +166,13 @@ Each integration is load-bearing, not a checkbox. Each degrades gracefully if it
 
 | Tool | What it does here |
 |---|---|
-| **OpenAI** | Default premium model for detection and drafting (via OpenRouter). Whisper when `ASR_PROVIDER=openai`. |
-| **OpenRouter** | Live captions plus premium, Auto Router, and fallback model routing for `/detect` and `/generate`. |
-| **NVIDIA NIM** | Optional self-hosted ASR and LLM services on Brev, with OpenRouter fallback. See [`docs/nvidia-nim.md`](./docs/nvidia-nim.md). |
+| **Nebius Token Factory + NVIDIA Nemotron** | Default AI compute: live `GET /models` discovery, Super for Action Tray + research, Ultra for drafting. Runtime calls to `https://api.tokenfactory.nebius.com/v1`. See [`docs/E2E_REPORT.md`](./docs/E2E_REPORT.md). |
+| **Tavily** | Advanced search over Kenyan legal domains for research actions — labelled “External authorities (not evidence)”. |
+| **OpenAI** | Optional premium model via OpenRouter when Nebius is not connected. Whisper when `ASR_PROVIDER=openai`. |
+| **OpenRouter** | Live captions plus selectable routing for `/detect` and `/generate` when Nebius is not the active provider. |
+| **NVIDIA NIM** | Optional self-hosted ASR and LLM services on Brev. See [`docs/nvidia-nim.md`](./docs/nvidia-nim.md). |
 | **Trigger.dev** | Durable, retried background execution of detect, generate, and research. Falls back in-process. |
-| **Exa** | Counterparty lookup on Action Tray cards; research / citation crawl; news monitors. |
+| **Exa** | Counterparty lookup; research / citation crawl; news monitors when Nebius/Tavily path is not active. |
 | **Ambiguous AI** | Real Docs, Calendar events, CRM deals/contacts, and a Chat ping when a draft is ready for a human — never auto-sent. |
 | **Omi** | Wearable Miniapp (uid pairing) or legacy per-session webhook. |
 | **Intron Sahara** | African code-switching ASR + legal court-hearing refine on multilingual Stop; Settings connector or `INTRON_API_KEY`. See [`submission/`](./submission/README.md). |
@@ -242,6 +248,21 @@ Connector OAuth (Google / Dropbox / Microsoft / Gemini) and workspace accounts: 
 | [`Sahara_CodeSwitch_Africa_Challenge_submission/`](./Sahara_CodeSwitch_Africa_Challenge_submission/README.md) | Sahara CodeSwitch Africa challenge packet |
 | [`hakiscribe-backend/benchmarking/README.md`](./hakiscribe-backend/benchmarking/README.md) | ASR benchmark harness |
 | [`roadmap.md`](./roadmap.md) | Done checklist + remaining external setup |
+
+---
+
+## What was significantly updated during the submission period
+
+For the **Nebius × NVIDIA Global AI Hackathon** (Best Apps and Agents; also Best Use of Tavily):
+
+- **Nebius / NVIDIA inference layer** — Nemotron on Token Factory as first-class Connectors compute (live model discovery, Ultra/Super/Nano, no hardcoded model IDs).
+- **Privilege-first prompt construction** — `redacted` lines stripped in code before any Nebius or Tavily call; interception test with marker `ZEBRA-PRIVILEGED-7731`.
+- **Citation validator** — tray actions must cite real non-privileged transcript lines; confidence clamped; duplicates dropped.
+- **Tavily research path** — Kenyan legal domains → Nemotron Super synthesis; authorities labelled “External authorities (not evidence)”.
+- **Backend sync and diagnostics** — Settings → Backend + Connectors AI Compute panel share `provider_settings` / `ai_runs` (metadata only); Run diagnostics for secrets, `/models`, tiers, and function health.
+- **No silent fallback** from Nebius to OpenRouter when Nebius is the selected provider (errors surface with Retry).
+
+E2E notes and live commands: [`docs/E2E_REPORT.md`](./docs/E2E_REPORT.md). Feedback placeholders: [`docs/FEEDBACK.md`](./docs/FEEDBACK.md).
 
 ---
 

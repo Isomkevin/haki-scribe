@@ -173,9 +173,11 @@ def usage():
 @app.get("/models")
 def models():
     """Model picker for the 'Ask anything about this session' composer.
-    Includes built-in OpenRouter models plus any user-connected LLM keys."""
+    Includes built-in OpenRouter models plus any user-connected LLM keys.
+    Default is Nebius Nemotron Super when the Nebius connector is live."""
     base = llm_client.available_models()
     from app.services import integrations
+    from app.services import nebius as nebius_service
     connected = integrations.connected_llm_models()
     seen = {item["id"] for item in connected}
     merged = list(connected)
@@ -184,4 +186,7 @@ def models():
             merged.append(item)
             seen.add(str(item.get("id")))
     base["models"] = merged
+    if nebius_service.is_connected():
+        base["default"] = "nebius:nemotron-super"
+        base["configured"] = True
     return base

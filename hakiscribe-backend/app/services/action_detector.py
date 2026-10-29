@@ -127,37 +127,30 @@ def _actions_from_raw(session_id: uuid.UUID, usable_segments: list[TranscriptSeg
 
     An action is dropped when its type is unknown, its title is missing, or
     its source quote does not resolve to a real, non-privileged transcript
-    line. Identical type+title pairs are de-duplicated.
+    line. Identical type+title pairs are de-duplicated. Confidence is clamped 0..1.
     """
+    from app.services import tray_logic
+
+    kept, _dropped = tray_logic.validate_raw_actions(
+        raw_actions, usable_segments, session_id=session_id
+    )
     actions: list[DetectedAction] = []
-    seen: set[tuple[str, str]] = set()
-    for raw in raw_actions:
+    for item in kept:
         try:
-            action_type = ActionType(raw["type"])
-        except (KeyError, ValueError):
+            action_type = ActionType(item["type"])
+        except ValueError:
             continue
-        title = str(raw.get("title") or "").strip()
-        if not title:
-            continue
-        source_segment_id = _find_source_segment(usable_segments, raw.get("source_quote"))
-        if source_segment_id is None:
-            # No citation to a real, non-privileged line → not verifiable.
-            continue
-        key = (action_type.value, title.lower())
-        if key in seen:
-            continue
-        seen.add(key)
         actions.append(
             DetectedAction(
                 session_id=session_id,
                 type=action_type,
-                title=title,
-                preview=raw.get("preview") or "",
-                confidence=float(raw.get("confidence", 0.5)),
-                confidence_reason=raw.get("confidence_reason"),
-                source_segment_id=source_segment_id,
-                extracted_fields=raw.get("extracted_fields", {}),
-                pre_checked=bool(raw.get("pre_checked", True)),
+                title=item["title"],
+                preview=item.get("preview") or "",
+                confidence=float(item.get("confidence", 0.5)),
+                confidence_reason=item.get("confidence_reason"),
+                source_segment_id=item.get("source_segment_id"),
+                extracted_fields=item.get("extracted_fields") or {},
+                pre_checked=bool(item.get("pre_checked", True)),
             )
         )
     return actions
@@ -353,13 +346,16 @@ async def detect_actions(
     session_title: str | None = None,
     provider: str | None = None,
 ) -> list[DetectedAction]:
-    usable_segments = [seg for seg in transcript if not seg.redacted]
+    from app.services import tray_logic
+
+    usable_segments = tray_logic.visible_segments(transcript)
+    privileged_excluded = tray_logic.privileged_count(transcript)
     flags = flags or []
     known_matters = known_matters or []
 
-    transcript_text = "\n".join(
-        f"[{seg.speaker or 'unknown'}] ({seg.id}) {seg.text}" for seg in usable_segments
-    )
+    flagged_ids = set()
+    # Flags are timed moments; surface nearby segment ids when possible is left to the model via the block.
+    transcript_text = tray_logic.build_transcript_block(transcript, flagged_ids=flagged_ids)
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
 
@@ -370,22 +366,35 @@ async def detect_actions(
         if env_provider:
             selected_provider = env_provider
         else:
-            # Nemotron on Nebius Token Factory is the default AI compute when
-            # its connector is live; OpenRouter remains the fallback default.
+            # Nemotron on Nebius Token Factory is the default AI compute when connected.
             from app.services import nebius as nebius_service
             selected_provider = "nebius" if nebius_service.is_connected() else "openrouter"
+
     if selected_provider == "nebius":
-        try:
-            from app.services import nebius as nebius_service
-            result = await nebius_service.complete(
-                nebius_service.tier_for_task("detection"), DETECTION_SYSTEM_PROMPT, user_content,
-                task="detection", json_mode=True,
-            )
-            actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(result["text"]))
-            if actions:
-                return _stamp_mode(actions, "model")
-        except Exception as exc:  # noqa: BLE001 — Nemotron must not interrupt detection
-            logger.warning("Nemotron detection failed (%s); falling back to OpenRouter", exc)
+        from app.services import nebius as nebius_service
+        # No silent fallback: surface Nebius failures so the demo stays honest.
+        result = await nebius_service.complete(
+            nebius_service.tier_for_task("detection"),
+            DETECTION_SYSTEM_PROMPT,
+            user_content,
+            task="detection",
+            json_mode=True,
+            privileged_lines_excluded=privileged_excluded,
+            session_id=session_id,
+        )
+        payload_text = result.get("json_text") or result["text"]
+        actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(payload_text))
+        stamped = _stamp_mode(actions, "model")
+        for action in stamped:
+            action.extracted_fields = {
+                **action.extracted_fields,
+                "ai_provider": "nebius",
+                "ai_tier": result.get("tier") or "super",
+                "ai_model": result.get("model"),
+                "privileged_lines_excluded": privileged_excluded,
+            }
+        return stamped
+
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim
@@ -415,14 +424,20 @@ async def detect_actions(
                 body = response.json()
                 content = body["choices"][0]["message"]["content"]
                 from app.services import llm_usage
-                llm_usage.record(task="detection", model=DETECTION_MODEL, provider="openrouter", prompt=user_content, response=content, usage=body.get("usage"))
+                # Do not persist transcript text in the usage ledger.
+                llm_usage.record(
+                    task="detection",
+                    model=DETECTION_MODEL,
+                    provider="openrouter",
+                    prompt="",
+                    response="",
+                    usage=body.get("usage"),
+                )
 
             actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(content))
             if actions:
                 return _stamp_mode(actions, "model")
         except Exception as exc:  # noqa: BLE001 — tray still populates from the transcript
-            # OpenRouter credential/access failures (including 403) intentionally
-            # fall through to transcript heuristics below.
             logger.warning("Detection model failed (%s); using transcript heuristics", exc)
 
     return _stamp_mode(

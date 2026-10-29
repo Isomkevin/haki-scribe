@@ -301,23 +301,35 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
     fields = action.extracted_fields
     question = str(fields.get("question") or fields.get("query") or action.preview or action.title).strip()
 
+    from app.services import tray_logic
+    from app.services import nebius as nebius_service
+
+    # Privilege: only non-redacted transcript reaches search/synthesis prompts.
     record = generation.format_transcript(transcript)
-    spoken_urls = exa_client.urls_from_text(record)
-    crawled = await exa_client.crawl_urls(spoken_urls) if spoken_urls else []
-    searched = (
-        await exa_client.search_citations(question)
-        if scope == "legal"
-        else await exa_client.search_web(question)
-    )
-    # Tavily: advanced search over Kenyan legal domains. Results are external
-    # authorities — supporting context only, never transcript evidence.
-    tavily_hits: list[dict] = []
+    privileged_excluded = tray_logic.privileged_count(transcript or [])
+    nebius_connected = nebius_service.is_connected()
+
+    sources: list[dict] = []
+    seen: set[str] = set()
+
+    def _add(items: list[dict]) -> None:
+        for item in items:
+            url = item.get("url")
+            if url and url in seen:
+                continue
+            if url:
+                seen.add(str(url))
+            sources.append(item)
+
+    # Prefer Tavily for legal research when Nebius demo path is active.
+    tavily_ok = False
     if scope == "legal":
         try:
             from app.services import tavily
             if tavily.is_configured():
+                hits = []
                 for hit in await tavily.search(question, max_results=6):
-                    tavily_hits.append(
+                    hits.append(
                         {
                             "title": hit["title"],
                             "url": hit["url"],
@@ -326,38 +338,61 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
                             "kind": "external_authority",
                         }
                     )
-        except Exception as exc:  # noqa: BLE001 — research must not fail if Tavily is down
-            logger.warning("Tavily search failed (%s); continuing with Exa only", exc)
-    seen: set[str] = set()
-    sources: list[dict] = []
-    for item in crawled + tavily_hits + searched:
-        url = item.get("url")
-        if url and url in seen:
-            continue
-        if url:
-            seen.add(str(url))
-        sources.append(item)
+                _add(hits)
+                tavily_ok = bool(hits)
+        except Exception as exc:  # noqa: BLE001
+            if nebius_connected:
+                # When Nebius is the selected compute, do not silently hide Tavily failure
+                # behind Exa — surface it if we have no sources at all later.
+                logger.warning("Tavily search failed (%s)", exc)
+            else:
+                logger.warning("Tavily search failed (%s); continuing", exc)
+
+    # Exa only when Nebius/Tavily path is not the active compute, or as supplement
+    # when Tavily returned nothing and Nebius is not connected.
+    use_exa = (not nebius_connected) or (not tavily_ok and scope != "legal")
+    if use_exa or (not sources and not nebius_connected):
+        spoken_urls = exa_client.urls_from_text(record)
+        crawled = await exa_client.crawl_urls(spoken_urls) if spoken_urls else []
+        searched = (
+            await exa_client.search_citations(question)
+            if scope == "legal"
+            else await exa_client.search_web(question)
+        )
+        _add(crawled + searched)
+
+    # When Nebius is connected and legal scope, stick to Tavily authorities only
+    # (already added). Spoken URLs from the record may still be crawled as non-evidence context.
+    if nebius_connected and scope == "legal" and sources:
+        # Keep Tavily-first source set already in `sources`.
+        pass
+    elif nebius_connected and scope == "legal" and not sources:
+        spoken_urls = exa_client.urls_from_text(record)
+        if spoken_urls:
+            _add(await exa_client.crawl_urls(spoken_urls))
 
     model = str(fields.get("model") or llm_client.default_model())
     answer = None
+    tier = None
     if sources:
         context = _sources_block(sources)
         user_prompt = (
             f"Question: {question}\n\nRetrieved sources:\n{context}\n\n"
             f"Context from the conversation (background only, not a source):\n{record[:4000]}"
         )
-        # Nemotron (Super) on Nebius Token Factory is the default research
-        # synthesis engine; OpenRouter remains the fallback.
-        try:
-            from app.services import nebius as nebius_service
-            if nebius_service.is_connected():
-                res = await nebius_service.complete(
-                    nebius_service.tier_for_task("research"), RESEARCH_SYSTEM_PROMPT, user_prompt, task="research"
-                )
-                answer, model = res["text"], res["model"]
-        except Exception as exc:  # noqa: BLE001 — fall back to the previous provider
-            logger.warning("Nemotron research synthesis failed (%s); falling back", exc)
-        if answer is None:
+        if nebius_connected:
+            # No silent fallback — Nebius Super must succeed or the action errors.
+            res = await nebius_service.complete(
+                nebius_service.tier_for_task("research"),
+                RESEARCH_SYSTEM_PROMPT,
+                user_prompt,
+                task="research",
+                privileged_lines_excluded=privileged_excluded,
+                session_id=action.session_id,
+            )
+            answer, model = res["text"], res["model"]
+            tier = res.get("tier") or "super"
+        else:
             try:
                 answer = await llm_client.complete(RESEARCH_SYSTEM_PROMPT, user_prompt, model=model)
             except Exception:  # noqa: BLE001 — fall back to showing the raw sources
@@ -370,7 +405,15 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
         model=model if answer else None,
         scope=scope,
     )
-    return result.model_dump()
+    payload = result.model_dump()
+    if tier:
+        payload["provenance"] = {
+            "provider": "NVIDIA Nemotron (Nebius Token Factory)",
+            "tier": tier,
+            "model": model,
+        }
+        payload["authorities_label"] = "External authorities (not evidence)"
+    return payload
 
 
 async def _run_llm_task(action: DetectedAction, transcript: list[TranscriptSegment]) -> dict:
@@ -471,4 +514,11 @@ async def execute_actions(
     actions: list[DetectedAction],
     transcript: list[TranscriptSegment] | None = None,
 ) -> list[ActionResult]:
-    return list(await asyncio.gather(*[execute_action(action, transcript=transcript) for action in actions]))
+    """Generate selected actions with a hard cap of 8 in parallel."""
+    sem = asyncio.Semaphore(8)
+
+    async def _one(action: DetectedAction) -> ActionResult:
+        async with sem:
+            return await execute_action(action, transcript=transcript)
+
+    return list(await asyncio.gather(*[_one(action) for action in actions]))
