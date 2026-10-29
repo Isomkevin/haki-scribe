@@ -13,6 +13,7 @@ used when configured; otherwise results stay local.
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import UUID
 
 from urllib.parse import quote
@@ -28,6 +29,8 @@ from app.models.schemas import (
     TranscriptSegment,
 )
 from app.services import generation, integrations, storage, workspace
+
+logger = logging.getLogger(__name__)
 
 _inflight_actions: dict[str, asyncio.Task[ActionResult]] = {}
 
@@ -306,9 +309,28 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
         if scope == "legal"
         else await exa_client.search_web(question)
     )
+    # Tavily: advanced search over Kenyan legal domains. Results are external
+    # authorities — supporting context only, never transcript evidence.
+    tavily_hits: list[dict] = []
+    if scope == "legal":
+        try:
+            from app.services import tavily
+            if tavily.is_configured():
+                for hit in await tavily.search(question, max_results=6):
+                    tavily_hits.append(
+                        {
+                            "title": hit["title"],
+                            "url": hit["url"],
+                            "extract": hit["content"][:800] or None,
+                            "published": hit.get("published_date"),
+                            "kind": "external_authority",
+                        }
+                    )
+        except Exception as exc:  # noqa: BLE001 — research must not fail if Tavily is down
+            logger.warning("Tavily search failed (%s); continuing with Exa only", exc)
     seen: set[str] = set()
     sources: list[dict] = []
-    for item in crawled + searched:
+    for item in crawled + tavily_hits + searched:
         url = item.get("url")
         if url and url in seen:
             continue
@@ -324,10 +346,22 @@ async def _run_research(action: DetectedAction, transcript: list[TranscriptSegme
             f"Question: {question}\n\nRetrieved sources:\n{context}\n\n"
             f"Context from the conversation (background only, not a source):\n{record[:4000]}"
         )
+        # Nemotron (Super) on Nebius Token Factory is the default research
+        # synthesis engine; OpenRouter remains the fallback.
         try:
-            answer = await llm_client.complete(RESEARCH_SYSTEM_PROMPT, user_prompt, model=model)
-        except Exception:  # noqa: BLE001 — fall back to showing the raw sources
-            answer = None
+            from app.services import nebius as nebius_service
+            if nebius_service.is_connected():
+                res = await nebius_service.complete(
+                    nebius_service.tier_for_task("research"), RESEARCH_SYSTEM_PROMPT, user_prompt, task="research"
+                )
+                answer, model = res["text"], res["model"]
+        except Exception as exc:  # noqa: BLE001 — fall back to the previous provider
+            logger.warning("Nemotron research synthesis failed (%s); falling back", exc)
+        if answer is None:
+            try:
+                answer = await llm_client.complete(RESEARCH_SYSTEM_PROMPT, user_prompt, model=model)
+            except Exception:  # noqa: BLE001 — fall back to showing the raw sources
+                answer = None
 
     result = ResearchResult(
         question=question,

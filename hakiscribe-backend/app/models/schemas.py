@@ -180,6 +180,8 @@ class DraftDocumentResult(BaseModel):
     document_kind: Optional[str] = None
     source: str = "transcript"
     ambiguous_document_id: Optional[str] = None
+    # Provenance of the AI compute that drafted it (provider, tier, model id).
+    provenance: Optional[dict[str, Any]] = None
 
 
 class CalendarEventResult(BaseModel):
