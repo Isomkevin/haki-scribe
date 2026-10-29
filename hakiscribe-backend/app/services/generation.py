@@ -119,6 +119,7 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
             return await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
         except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
             logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
+    model = DRAFTING_MODEL if task == "draft" else LIGHTWEIGHT_MODEL
     api_key = llm_client.api_key()
     if not api_key:
         return None
@@ -147,6 +148,8 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
             text = (content or "").strip() or None
             from app.services import llm_usage
             llm_usage.record(task=task, model=str(body.get("model") or model), provider="openrouter", prompt=user_prompt, response=text, usage=body.get("usage"))
+            if text:
+                _last_completion = {"provider": "OpenRouter", "tier": None, "model": str(body.get("model") or model), "latency_ms": None}
             return text
     except Exception:  # noqa: BLE001 — fall back to transcript-composed text
         return None
