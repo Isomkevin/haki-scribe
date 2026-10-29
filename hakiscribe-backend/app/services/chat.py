@@ -100,6 +100,15 @@ async def _via_provider(provider_id: str, model: str, system: str, history: list
         return await _openai_compatible("https://api.mistral.ai/v1", key, model or "mistral-large-latest", system, history)
     if provider_id == "groq":
         return await _openai_compatible("https://api.groq.com/openai/v1", key, model or "llama-3.3-70b-versatile", system, history)
+    if provider_id == "nebius":
+        tier = (
+            "ultra" if "ultra" in (model or "").lower()
+            else "nano" if "nano" in (model or "").lower()
+            else "super"
+        )
+        from app.services import nebius as nebius_service
+        resolved = await nebius_service.resolve_model(tier)
+        return await _openai_compatible(nebius_service.base_url(creds), key, resolved, system, history)
     if provider_id == "openrouter":
         return await _openai_compatible(
             "https://openrouter.ai/api/v1", key, model or creds.get("default_model") or "openai/gpt-4o",

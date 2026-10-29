@@ -202,6 +202,7 @@ class DraftDocumentModel:
             "Draft the complete document now."
         )
         document_text = await complete_text(self.SYSTEM_PROMPT, prompt, task="draft")
+        used_model = bool(document_text and len(document_text) >= 400)
         if not document_text or len(document_text) < 400:
             document_text = documents.compose_document(kind, action, transcript)
         document_text += documents.compliance_footer(kind)
@@ -210,6 +211,7 @@ class DraftDocumentModel:
             document_text=document_text,
             document_kind=kind,
             source="transcript",
+            provenance=last_completion() if used_model else None,
         )
 
 
