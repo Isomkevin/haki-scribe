@@ -36,7 +36,6 @@ import {
   hakiApi,
   omiMiniappUrls,
   startIntegrationOAuth,
-  type AiComputeStatus,
   type ConnectorHealth,
   type ConnectorHealthState,
   type Integration,
@@ -52,6 +51,16 @@ const GROUP_LABELS: Record<string, string> = {
   storage: "Cloud storage",
   practice: "Practice suite",
 };
+
+/** Summary strip labels (same groups, clearer “what’s live” wording). */
+const ACTIVE_GROUP_LABELS: Record<string, string> = {
+  ai: "AI Compute",
+  research: "Research",
+  storage: "Storage",
+  practice: "Practice",
+};
+
+const ACTIVE_GROUP_ORDER = ["ai", "research", "storage", "practice"] as const;
 
 type ConnectorView = "grid" | "list";
 
@@ -94,12 +103,6 @@ export function ConnectorsSection() {
     retry: false,
     refetchOnWindowFocus: true,
     staleTime: 60_000,
-  });
-  const compute = useQuery({
-    queryKey: ["ai-compute"],
-    queryFn: hakiApi.aiComputeStatus,
-    retry: false,
-    staleTime: 30_000,
   });
   const [checkingOne, setCheckingOne] = useState<string | null>(null);
   const [healthOverrides, setHealthOverrides] = useState<Record<string, ConnectorHealth>>({});
@@ -186,6 +189,22 @@ export function ConnectorsSection() {
   }
 
   const connectedCount = (integrations.data ?? []).filter((item) => item.connected).length;
+
+  const activeByGroup = useMemo(() => {
+    const rows: { group: string; label: string; names: string[] }[] = [];
+    for (const group of ACTIVE_GROUP_ORDER) {
+      const names = (integrations.data ?? [])
+        .filter((item) => item.group === group && item.connected)
+        .map((item) => item.name);
+      if (group === "practice" && omiStatus.data?.linked) {
+        names.push("Omi wearable");
+      }
+      if (names.length) {
+        rows.push({ group, label: ACTIVE_GROUP_LABELS[group] ?? GROUP_LABELS[group] ?? group, names });
+      }
+    }
+    return rows;
+  }, [integrations.data, omiStatus.data?.linked]);
 
   async function beginOAuth(provider: Integration, params?: Record<string, string>) {
     setOauthPending(provider.provider_id);
@@ -296,14 +315,15 @@ export function ConnectorsSection() {
         </p>
       </header>
 
-      <AiComputePanel
-        data={compute.data}
-        loading={compute.isLoading}
-        error={compute.isError}
+      <ActiveConnectorsSummary
+        rows={activeByGroup}
+        loading={integrations.isLoading}
         onRefresh={() => {
-          void compute.refetch();
-          void queryClient.invalidateQueries({ queryKey: ["integrations"] });
+          void integrations.refetch();
+          void omiStatus.refetch();
+          void health.refetch();
         }}
+        refreshing={integrations.isFetching || health.isFetching}
       />
 
       {integrations.isError ? (
@@ -1115,71 +1135,51 @@ function ProviderCard({
   );
 }
 
-function AiComputePanel({
-  data,
+function ActiveConnectorsSummary({
+  rows,
   loading,
-  error,
+  refreshing,
   onRefresh,
 }: {
-  data: AiComputeStatus | undefined;
+  rows: { group: string; label: string; names: string[] }[];
   loading: boolean;
-  error: boolean;
+  refreshing: boolean;
   onRefresh: () => void;
 }) {
-  const nebius = data?.nebius;
-  const last = nebius?.last_call;
-  const modelId = last?.model || last?.model_id;
   return (
     <section
-      aria-labelledby="ai-compute-heading"
+      aria-labelledby="active-connectors-heading"
       className="mb-7 rounded-xl border border-border bg-secondary/20 p-4 sm:p-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">AI Compute</p>
-          <h3 id="ai-compute-heading" className="mt-1 font-serif text-xl font-semibold">
-            NVIDIA Nemotron · Nebius Token Factory
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Active now</p>
+          <h3 id="active-connectors-heading" className="mt-1 font-serif text-xl font-semibold">
+            Connected tools by section
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Sovereign / open-weight AI compute for Action Tray, drafting and research synthesis.
+            What is live for AI compute, research, storage and practice — connect more cards below.
           </p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+        <Button type="button" size="sm" variant="outline" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           Refresh
         </Button>
       </div>
-      {error ? (
+      {loading ? (
+        <p className="mt-3 text-sm text-muted-foreground">Loading connectors…</p>
+      ) : rows.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          AI Compute status is unavailable until the backend is reachable.
+          Nothing connected yet. Open a card below to link AI, research, storage or practice tools.
         </p>
       ) : (
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Provider</dt>
-            <dd className="mt-1 font-medium">{nebius?.connected ? "Connected" : "Not connected"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tiers</dt>
-            <dd className="mt-1">
-              Tray={nebius?.tiers.tray ?? "Super"} · Draft={nebius?.tiers.drafting ?? "Ultra"} · Research=
-              {nebius?.tiers.research ?? "Super"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last call</dt>
-            <dd className="mt-1 break-all">
-              {modelId
-                ? `${last?.task ?? "call"} · ${modelId}${last?.latency_ms != null ? ` · ${last.latency_ms}ms` : ""}`
-                : "No Nebius calls yet in this process"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tavily</dt>
-            <dd className="mt-1">
-              {data?.tavily?.configured ? "Connected — external authorities only" : "Not connected"}
-            </dd>
-          </div>
+          {rows.map((row) => (
+            <div key={row.group}>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{row.label}</dt>
+              <dd className="mt-1 font-medium leading-6">{row.names.join(" · ")}</dd>
+            </div>
+          ))}
         </dl>
       )}
     </section>
