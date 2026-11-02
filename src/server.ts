@@ -1,5 +1,6 @@
 import "./lib/error-capture";
 
+import { finalizeAgentResponse, negotiateAgentRequest } from "./lib/agent-negotiation";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
@@ -46,10 +47,14 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const negotiated = negotiateAgentRequest(request);
+    if (negotiated) return negotiated;
+
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      return finalizeAgentResponse(request, normalized);
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
 import { PwaRegister } from "../components/hakiscribe/pwa-register";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { absoluteUrl } from "../lib/site";
 
 function NotFoundComponent() {
   return (
@@ -90,7 +91,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "apple-mobile-web-app-title", content: "HakiScribe" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: absoluteUrl("/og-image.png") },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: absoluteUrl("/og-image.png") },
     ],
     links: [
       {

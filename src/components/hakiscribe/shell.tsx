@@ -164,7 +164,25 @@ export function WorkspaceFooter() {
             <p className="text-xs text-muted-foreground">A listening instrument of HakiChain · Nairobi</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">African languages · code-switch · privilege stays in the room</p>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <nav
+            aria-label="Trust and policy"
+            className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-foreground"
+          >
+            <Link to="/about" className="underline-offset-4 hover:underline">
+              About
+            </Link>
+            <Link to="/contact" className="underline-offset-4 hover:underline">
+              Contact
+            </Link>
+            <Link to="/privacy" className="underline-offset-4 hover:underline">
+              Privacy
+            </Link>
+          </nav>
+          <p className="text-xs text-muted-foreground">
+            African languages · code-switch · privilege stays in the room
+          </p>
+        </div>
       </div>
     </footer>
   );

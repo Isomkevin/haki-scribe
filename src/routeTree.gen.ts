@@ -10,11 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as OmiRouteImport } from './routes/omi'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrackerRouteImport } from './routes/tracker'
@@ -28,9 +31,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectorsRoute = ConnectorsRouteImport.update({
   id: '/connectors',
   path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactsRoute = ContactsRouteImport.update({
@@ -51,6 +64,11 @@ const NewRoute = NewRouteImport.update({
 const OmiRoute = OmiRouteImport.update({
   id: '/omi',
   path: '/omi',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResearchRoute = ResearchRouteImport.update({
@@ -93,11 +111,14 @@ const SessionsSessionIdChatThreadIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/connectors': typeof ConnectorsRoute
+  '/contact': typeof ContactRoute
   '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
+  '/privacy': typeof PrivacyRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -108,11 +129,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/connectors': typeof ConnectorsRoute
+  '/contact': typeof ContactRoute
   '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
+  '/privacy': typeof PrivacyRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -124,11 +148,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/connectors': typeof ConnectorsRoute
+  '/contact': typeof ContactRoute
   '/contacts': typeof ContactsRoute
   '/login': typeof LoginRoute
   '/new': typeof NewRoute
   '/omi': typeof OmiRoute
+  '/privacy': typeof PrivacyRoute
   '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
   '/tracker': typeof TrackerRoute
@@ -141,11 +168,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/connectors'
+    | '/contact'
     | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
+    | '/privacy'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -156,11 +186,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/connectors'
+    | '/contact'
     | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
+    | '/privacy'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -171,11 +204,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/connectors'
+    | '/contact'
     | '/contacts'
     | '/login'
     | '/new'
     | '/omi'
+    | '/privacy'
     | '/research'
     | '/settings'
     | '/tracker'
@@ -187,11 +223,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  ContactRoute: typeof ContactRoute
   ContactsRoute: typeof ContactsRoute
   LoginRoute: typeof LoginRoute
   NewRoute: typeof NewRoute
   OmiRoute: typeof OmiRoute
+  PrivacyRoute: typeof PrivacyRoute
   ResearchRoute: typeof ResearchRoute
   SettingsRoute: typeof SettingsRoute
   TrackerRoute: typeof TrackerRoute
@@ -210,11 +249,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connectors': {
       id: '/connectors'
       path: '/connectors'
       fullPath: '/connectors'
       preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contacts': {
@@ -243,6 +296,13 @@ declare module '@tanstack/react-router' {
       path: '/omi'
       fullPath: '/omi'
       preLoaderRoute: typeof OmiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/research': {
@@ -299,11 +359,14 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   ConnectorsRoute: ConnectorsRoute,
+  ContactRoute: ContactRoute,
   ContactsRoute: ContactsRoute,
   LoginRoute: LoginRoute,
   NewRoute: NewRoute,
   OmiRoute: OmiRoute,
+  PrivacyRoute: PrivacyRoute,
   ResearchRoute: ResearchRoute,
   SettingsRoute: SettingsRoute,
   TrackerRoute: TrackerRoute,

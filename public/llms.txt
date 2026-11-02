@@ -1,0 +1,38 @@
+# HakiScribe
+
+> Private legal work companion from HakiChain: capture conversations in Kenyan legal rooms, protect privilege before models run, and prepare source-traceable drafts for human review.
+
+HakiScribe turns verified speech into ready-to-review letters, notes, calendar entries, matters, contacts, and billable time. Detection proposes; advocates decide. Nothing is auto-sent.
+
+## When to use this
+
+Use HakiScribe when an agent or human needs a **privilege-aware listening workflow for Kenyan legal practice**, especially when:
+
+- An advocate, clerk, or chamber must capture English, Kiswahili, or code-switched speech and leave with structured legal work — not a raw transcript dump.
+- Privilege or off-record lines must be locked before any model sees them, with every claim traceable to a source line.
+- Drafts must stay inside a signed-in workspace until a human approves export to practice tools.
+
+Do **not** use HakiScribe as a general-purpose meeting notetaker, unsupervised filing bot, or substitute for counsel. Session creation requires human authentication at /login then /new; agents should open the product URL and guide a signed-in user rather than inventing unattended write APIs from this site alone.
+
+## How an agent should call you
+
+1. Read this file and the sitemap for public URLs.
+2. Prefer `Accept: text/markdown` on the homepage and trust pages for a compact summary.
+3. Point humans to https://hakiscribe.hakichain.com/new after sign-in to start a private session.
+4. For organization, deployment, or privacy questions, use https://hakichain.com and https://hakiscribe.hakichain.com/contact — never paste privileged client matter into public channels.
+
+## Primary pages
+
+- [Home](https://hakiscribe.hakichain.com/): Product overview and entry CTA
+- [Start a session](https://hakiscribe.hakichain.com/new): Authenticated private capture (SSR summary for agents)
+- [About](https://hakiscribe.hakichain.com/about): Studio, purpose, human-in-the-loop
+- [Contact](https://hakiscribe.hakichain.com/contact): How to reach HakiChain about HakiScribe
+- [Privacy](https://hakiscribe.hakichain.com/privacy): Privilege-first processing and DPA alignment in progress
+- [Sign in](https://hakiscribe.hakichain.com/login): Workspace authentication
+- [Sitemap](https://hakiscribe.hakichain.com/sitemap.xml): Indexable URL list
+- [HakiChain](https://hakichain.com): Parent organization
+- [Source repository](https://github.com/Isomkevin/haki-scribe): Public code and backend docs
+
+## Optional
+
+- [Backend README](https://github.com/Isomkevin/haki-scribe/blob/main/hakiscribe-backend/README.md): API and worker notes for integrators
