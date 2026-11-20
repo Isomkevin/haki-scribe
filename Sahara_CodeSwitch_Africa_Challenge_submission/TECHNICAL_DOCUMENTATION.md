@@ -34,7 +34,7 @@ editable draft / calendar / matter / CRM / time entry / note
 | Transcription and Sahara refinement | `hakiscribe-backend/app/services/transcription.py` |
 | Connector handling | `hakiscribe-backend/app/services/integrations.py` |
 | Benchmark harness | `hakiscribe-backend/benchmarking/` |
-| Architecture and API contract | `SPEC.md` |
+| Architecture and API contract | `docs/SPEC.md`, `docs/ARCHITECTURE.md` |
 | OAuth / connector setup | `docs/CONNECTOR_OAUTH_SETUP.md` |
 
 ## Run locally
@@ -53,4 +53,4 @@ Put secrets in `.env.local` or deployment secret storage, never version control.
 
 ## Trust and safety
 
-Users can redact transcript segments before language-model detection or generation. Generated work remains source-grounded, selectable, and editable; it is never automatically sent as legal advice. See `submission/RESPONSIBLE_AI.md` for known limitations and data handling.
+Users can redact transcript segments before language-model detection or generation. Generated work remains source-grounded, selectable, and editable; it is never automatically sent as legal advice. See `RESPONSIBLE_AI.md` in this folder for known limitations and data handling.

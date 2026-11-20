@@ -117,7 +117,7 @@ Eligibility means a runtime Token Factory call with an NVIDIA open model — the
 
 ### What's next
 
-Firm tenancy and production auth (see PRODUCTION_READINESS.md); measured latency from live smoke once keys are in place; deeper HakiChain matter sync.
+Firm tenancy and production auth (see [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md)); measured latency from live smoke once keys are in place; deeper HakiChain matter sync.
 
 ### Built before this hackathon?
 

@@ -4,13 +4,13 @@
 
 | Form field | Link / file | Reviewer-access check |
 | --- | --- | --- |
-| Source code URL | https://github.com/Isomkevin/haki-scribe | Public repository; open in a private browser window. |
+| Source code URL | <https://github.com/Isomkevin/haki-scribe> | Public repository; open in a private browser window. |
 | Presentation URL | Upload `HakiScribe_GOMYCODE_Come_Build_With_AI.pptx` to Google Drive or Google Slides and paste an **Anyone with the link can view** URL here. | Required before submission. |
-| 90-second demo video URL | https://youtu.be/FjsZqMBsCfs | Confirm it is public or unlisted and loads while signed out. |
+| 90-second demo video URL | <https://youtu.be/FjsZqMBsCfs> | Confirm it is public or unlisted and loads while signed out. |
 
 The Google Form is the submission channel. GitHub, the deck, or a deployed URL alone do not submit the project.
 
-For field-by-field, paste-ready answers to the GOMYCODE form, including prize fit, tool disclosure, testing, and responsible-AI responses, see [GOMYCODE_FORM_ANSWERS.md](./GOMYCODE_FORM_ANSWERS.md).
+Paste-ready answers for the GOMYCODE form (prize fit, tool disclosure, testing, and responsible-AI responses) are included in the sections below. Keep summaries within the form word limits when submitting.
 
 ## Project title
 
@@ -82,8 +82,8 @@ The mobile-first capture flow is designed for practical Kenyan legal rooms, allo
 
 ## Notes for reviewers
 
-- Live app: https://hakiscribe.lovable.app
-- Demo video: https://youtu.be/FjsZqMBsCfs
-- Source code: https://github.com/Isomkevin/haki-scribe
-- Product guide: `../PRODUCT_GUIDE.md`
-- Production readiness: `../PRODUCTION_READINESS.md`
+- Live app: <https://hakiscribe.lovable.app>
+- Demo video: <https://youtu.be/FjsZqMBsCfs>
+- Source code: <https://github.com/Isomkevin/haki-scribe>
+- Product guide: `../docs/PRODUCT_GUIDE.md`
+- Production readiness: `../docs/PRODUCTION_READINESS.md`

@@ -38,7 +38,7 @@ workspace accounts, see [`docs/CONNECTOR_OAUTH_SETUP.md`](../docs/CONNECTOR_OAUT
 ## Auth (private workspace)
 
 | Method | Path | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | POST | `/auth/login` | `{email, password}` → `{token, user}` |
 | GET | `/auth/demo` | Temporary judging credentials when `DEMO_LOGIN_ENABLED=true` |
 | GET | `/auth/me` | Current user from `Authorization: Bearer …` |
@@ -67,7 +67,7 @@ Scope today: one shared workspace for all signed-in users (not per-lawyer vaults
 ## Sponsor integrations at a glance
 
 | Sponsor | Where | Behavior without a key |
-|---|---|---|
+| --- | --- | --- |
 | OpenRouter | Live captions (`transcription.py`) plus detection + drafting | Captions no-op; `/detect` and `draft_document` fall back to local text |
 | OpenAI | Optional direct Whisper if `ASR_PROVIDER=openai`; also Connectors key for Ask | Use OpenRouter (default) or Groq instead |
 | Groq | Optional faster Whisper if `ASR_PROVIDER=groq` | Stay on OpenRouter unless you want a dedicated Groq key |
@@ -154,7 +154,7 @@ Sahara sync + status polling. Use it in either of two ways:
    Sahara (higher latency; default product path remains OpenRouter Whisper).
 
 Challenge packet, responsible-AI notes, and demo script:
-[`../submission/README.md`](../submission/README.md). Benchmark harness:
+[`../Sahara_CodeSwitch_Africa_Challenge_submission/README.md`](../Sahara_CodeSwitch_Africa_Challenge_submission/README.md). Benchmark harness:
 [`benchmarking/README.md`](./benchmarking/README.md).
 
 ## What's still demo-grade (not production)
@@ -172,5 +172,5 @@ Challenge packet, responsible-AI notes, and demo script:
   fine for a demo, not production matching.
 - Auth is shared-workspace only — no per-lawyer session isolation yet.
 
-See [`../SPEC.md`](../SPEC.md) for the full architecture and API contract —
-written to be agent-agnostic.
+See [`../docs/SPEC.md`](../docs/SPEC.md) and [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+for the architecture and API contract — written to be agent-agnostic.

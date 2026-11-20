@@ -1,6 +1,6 @@
 # HakiScribe — Agents, Everywhere (Nairobi)
 
-> **Nebius × NVIDIA Global AI Hackathon:** use [`docs/NEBIUS_SUBMISSION.md`](./docs/NEBIUS_SUBMISSION.md) and [`docs/DEMO_SCRIPT_NEBIUS.md`](./docs/DEMO_SCRIPT_NEBIUS.md). This file remains the earlier AI Tinkerers Nairobi packet and still mentions OpenRouter GPT-4o as that event’s stack.
+> **Nebius × NVIDIA Global AI Hackathon:** use [`NEBIUS_SUBMISSION.md`](./NEBIUS_SUBMISSION.md) in this packet (or [`../../docs/NEBIUS_SUBMISSION.md`](../../docs/NEBIUS_SUBMISSION.md)) and [`DEMO_SCRIPT_NEBIUS.md`](./DEMO_SCRIPT_NEBIUS.md). This file remains the earlier AI Tinkerers Nairobi packet and still mentions OpenRouter GPT-4o as that event’s stack.
 
 **Title:** HakiScribe — the legal work agent in the room
 
@@ -56,7 +56,7 @@ Omi: preferred path is **Settings → Connectors → Omi** (private Miniapp). Le
 | Exa | Counterparty background on tray cards; research / news — never drafted as fact |
 | Ambiguous AI | Docs, Calendar, CRM, Chat ping for human review |
 | Omi | Wearable Miniapp (uid) or legacy transcript webhook |
-| Intron Sahara | Optional code-switch / legal refine + challenge benchmarks (`submission/`) |
+| Intron Sahara | Optional code-switch / legal refine + challenge benchmarks (`Sahara_CodeSwitch_Africa_Challenge_submission/`) |
 
 Every integration degrades locally if its key is missing. The pipeline still completes.
 

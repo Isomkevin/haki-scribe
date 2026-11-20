@@ -17,6 +17,7 @@ This folder packages deliverables for the **Legal & Public Services** track of t
 ## Code
 
 - Main app: repository root [`README.md`](../README.md)
+- Setup / architecture: [`docs/SETUP.md`](../docs/SETUP.md), [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md), [`docs/SPEC.md`](../docs/SPEC.md)
 - Intron connector + Sahara refine: [`hakiscribe-backend/app/services/transcription.py`](../hakiscribe-backend/app/services/transcription.py), [`integrations.py`](../hakiscribe-backend/app/services/integrations.py)
 - Benchmark harness: [`hakiscribe-backend/benchmarking/`](../hakiscribe-backend/benchmarking/)
 

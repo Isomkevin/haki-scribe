@@ -128,4 +128,4 @@ until real runs replace these values.
 - Providers: `hakiscribe-backend/benchmarking/providers.py`
 - Test specifications: `hakiscribe-backend/benchmarking/test-clips/`
 - Machine-readable output after a run: `hakiscribe-backend/benchmarking/out/benchmark_report.json`
-- Responsible-use note: `submission/RESPONSIBLE_AI.md`
+- Responsible-use note: `Sahara_CodeSwitch_Africa_Challenge_submission/RESPONSIBLE_AI.md`

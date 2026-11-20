@@ -4,11 +4,11 @@ This is the single source of truth for the Legal & Public Services submission.
 
 | Required item | Repository artifact | Submission action | Status |
 | --- | --- | --- | --- |
-| Solution description | `submission/PROBLEM_AND_SOLUTION.md` | Paste or upload | Ready |
-| Working-prototype demo | `submission/DEMO_SCRIPT.md` | Record and host an unlisted/public YouTube video | Recording required |
-| Code / technical documentation | `README.md`, `SPEC.md`, `submission/TECHNICAL_DOCUMENTATION.md` | Link the repository and docs | Ready |
-| Benchmark report | `submission/BENCHMARK_RESULTS.md` | Replace `Not measured` with harness output, then link/upload | Measurements required |
-| Ethics / inclusion note | `submission/RESPONSIBLE_AI.md` | Paste or upload | Ready |
+| Solution description | `Sahara_CodeSwitch_Africa_Challenge_submission/PROBLEM_AND_SOLUTION.md` | Paste or upload | Ready |
+| Working-prototype demo | `Sahara_CodeSwitch_Africa_Challenge_submission/DEMO_SCRIPT.md` | Record and host an unlisted/public YouTube video | Recording required |
+| Code / technical documentation | `README.md`, `docs/SPEC.md`, `Sahara_CodeSwitch_Africa_Challenge_submission/TECHNICAL_DOCUMENTATION.md` | Link the repository and docs | Ready |
+| Benchmark report | `Sahara_CodeSwitch_Africa_Challenge_submission/BENCHMARK_RESULTS.md` | Replace `Not measured` with harness output, then link/upload | Measurements required |
+| Ethics / inclusion note | `Sahara_CodeSwitch_Africa_Challenge_submission/RESPONSIBLE_AI.md` | Paste or upload | Ready |
 | Benchmark audios (optional) | `hakiscribe-backend/benchmarking/test-clips/` | Upload only consented, de-identified audio and metadata | Optional |
 
 ## Links for the form

@@ -57,7 +57,7 @@ Speak naturally (example):
 
 ## 6. Benchmark mention (15s)
 
-Briefly show `submission/BENCHMARK_RESULTS.md` or run:
+Briefly show `Sahara_CodeSwitch_Africa_Challenge_submission/BENCHMARK_RESULTS.md` or run:
 
 ```bash
 cd hakiscribe-backend && python -m benchmarking.run_benchmark
