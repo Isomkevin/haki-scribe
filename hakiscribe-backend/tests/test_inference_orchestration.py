@@ -55,3 +55,40 @@ class OllamaHealthTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OllamaClientTests(unittest.TestCase):
+    def _run(self, **kwargs):
+        import asyncio
+
+        import httpx
+
+        from app.services import ollama_client
+
+        sent = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            import json
+
+            sent.update(json.loads(request.content))
+            return httpx.Response(200, json={"choices": [{"message": {"content": '{"actions": []}'}}]})
+
+        real_client = httpx.AsyncClient
+
+        def client_factory(*args, **kw):
+            sent["timeout"] = kw.get("timeout")
+            return real_client(transport=httpx.MockTransport(handler))
+
+        env = {"OLLAMA_BASE_URL": "http://127.0.0.1:11434", "HAKISCRIBE_AI_MODE": "local_only"}
+        with mock.patch.dict(os.environ, env), mock.patch("httpx.AsyncClient", client_factory):
+            asyncio.run(ollama_client.complete("sys", "user", task="detection", **kwargs))
+        return sent
+
+    def test_json_mode_requests_json_object(self) -> None:
+        self.assertEqual(self._run(json_mode=True)["response_format"], {"type": "json_object"})
+        self.assertNotIn("response_format", self._run())
+
+    def test_default_timeout_suits_cpu_inference(self) -> None:
+        self.assertEqual(self._run()["timeout"], 600.0)
+        with mock.patch.dict(os.environ, {"OLLAMA_TIMEOUT_S": "45"}):
+            self.assertEqual(self._run()["timeout"], 45.0)

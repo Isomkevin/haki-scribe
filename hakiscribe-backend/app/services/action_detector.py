@@ -369,9 +369,11 @@ async def detect_actions(
         from app.services import ollama_client
 
         result = await ollama_client.complete(
-            DETECTION_SYSTEM_PROMPT,
+            DETECTION_SYSTEM_PROMPT
+            + '\n\nJSON mode is on: return {"actions": [ ...the array... ]}.',
             user_content,
             task="detection",
+            json_mode=True,
         )
         actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(result["text"]))
         stamped = _stamp_mode(actions, "model")

@@ -24,6 +24,34 @@ import { TrustLine } from "./brand";
 import { ContactDirectory } from "./contacts";
 
 const REFRESH_MS = 20_000;
+const PIPELINE_POLL_MS = 3_000;
+// CPU transcription of a long hearing can take a while; stop polling after this.
+const PIPELINE_POLL_LIMIT_MS = 3 * 60 * 60 * 1000;
+
+type PipelineState = { state?: string; step?: string; error?: string | null };
+
+function pipelineOf(hearing: HearingRecord): PipelineState | null {
+  const pipeline = hearing.platform_metadata?.["pipeline"];
+  return pipeline && typeof pipeline === "object" ? (pipeline as PipelineState) : null;
+}
+
+function isAmbiguousMatch(hearing: HearingRecord): boolean {
+  const match = hearing.platform_metadata?.["match"];
+  return Boolean(
+    match && typeof match === "object" && (match as { ambiguous?: boolean }).ambiguous,
+  );
+}
+
+async function waitForPipeline(hearingId: string): Promise<HearingProceedings> {
+  const deadline = Date.now() + PIPELINE_POLL_LIMIT_MS;
+  for (;;) {
+    const proc = await hakiApi.getHearingProceedings(hearingId);
+    const state = proc.pipeline?.state;
+    if (state !== "queued" && state !== "running") return proc;
+    if (Date.now() > deadline) throw new Error("Processing is still running — check back later.");
+    await new Promise((resolve) => setTimeout(resolve, PIPELINE_POLL_MS));
+  }
+}
 
 export interface TrackedDocument {
   sessionId: string;
@@ -411,6 +439,12 @@ function HearingsPanel() {
     retry: false,
     refetchInterval: REFRESH_MS,
   });
+  const matters = useQuery({ queryKey: ["matters"], queryFn: hakiApi.listMatters, retry: false });
+  const matterName = (id: string) => {
+    const m = matters.data?.find((row) => row.id === id);
+    return m ? `${m.client_name} — ${m.matter_name}` : `Matter ${id.slice(0, 8)}…`;
+  };
+  const [languageHint, setLanguageHint] = useState("");
   const [title, setTitle] = useState("");
   const [caseRef, setCaseRef] = useState("");
   const [candidates, setCandidates] = useState<Record<string, HearingMatchCandidate[]>>({});
@@ -480,6 +514,20 @@ function HearingsPanel() {
     }
   }
 
+  async function reject(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.confirmHearing(hearing.id, { decision: "reject" });
+      setCandidates((prev) => ({ ...prev, [hearing.id]: [] }));
+      await refreshHearings();
+      toast.success("Match rejected — no matter linked");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not reject match."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function loadMatches(hearingId: string) {
     try {
       const result = await hakiApi.matchHearing(hearingId);
@@ -518,11 +566,20 @@ function HearingsPanel() {
   async function onProcess(hearing: HearingRecord) {
     setBusyId(hearing.id);
     try {
-      const result = await hakiApi.processHearing(hearing.id, { wait: true });
+      // Queue server-side and poll: long recordings outlive a single HTTP request.
+      await hakiApi.processHearing(hearing.id, {
+        wait: false,
+        ...(languageHint ? { languageHint } : {}),
+      });
       await refreshHearings();
-      const proc = await hakiApi.getHearingProceedings(hearing.id);
+      const proc = await waitForPipeline(hearing.id);
       setProceedings((prev) => ({ ...prev, [hearing.id]: proc }));
-      toast.success(result.hearing.status === "transcribed" ? "Hearing processed" : `Process finished (${result.hearing.status})`);
+      await refreshHearings();
+      if (proc.pipeline?.state === "error") {
+        toast.error(`Processing failed: ${proc.pipeline.error ?? "unknown error"}`);
+      } else {
+        toast.success("Hearing processed — review the extracted record");
+      }
     } catch (error) {
       toast.error(friendlyErrorMessage(error, "Processing failed."));
     } finally {
@@ -598,6 +655,16 @@ function HearingsPanel() {
         <Button type="button" size="sm" disabled={busy} onClick={() => void importManual()}>
           Add manual hearing
         </Button>
+        <select
+          aria-label="Hearing language"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+          value={languageHint}
+          onChange={(e) => setLanguageHint(e.target.value)}
+        >
+          <option value="">Language: auto</option>
+          <option value="en">English</option>
+          <option value="sw">Kiswahili</option>
+        </select>
       </div>
 
       {hearings.isError ? (
@@ -619,7 +686,14 @@ function HearingsPanel() {
               const proc = proceedings[hearing.id];
               const rowBusy = busyId === hearing.id;
               const canIngest = Boolean(hearing.matter_id) && !["transcribed", "reviewed", "filed", "rejected"].includes(hearing.status);
-              const canProcess = Boolean(hearing.matter_id) && ["matched", "capturing", "ingested"].includes(hearing.status);
+              const pipeline = pipelineOf(hearing);
+              const pipelineActive = pipeline?.state === "queued" || pipeline?.state === "running";
+              // Backend requires a confirmed matter and a stored recording/transcript.
+              const canProcess =
+                Boolean(hearing.matter_id) &&
+                Boolean(hearing.recording_object_key) &&
+                ["ingested", "transcribed"].includes(hearing.status) &&
+                !pipelineActive;
               const canReview = hearing.status === "transcribed";
               const platformFetch = hearing.source === "zoom" || hearing.source === "teams_graph";
 
@@ -636,6 +710,19 @@ function HearingsPanel() {
                           : ""}
                         {hearing.recording_object_key ? " · recording on file" : ""}
                       </p>
+                      {pipeline?.state && (
+                        <p
+                          className={
+                            pipeline.state === "error"
+                              ? "mt-0.5 text-xs text-destructive"
+                              : "mt-0.5 text-xs text-muted-foreground"
+                          }
+                        >
+                          Processing: {pipeline.state}
+                          {pipeline.step && pipeline.state !== "error" ? ` / ${pipeline.step}` : ""}
+                          {pipeline.error ? ` — ${pipeline.error}` : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {(hearing.status === "scheduled" || hearing.status === "pending_confirm") && (
@@ -653,12 +740,17 @@ function HearingsPanel() {
                     </div>
                   </div>
 
+                  {hearing.status === "pending_confirm" && isAmbiguousMatch(hearing) && (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                      Top matches are too close to call — check the case number before confirming.
+                    </p>
+                  )}
                   {cands.length > 0 && (hearing.status === "scheduled" || hearing.status === "pending_confirm") && (
                     <ul className="mt-3 space-y-2">
                       {cands.map((c) => (
                         <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                           <span>
-                            Matter {c.matter_id.slice(0, 8)}… · score {(c.score * 100).toFixed(0)}%
+                            {matterName(c.matter_id)} · score {(c.score * 100).toFixed(0)}%
                             {c.rationale ? ` — ${c.rationale}` : ""}
                           </span>
                           <Button
@@ -671,6 +763,17 @@ function HearingsPanel() {
                           </Button>
                         </li>
                       ))}
+                      <li>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={rowBusy}
+                          onClick={() => void reject(hearing)}
+                        >
+                          None of these — reject
+                        </Button>
+                      </li>
                     </ul>
                   )}
 
@@ -736,7 +839,7 @@ function HearingsPanel() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {canProcess && (
                       <Button type="button" size="sm" disabled={rowBusy} onClick={() => void onProcess(hearing)}>
-                        {rowBusy ? "Processing…" : "Process hearing"}
+                        {rowBusy ? "Processing…" : hearing.status === "transcribed" ? "Re-process" : "Process hearing"}
                       </Button>
                     )}
                     {(hearing.status === "transcribed" || hearing.status === "reviewed" || hearing.status === "ingested") && (

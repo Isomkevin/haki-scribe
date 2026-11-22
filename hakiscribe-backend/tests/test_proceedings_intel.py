@@ -73,6 +73,28 @@ class GroundingTests(unittest.TestCase):
         reasons = sorted(u["reason"] for u in ungrounded)
         self.assertEqual(reasons, ["invalid date", "quote not found in transcript"])
 
+    def test_schema_placeholders_rejected_even_with_real_quote(self) -> None:
+        # Shape observed from qwen2.5:3b on the real local stack.
+        quote = "The matter is adjourned to 12th March 2025 for hearing."
+        payload = {
+            "outcome": [{"text": "what happened at this sitting", "quote": quote}],
+            "orders": [{"text": "<the order the court made>", "quote": quote}],
+            "appearances": [{"name": "person", "role": "counsel", "quote": quote}],
+        }
+        grounded, ungrounded = proceedings_intel.ground_llm_payload(payload, TRANSCRIPT)
+        self.assertEqual(grounded, [])
+        self.assertEqual({u["reason"] for u in ungrounded}, {"model echoed the schema placeholder"})
+
+    def test_copied_line_prefix_is_tolerated_but_remainder_must_match(self) -> None:
+        line = "The matter is adjourned to 12th March 2025 for hearing."
+        for quote in (f"Court: {line}", f"[1] (00:10) Hon. Justice Odhiambo: {line}"):
+            ref = proceedings_intel._ground_with_prefix_tolerance(quote, TRANSCRIPT)
+            self.assertIsNotNone(ref, quote)
+            self.assertEqual(ref["start_ms"], 10000)
+        self.assertIsNone(
+            proceedings_intel._ground_with_prefix_tolerance("Court: judgment entered for the plaintiff", TRANSCRIPT)
+        )
+
 
 class ExtractTests(unittest.TestCase):
     def setUp(self) -> None:

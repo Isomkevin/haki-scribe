@@ -1,5 +1,45 @@
 # 09 — Testing and verification
 
+## Results at end of Stage D (2026-11-23, Windows 11, i5-8250U, 16 GB, no GPU)
+
+| Suite | Command | Result |
+| --- | --- | --- |
+| Backend, all | `cd hakiscribe-backend && python -m pytest -q` | **99 passed, 2 skipped** (skips = opt-in integration) |
+| Frontend unit | `npx vitest run` | 22 passed |
+| Frontend typecheck | `npx tsc --noEmit` | Only the 2 pre-existing errors (`contact.tsx`, `privacy.tsx`) |
+| Real local stack | `HAKISCRIBE_IT_LOCAL=1 OLLAMA_MODEL=qwen2.5:3b LOCAL_WHISPER_BASE_URL=http://127.0.0.1:8001 HAKISCRIBE_IT_AUDIO=<hearing_en.wav> HAKISCRIBE_IT_AUDIO_EXPECT=adjourned,March pytest tests/integration -v -s` | **2 passed**, `local_only`, egress hosts `['127.0.0.1']` only |
+| Deep health | `inference_health.check_all(deep=True)` in `local_only` | Whisper ok, Ollama `generation.ok=true`, `route_warnings=[]` |
+| HTTP end-to-end + restart | Real backend process (temp store), real Whisper + Ollama | upload → 409 before confirm → confirm → queued process → `transcribed` (7 segments) → reviewed; after restart: status, matter link, session transcript, proceedings all present |
+
+Real-stack runs use: Ollama 0.40.16 + `qwen2.5:3b`; faster-whisper 1.2.1 `small` int8 in a native venv (`%LOCALAPPDATA%\HakiScribe\wv`), PyAV 14.2.
+
+### Measured quality
+
+**English (synthetic TTS hearing, 33 s):** all 7 segments correct, apart from "Acme" → "Akmee". Rules caught `2025-03-12 hearing` every run. qwen2.5:3b quality varied between runs: one run grounded only "Costs in the cause"; later runs (after the grounding fixes) grounded the outcome, order, direction and appearance. Expect a human to correct a 3B model.
+
+**Kiswahili (6 clips from Google FLEURS `sw_ke` dev, 122 reference words — read speech, not court audio):**
+
+| Config | WER | Notes |
+| --- | --- | --- |
+| `small`, `language=sw`, built-in legal prompt (Stage B default) | 0.770 | Prompt emitted verbatim as one clip's transcript; "Kenyan" prepended to another |
+| `small`, `language=sw`, no prompt | **0.664** | Shipped default for Kiswahili |
+| `small`, auto-detect | 0.689–0.730 | One clip detected as Javanese before the `en,sw` constraint; still wrong (en) after it |
+
+Conclusion: `small` on CPU is **not adequate for a Kiswahili court record**. Errors are mostly word segmentation ("pianimto" for "pia ni mto"). Next: measure `large-v3` (needs ≥3 GB disk, slower on CPU) and Intron Sahara (hybrid route) on the same clips; get consented court audio.
+
+### Real-run defects found and fixed in Stage D
+
+| Defect (seen only against real services) | Fix | Regression test |
+| --- | --- | --- |
+| Every transcription failed: `open() got an unexpected keyword argument 'metadata_errors'` (PyAV 19) | `av>=11,<15` in requirements | real run |
+| Server returned 422 for its own bugs; backend error said only "422" | 422 only for PyAV decode errors, else 500; backend includes server detail | contract tests |
+| Legal prompt echoed as transcript; raised Kiswahili WER | Prompt only for explicit `WHISPER_LEGAL_PROMPT_LANGS` (default `en`); ≥5-word echo segments dropped | `test_legal_prompt_applies_only_to_explicit_english`, `test_prompt_echo_segments_dropped` |
+| Auto-detect picked Javanese for Kiswahili | `WHISPER_ALLOWED_LANGUAGES=en,sw`; forced language never gets the English prompt | `test_auto_detect_constrained_to_allowed_languages` |
+| Ollama proceedings call timed out at hard-coded 120 s; error text empty | `OLLAMA_TIMEOUT_S` (default 600); error keeps exception type | `test_default_timeout_suits_cpu_inference` |
+| 3B model returned schema placeholder text ("what happened at this sitting") with a real quote → shown as grounded | Placeholder items → `ungrounded` | `test_schema_placeholders_rejected_even_with_real_quote` |
+| Model copied `Court:` speaker label into quotes → real quotes rejected | Strip a copied line/speaker prefix; remainder must still match verbatim | `test_copied_line_prefix_is_tolerated_but_remainder_must_match` |
+| Malformed JSON from local model crashed action detection (demo library at startup) | Ollama JSON mode for detection | `test_json_mode_requests_json_object` + real run |
+
 ## Results at end of Stage B (2026-11-22, Windows 11, Python 3.12.10)
 
 | Suite | Command | Result |
@@ -33,19 +73,22 @@ Tests never touch `data/store.json`: `tests/stage_b_helpers.IsolatedStoreTestCas
 3. **Docker Desktop daemon not running**, so the Compose stack could not be used either.
 4. Windows long paths disabled: deep venv paths fail on numpy's test files (README troubleshooting updated).
 
+Stage B blockers 1–2 were resolved in Stage D (see top); 3–4 still apply.
+
 ## Still to verify (with what)
 
 | Check | Needs |
 | --- | --- |
-| Local LLM proceedings extraction quality + latency | Working Ollama + a pulled model (`gemma4` is already pulled); run `tests/integration -k LocalLlm -s` |
-| Local ASR EN end-to-end + timestamps | ~0.5 GB free; `HAKISCRIBE_IT_AUDIO=<wav>` (a synthetic SAPI hearing WAV is easy to regenerate; real courtroom audio preferred) |
-| Kiswahili / code-switch ASR accuracy | Real consented Kiswahili hearing recordings + reference transcripts (WER) |
+| Local LLM quality with a larger model | ≥8B model with enough free RAM (gemma4 is pulled but needs ~10 GB free); compare against qwen2.5:3b on the same transcript |
+| Kiswahili with `large-v3` / Intron Sahara | ≥3 GB free disk for large-v3; Intron key for hybrid; re-run the FLEURS WER script, then real court audio |
+| Kiswahili / code-switch on court audio | Real consented Kiswahili hearing recordings + reference transcripts (WER) |
+| Docker image with the new server | Docker Desktop running; `docker compose --profile cpu up -d --build` |
+| Tracker UI in a browser | Frontend + backend running; click through import → confirm → upload → process → review |
 | Diarization | `WITH_DIARIZATION=1` image, `HF_TOKEN`, multi-speaker audio |
 | Zoom recording + webhook | Zoom Marketplace app (OAuth + Event Subscriptions), host with cloud recording, public HTTPS URL for the webhook |
 | Teams transcript/recording | Entra app with admin-consented `OnlineMeetingTranscript.Read.All` / `OnlineMeetingRecording.Read.All`; meeting organised by the signed-in user with transcription on |
 | Google Calendar import | Connected Google account (Stage A path; unchanged) |
 | No-egress proof at network level | Run integration tests in a container with egress firewalled (current proof is at the httpx layer) |
-| `/process` background mode | Manual: POST without `wait`, poll `/proceedings` |
 
 ## Regression (unchanged from Stage A plan)
 

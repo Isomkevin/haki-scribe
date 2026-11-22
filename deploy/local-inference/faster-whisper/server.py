@@ -9,6 +9,7 @@ shape HakiScribe uses for full hearing recordings.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import threading
 import time
@@ -61,11 +62,61 @@ def get_model() -> WhisperModel:
     return _model
 
 
-def _legal_prompt() -> Optional[str]:
+# Measured on FLEURS sw_ke with `small`: the vocabulary prompt raised Kiswahili
+# WER (0.66 -> 0.77) and was sometimes emitted verbatim as the "transcript".
+# So it is only applied when the caller explicitly asks for these languages.
+ECHO_MIN_WORDS = 5
+
+
+def _legal_prompt(language: Optional[str]) -> Optional[str]:
+    langs = {
+        code.strip().lower()
+        for code in os.environ.get("WHISPER_LEGAL_PROMPT_LANGS", "en").split(",")
+        if code.strip()
+    }
+    if (language or "").lower() not in langs:
+        return None
     raw = os.environ.get("WHISPER_LEGAL_PROMPT")
     if raw is None:
         return DEFAULT_LEGAL_PROMPT
     return raw.strip() or None
+
+
+def _allowed_languages() -> list[str]:
+    """Languages auto-detection may choose. Empty = any Whisper language."""
+    raw = os.environ.get("WHISPER_ALLOWED_LANGUAGES", "en,sw")
+    return [code.strip().lower() for code in raw.split(",") if code.strip()]
+
+
+def constrain_language(detected: str, probs: Optional[list], allowed: list[str]) -> Optional[str]:
+    """Return the allowed language to force when detection chose another one.
+
+    Seen on FLEURS sw_ke: a Kiswahili clip auto-detected as Javanese ("jw").
+    """
+    if not allowed or detected in allowed:
+        return None
+    ranked = {code: prob for code, prob in (probs or [])}
+    return max(allowed, key=lambda code: ranked.get(code, 0.0))
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"\w+", (text or "").lower())
+
+
+def echoes_prompt(text: str, prompt: Optional[str], min_words: int = ECHO_MIN_WORDS) -> bool:
+    """True when `text` repeats >= min_words consecutive words of the prompt.
+
+    Whisper can emit its initial_prompt as if it had been spoken; in a court
+    record that is fabricated text, so such segments are dropped.
+    """
+    if not prompt:
+        return False
+    p_words = _words(prompt)
+    t_words = _words(text)
+    if len(t_words) < min_words or len(p_words) < min_words:
+        return False
+    grams = {tuple(p_words[i : i + min_words]) for i in range(len(p_words) - min_words + 1)}
+    return any(tuple(t_words[i : i + min_words]) in grams for i in range(len(t_words) - min_words + 1))
 
 
 def _vad_parameters() -> dict[str, Any]:
@@ -111,19 +162,36 @@ def _transcribe_path(
     want_diarization: bool,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    initial_prompt = " ".join(p for p in (_legal_prompt(), prompt) if p) or None
-    segments_iter, info = get_model().transcribe(
-        path,
-        language=language or None,
-        initial_prompt=initial_prompt,
-        vad_filter=True,
-        vad_parameters=_vad_parameters(),
-        condition_on_previous_text=False,  # limits hallucination loops on long silence
-    )
+    def run(lang: Optional[str], *, explicit: bool):
+        # The vocabulary prompt follows the caller's explicit choice only, never a guess.
+        legal = _legal_prompt(lang) if explicit else None
+        initial = " ".join(p for p in (legal, prompt) if p) or None
+        seg_iter, run_info = get_model().transcribe(
+            path,
+            language=lang or None,
+            initial_prompt=initial,
+            vad_filter=True,
+            vad_parameters=_vad_parameters(),
+            condition_on_previous_text=False,  # limits hallucination loops on long silence
+        )
+        return seg_iter, run_info, initial
+
+    segments_iter, info, initial_prompt = run(language, explicit=True)
+    language_forced_from = None
+    if not language:
+        # Segments are lazy, so re-running here only costs the language detection.
+        forced = constrain_language(info.language, getattr(info, "all_language_probs", None), _allowed_languages())
+        if forced:
+            language_forced_from = info.language
+            segments_iter, info, initial_prompt = run(forced, explicit=False)
     segments: list[dict[str, Any]] = []
+    prompt_echo_dropped = 0
     for seg in segments_iter:
         text = (seg.text or "").strip()
         if not text:
+            continue
+        if echoes_prompt(text, initial_prompt):
+            prompt_echo_dropped += 1
             continue
         segments.append(
             {
@@ -157,6 +225,9 @@ def _transcribe_path(
             "duration": round(float(info.duration), 3),
             "segments": segments,
             "diarization": diarization,
+            "prompt_applied": bool(initial_prompt),
+            "language_forced_from": language_forced_from,
+            "prompt_echo_dropped": prompt_echo_dropped,
             "processing_ms": int((time.perf_counter() - started) * 1000),
         }
     )
@@ -194,7 +265,9 @@ async def transcribe(
                 want_diarization=bool(diarize_speakers),
             )
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=422, detail=f"transcription failed: {exc}"[:400]) from exc
+            # Undecodable audio is the caller's problem (422); anything else is ours (500).
+            status = 422 if type(exc).__module__.split(".")[0] == "av" else 500
+            raise HTTPException(status_code=status, detail=f"transcription failed: {exc}"[:400]) from exc
     finally:
         try:
             os.unlink(tmp.name)

@@ -100,8 +100,70 @@ class ServerContractTests(IsolatedStoreTestCase):
         kwargs = StubWhisperModel.calls[-1]
         self.assertTrue(kwargs["vad_filter"])
         self.assertEqual(kwargs["language"], "sw")
-        self.assertIn("Mheshimiwa", kwargs["initial_prompt"])
-        self.assertIn("Kenyan English and Kiswahili", kwargs["initial_prompt"])
+        # Built-in vocabulary prompt is English-only (it raised Kiswahili WER); caller prompt still passes.
+        self.assertNotIn("Mheshimiwa", kwargs["initial_prompt"])
+        self.assertEqual(kwargs["initial_prompt"], "Kenyan English and Kiswahili")
+
+    def test_legal_prompt_applies_only_to_explicit_english(self) -> None:
+        for language, expected in (("en", True), ("sw", False), (None, False)):
+            data = {"response_format": "verbose_json"}
+            if language:
+                data["language"] = language
+            body = self.client.post("/v1/audio/transcriptions", files={"file": ("h.wav", b"x")}, data=data).json()
+            prompt = StubWhisperModel.calls[-1]["initial_prompt"] or ""
+            self.assertEqual("Mheshimiwa" in prompt, expected, language)
+            self.assertEqual(body["prompt_applied"], expected, language)
+
+    def test_auto_detect_constrained_to_allowed_languages(self) -> None:
+        f = self.server.constrain_language
+        self.assertIsNone(f("sw", [("sw", 0.9)], ["en", "sw"]))
+        self.assertEqual(f("jw", [("jw", 0.5), ("sw", 0.3), ("en", 0.1)], ["en", "sw"]), "sw")
+        self.assertIsNone(f("jw", [("jw", 0.5)], []))  # constraint disabled
+
+        class JavaneseInfo(_Info):
+            # English edges out Kiswahili, as on the real FLEURS clip.
+            language, all_language_probs = "jw", [("jw", 0.5), ("en", 0.3), ("sw", 0.2)]
+
+        original = StubWhisperModel.transcribe
+
+        def detecting(model, path, **kwargs):
+            StubWhisperModel.calls.append(kwargs)
+            info = JavaneseInfo() if kwargs.get("language") is None else _Info()
+            return iter([_Seg(0.0, 3.0, " Kesi imeahirishwa.")]), info
+
+        StubWhisperModel.transcribe = detecting
+        try:
+            body = self.client.post(
+                "/v1/audio/transcriptions", files={"file": ("h.wav", b"x")}, data={"response_format": "verbose_json"}
+            ).json()
+        finally:
+            StubWhisperModel.transcribe = original
+        self.assertEqual(StubWhisperModel.calls[-1]["language"], "en")
+        # A guessed language never brings in the English vocabulary prompt.
+        self.assertIsNone(StubWhisperModel.calls[-1]["initial_prompt"])
+        self.assertEqual(body["language_forced_from"], "jw")
+
+    def test_prompt_echo_segments_dropped(self) -> None:
+        # Real failure seen on FLEURS sw_ke: Whisper emitted the prompt as the transcript.
+        echo = " Kenyan court proceedings in English and Kiswahili. Your Honour, My Lady, Mheshimiwa,"
+        original = StubWhisperModel.transcribe
+
+        def echoing(model, path, **kwargs):
+            StubWhisperModel.calls.append(kwargs)
+            return iter([_Seg(0.0, 3.0, echo), _Seg(3.0, 6.0, " Kesi imeahirishwa hadi kesho.")]), _Info()
+
+        StubWhisperModel.transcribe = echoing
+        try:
+            body = self.client.post(
+                "/v1/audio/transcriptions",
+                files={"file": ("h.wav", b"x")},
+                data={"response_format": "verbose_json", "language": "en"},
+            ).json()
+        finally:
+            StubWhisperModel.transcribe = original
+        self.assertEqual([s["text"] for s in body["segments"]], ["Kesi imeahirishwa hadi kesho."])
+        self.assertEqual(body["prompt_echo_dropped"], 1)
+        self.assertFalse(self.server.echoes_prompt("Your Honour, we seek an adjournment.", self.server.DEFAULT_LEGAL_PROMPT))
 
     def test_diarization_requested_but_disabled_says_why(self) -> None:
         body = self.client.post(

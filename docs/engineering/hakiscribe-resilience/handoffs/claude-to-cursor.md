@@ -1,6 +1,30 @@
-# Handoff: Claude Code → Cursor (Stage C)
+# Handoff: Claude Code → Cursor
 
-Stage B, 2026-11-22. Built on Stage A commit `a9f3db3`. **Nothing from Stage B is committed** — all changes are in the working tree.
+## Stage D update (2026-11-23, on top of `2cf89e0`) — uncommitted working-tree changes
+
+**1. Completed.** The real local stack now works on the reference host and is verified end to end. Ollama was repaired (CPU runner restored) and runs `qwen2.5:3b`; faster-whisper `small` runs in a native venv. Hearings persistence (ADR-012 option a) is done. Fixed the defects that only real runs exposed: PyAV pin, Whisper prompt echo and language safeguards (ADR-013), Ollama timeout and JSON mode (ADR-014), proceedings placeholder and prefix grounding. Tracker fixes: process gating, queue + poll, reject, ambiguity warning, matter names, pipeline state, EN/SW selector.
+
+**2. Files.** `deploy/local-inference/{README.md,.env.example,docker-compose.yml}`, `faster-whisper/{server.py,requirements.txt}`; `hakiscribe-backend/.env.example`, `app/services/{action_detector,hearings,ollama_client,proceedings_intel,storage,transcription}.py`; tests `test_hearing_persistence.py` (new), `test_inference_orchestration.py`, `test_local_whisper_contract.py`, `test_proceedings_intel.py`; `src/components/hakiscribe/tracker.tsx`; docs 08/09/10 + this file.
+
+**3. Migrations.** None. Hearings ride on the existing storage snapshot (store.json / `DATABASE_URL` snapshot table).
+
+**4. Interface changes.** Whisper `verbose_json` adds `prompt_applied`, `prompt_echo_dropped`, `language_forced_from`. New env: `WHISPER_ALLOWED_LANGUAGES` (default `en,sw`), `WHISPER_LEGAL_PROMPT_LANGS` (default `en`), `OLLAMA_TIMEOUT_S` (default 600). The server returns 500 (was 422) for non-decode failures. `ollama_client.complete(json_mode=...)`. The Tracker now calls `/process` without `wait` and polls `/proceedings`.
+
+**5. Tests.** Backend 99 passed / 2 skipped; vitest 22; tsc only the 2 pre-existing errors. Real-stack integration 2/2 passed (loopback-only). HTTP end-to-end plus real restart passed. Kiswahili WER measured (09).
+
+**6. Known issues.** Kiswahili with `small` WER ≈ 0.66 — not record-grade. 3B extraction quality is inconsistent. Tracker changes not browser-tested. Docker image not rebuilt. The next Ollama auto-update needs ≥6 GB free or it breaks again. Running the backend in `local_only` makes demo-library seeding call the local LLM at startup (slow on CPU, but non-blocking).
+
+**7. Outstanding.** ADR-012 (b), production per-org hearings. Kiswahili with `large-v3` / Intron Sahara. Diarization run. Zoom/Teams sandbox runs. Job queue for `/process`.
+
+**8. Dependencies.** Free disk (≥3 GB for large-v3, ≥6 GB for Ollama updates); Docker Desktop; Zoom/Entra apps; consented court audio.
+
+**9. For Cursor.** `pytest -q` → 99 passed, 2 skipped. Click through the Tracker in a browser against a `local_only` backend. Keep the language selector, because explicit `sw` beats auto. Don't re-enable the legal prompt for Kiswahili without re-measuring (ADR-013).
+
+---
+
+## Stage B (2026-11-22)
+
+Built on Stage A commit `a9f3db3`; later committed by the owner as `371ad13` / `2cf89e0`.
 
 Status detail: [08](../08-implementation-status.md) · test evidence: [09](../09-testing-and-verification.md) · decisions: [10](../10-decisions-and-risks.md) ADR-006…012 · contracts: [06](../06-api-and-database-contracts.md) "Stage B additions".
 

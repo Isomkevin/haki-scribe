@@ -9,6 +9,7 @@ hackathon — signatures stay the same.
 import json
 import logging
 import os
+import sys
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,9 @@ _results: dict[uuid.UUID, list[ActionResult]] = {}
 _session_matter_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
 _session_contact_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
 _chats: dict[uuid.UUID, list[ChatThread]] = {}
+# Hearings live in app.services.hearings, which imports this module. Its raw
+# snapshot is parked here until that module finishes loading and claims it.
+_hearings_payload: Optional[dict] = None
 
 
 def list_chats(session_id: uuid.UUID) -> list[ChatThread]:
@@ -421,6 +425,19 @@ def _uuid_map(raw: dict) -> dict[uuid.UUID, list[uuid.UUID]]:
     return {uuid.UUID(key): [uuid.UUID(item) for item in value] for key, value in raw.items()}
 
 
+def take_hearings_payload() -> Optional[dict]:
+    global _hearings_payload
+    payload, _hearings_payload = _hearings_payload, None
+    return payload
+
+
+def _hearings_snapshot() -> Optional[dict]:
+    module = sys.modules.get("app.services.hearings")
+    if module is not None and hasattr(module, "snapshot"):
+        return module.snapshot()
+    return _hearings_payload
+
+
 def _snapshot() -> dict:
     from app.services import integrations
     return {
@@ -435,6 +452,7 @@ def _snapshot() -> dict:
             "session_matter_ids": {str(key): [str(item) for item in value] for key, value in _session_matter_ids.items()},
             "session_contact_ids": {str(key): [str(item) for item in value] for key, value in _session_contact_ids.items()},
             "chats": {str(key): [item.model_dump(mode="json") for item in value] for key, value in _chats.items()},
+            "hearings": _hearings_snapshot(),
     }
 
 
@@ -486,6 +504,8 @@ def _restore(payload: dict) -> None:
     for key, value in payload.get("chats", {}).items():
         _chats[uuid.UUID(key)] = [ChatThread(**item) for item in value]
     integrations.restore_connections(payload.get("integrations", []))
+    global _hearings_payload
+    _hearings_payload = payload.get("hearings")
 
 
 _load()

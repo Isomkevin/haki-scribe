@@ -157,14 +157,15 @@ The transcript may mix English and Kiswahili. Do not translate quotes.
 
 Return ONLY a JSON object with these keys:
 {
-  "outcome":     [{"text": "what happened at this sitting", "quote": "..."}],
-  "next_dates":  [{"date": "YYYY-MM-DD", "purpose": "mention|hearing|ruling|judgment|other", "quote": "..."}],
-  "orders":      [{"text": "order made by the court", "quote": "..."}],
-  "directions":  [{"text": "direction to a party, with deadline if stated", "quote": "..."}],
-  "appearances": [{"name": "person", "role": "judge|magistrate|counsel for X|accused|witness|clerk", "quote": "..."}]
+  "outcome":     [{"text": "<what happened at this sitting>", "quote": "<verbatim words>"}],
+  "next_dates":  [{"date": "<YYYY-MM-DD>", "purpose": "<mention|hearing|ruling|judgment|other>", "quote": "<verbatim words>"}],
+  "orders":      [{"text": "<the order the court made>", "quote": "<verbatim words>"}],
+  "directions":  [{"text": "<the direction, with deadline if stated>", "quote": "<verbatim words>"}],
+  "appearances": [{"name": "<the person's name>", "role": "<judge|magistrate|counsel for X|accused|witness|clerk>", "quote": "<verbatim words>"}]
 }
 
 Rules:
+- Every <...> is a placeholder: replace it with content from the transcript. Never output the placeholder text.
 - "quote" MUST be copied verbatim from ONE transcript line (without the [n] prefix, timestamp, or speaker label).
 - Only include items the transcript states. If something is not stated, return an empty list for it.
 - Never guess a date. If the year is not stated, omit the item.
@@ -195,6 +196,45 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return parsed
 
 
+# Schema wording small models sometimes echo back instead of real content
+# (observed with qwen2.5:3b). Matched case-insensitively, brackets ignored.
+_PLACEHOLDERS = frozenset(
+    {
+        "what happened at this sitting",
+        "order made by the court",
+        "the order the court made",
+        "direction to a party, with deadline if stated",
+        "the direction, with deadline if stated",
+        "person",
+        "the person's name",
+        "verbatim words",
+        "...",
+    }
+)
+
+_LINE_PREFIX_RE = re.compile(r"^\s*(?:\[\d+\]\s*)?(?:\(\d{1,2}:\d{2}\)\s*)?")
+_SPEAKER_PREFIX_RE = re.compile(r"^[^:\n]{1,60}:\s+")
+
+
+def _is_placeholder(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().strip("<>").strip().lower() in _PLACEHOLDERS
+
+
+def _ground_with_prefix_tolerance(quote: str, segments: list[TranscriptSegment]) -> Optional[dict[str, Any]]:
+    """Exact grounding, then once more without a copied "[n] (mm:ss) Speaker:" prefix.
+
+    The remainder must still match verbatim, so this never loosens evidence.
+    """
+    ref = ground_quote(quote, segments)
+    if ref is not None:
+        return ref
+    stripped = _LINE_PREFIX_RE.sub("", quote or "", count=1)
+    stripped = _SPEAKER_PREFIX_RE.sub("", stripped, count=1)
+    if stripped and stripped != quote:
+        return ground_quote(stripped, segments)
+    return None
+
+
 def ground_llm_payload(payload: dict[str, Any], segments: list[TranscriptSegment]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split model items into (grounded, ungrounded). Validates next-date format."""
     grounded: list[dict[str, Any]] = []
@@ -213,7 +253,10 @@ def ground_llm_payload(payload: dict[str, Any], segments: list[TranscriptSegment
                 except ValueError:
                     ungrounded.append({**row, "grounded": False, "reason": "invalid date"})
                     continue
-            ref = ground_quote(str(item.get("quote") or ""), segments)
+            if any(_is_placeholder(item.get(field)) for field in ("text", "name", "quote")):
+                ungrounded.append({**row, "grounded": False, "reason": "model echoed the schema placeholder"})
+                continue
+            ref = _ground_with_prefix_tolerance(str(item.get("quote") or ""), segments)
             if ref is None:
                 ungrounded.append({**row, "grounded": False, "reason": "quote not found in transcript"})
                 continue
@@ -259,8 +302,10 @@ async def extract(
     except ai_mode.AiModeError as exc:
         llm.update({"status": "blocked_by_ai_mode", "error": str(exc)})
     except Exception as exc:  # noqa: BLE001 — rules output still stands
-        logger.warning("Proceedings LLM extraction failed: %s", exc)
-        llm.update({"error": str(exc)[:300]})
+        # Some exceptions (e.g. httpx timeouts) have an empty message; keep the type.
+        reason = f"{type(exc).__name__}: {exc}".rstrip(": ")
+        logger.warning("Proceedings LLM extraction failed: %s", reason)
+        llm.update({"error": reason[:300]})
     latency_ms = int((time.perf_counter() - started) * 1000)
     llm.update(
         {

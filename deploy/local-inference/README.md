@@ -33,6 +33,25 @@ HAKISCRIBE_ROUTE_ASK=openai
 HAKISCRIBE_ROUTE_RESEARCH=tavily_exa
 ```
 
+## Without Docker (verified on Windows 11, CPU-only, 2026-11-23)
+
+```powershell
+# Whisper server (short venv path avoids Windows long-path failures)
+python -m venv $env:LOCALAPPDATA\HakiScribe\wv
+& $env:LOCALAPPDATA\HakiScribe\wv\Scripts\python.exe -m pip install --only-binary=:all: -r deploy\local-inference\faster-whisper\requirements.txt
+cd deploy\local-inference\faster-whisper
+$env:WHISPER_MODEL="small"; $env:WHISPER_COMPUTE_TYPE="int8"
+& $env:LOCALAPPDATA\HakiScribe\wv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8001
+
+# Ollama (installed app) — pick a model that fits RAM; 3B is practical on 16 GB CPU-only
+ollama pull qwen2.5:3b
+```
+
+Backend: `HAKISCRIBE_AI_MODE=local_only`, `OLLAMA_MODEL=qwen2.5:3b`, `LOCAL_WHISPER_BASE_URL=http://127.0.0.1:8001`.
+
+Measured on an i5-8250U / 16 GB / no GPU: Whisper `small` transcribes ~33 s of English audio in ~15–45 s;
+qwen2.5:3b proceedings extraction takes 2–3 min per short hearing (`OLLAMA_TIMEOUT_S` defaults to 600).
+
 ## faster-whisper server API
 
 `POST /v1/audio/transcriptions` (OpenAI-compatible multipart):
@@ -46,6 +65,15 @@ HAKISCRIBE_ROUTE_RESEARCH=tavily_exa
 
 `GET /health` reports `model_loaded` and diarization status; `POST /ready` force-loads the model.
 VAD is always on (`WHISPER_VAD_MIN_SILENCE_MS`, `WHISPER_VAD_SPEECH_PAD_MS`).
+
+Language safeguards (from real Kiswahili measurements, see 09):
+
+- The built-in court-vocabulary prompt is applied only when the caller explicitly sets a language in
+  `WHISPER_LEGAL_PROMPT_LANGS` (default `en`). On Kiswahili it raised WER and was sometimes emitted verbatim.
+- Any segment repeating ≥5 consecutive prompt words is dropped (`prompt_echo_dropped` in the response).
+- Auto-detection is limited to `WHISPER_ALLOWED_LANGUAGES` (default `en,sw`); `language_forced_from`
+  reports an override (e.g. a Kiswahili clip detected as Javanese). Pick Kiswahili explicitly when known —
+  it is measurably better than auto.
 
 Hearing recordings use `verbose_json` through `LocalWhisperProvider.transcribe_file`; Teams/Zoom
 WebVTT transcripts bypass ASR and keep the platform's participant names.
@@ -89,4 +117,7 @@ You may instead keep using existing `NVIDIA_NIM_*` endpoints documented in `docs
 | Detect fails in local_only | `curl http://127.0.0.1:11434/api/tags` and `ollama pull` |
 | Model listed but every call 500s ("llama-server binary not found") | Ollama install is incomplete (e.g. interrupted auto-update) — reinstall Ollama; `?deep=true` health catches this |
 | pip install fails on Windows with a missing deep path | Enable Windows long paths or install into a short directory |
+| `transcription failed: open() got an unexpected keyword argument 'metadata_errors'` | PyAV ≥ 15 with faster-whisper 1.2.x — `requirements.txt` pins `av<15`; reinstall |
+| Proceedings LLM `error: ReadTimeout` | CPU generation slower than `OLLAMA_TIMEOUT_S`; raise it or use a smaller model |
+| Ollama upgrade failed with "not enough space" and generation 500s | Free disk; the CPU runner is only ~45 MB of `lib/ollama` (GPU libs are the bulk) |
 | Cloud still called | Ensure mode is `local_only` and routes are not overridden to public providers |

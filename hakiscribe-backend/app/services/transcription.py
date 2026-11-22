@@ -272,7 +272,11 @@ class LocalWhisperProvider(TranscriptionProvider):
                 files={"file": (filename or chunk_filename(audio_bytes), audio_bytes, "application/octet-stream")},
                 data=data,
             )
-            response.raise_for_status()
+            if response.is_error:
+                # Surface the server's reason (e.g. undecodable audio) to the pipeline state.
+                raise RuntimeError(
+                    f"local_whisper HTTP {response.status_code}: {response.text[:300]}"
+                )
             body = response.json()
         if not isinstance(body, dict):
             raise RuntimeError("local_whisper returned a non-JSON body")

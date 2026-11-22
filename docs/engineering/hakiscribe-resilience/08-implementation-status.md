@@ -22,12 +22,12 @@ Legend: **Tested** = automated tests pass in this repo · **Contract-tested** = 
 
 | # | Item | Status | Evidence / gap |
 | --- | --- | --- | --- |
-| 1 | Local LLM (Ollama) for proceedings / detect | Code: done. **Real generation: Blocked** | Host Ollama 0.40.16 has no `llama-server` runner (interrupted auto-update) → every generation 500s. Integration test reached it, got the 500, reported `llm.status=error`, and made **only loopback calls**. |
+| 1 | Local LLM (Ollama) for proceedings / detect | **Real-verified** (qwen2.5:3b, CPU) | Host Ollama repaired (CPU runner restored, 2026-11-23). Proceedings + action detection run for real in `local_only` with loopback-only egress. Quality of a 3B model is uneven (see 09); `OLLAMA_TIMEOUT_S` (default 600) and JSON mode added after real-run failures. |
 | 2 | Ollama readiness | **Tested + real-verified** | `check_ollama(deep=True)` 1-token probe; against the broken host install it correctly reports `ok=false` where the shallow probe said `ok=true`. `model_available` flags un-pulled `OLLAMA_MODEL`. |
-| 3 | faster-whisper server hardening (verbose_json, VAD params, EN/SW legal prompt, `/ready`, threadpool, Windows-safe temp file) | **Contract-tested** | Real `server.py` loaded with a stub `WhisperModel`; backend client → server over ASGI. **Real model run: Blocked** (C: drive had 76 MB free; Docker daemon not running). |
+| 3 | faster-whisper server hardening (verbose_json, VAD params, legal prompt, `/ready`, threadpool, Windows-safe temp file) | **Real-verified** (`small`, CPU, native venv) | Real runs found and fixed: PyAV 19 incompatibility (pinned `av<15`), decode vs server errors (422/500), legal prompt echoed as transcript on Kiswahili (now English-only + echo guard), auto-detect choosing Javanese (now limited to `en,sw`). Docker image not rebuilt (Docker daemon off). |
 | 4 | Diarization (pyannote, opt-in) | Code: done. Speaker assignment **tested**. **pyannote run: Not run** | Needs `WITH_DIARIZATION=1` build, `HF_TOKEN` with pyannote terms accepted, ~2 GB. Disabled path reports the reason instead of inventing speakers. |
 | 5 | Platform speaker labels (Teams/Zoom WebVTT) | **Tested** | `vtt.py`; Teams `<v Name>` and Zoom `Name:` dialects. |
-| 6 | EN/SW transcription | EN/SW **text** handling tested. **Kiswahili audio accuracy: Blocked** | No real Kiswahili recordings in repo; this host only has English TTS voices. Synthetic EN hearing WAV was generated but could not be transcribed (item 3). |
+| 6 | EN/SW transcription | EN **real-verified**. Kiswahili **measured: not fit for a legal record with `small`** | EN synthetic hearing: accurate, timestamped. Kiswahili (6 FLEURS sw_ke clips, 122 words): WER 0.66 with `language=sw`, 0.69 auto. Needs `large-v3` (≥3 GB disk) or Intron Sahara (hybrid) — not court audio either way. |
 | 7 | Proceedings intelligence with quote grounding | **Tested** (LLM mocked) | Rules (EN+SW, no AI) + LLM extraction; items without a verbatim transcript quote → `ungrounded`; privileged lines never reach the prompt; stale provenance bug avoided. |
 | 8 | Hybrid fallback logging (`ai_runs`) | **Tested** | `cloud_fallback_allowed` / `record_fallback`; NIM→OpenRouter in ASR and generation. |
 | 9 | Zoom: recording download + `recording.completed` webhook | **Contract-tested** | Signature + replay window + URL validation + download with `download_token`. **No real Zoom tenant used.** |
@@ -36,9 +36,9 @@ Legend: **Tested** = automated tests pass in this repo · **Contract-tested** = 
 | 12 | Recording persistence | **Tested** (local volume) · S3 mirror **Not run** | Fixes Stage A bug: `/upload` discarded bytes (`object_store.put_bytes` did not exist). Path-traversal-safe keys; size cap. |
 | 13 | Matter Resolution Engine | **Tested** | Canonical Kenyan case refs (`E045 of 2024` = `E45/2024`), boundary-safe matching, conflicting-case-number penalty, near-tie ambiguity. |
 | 14 | Hearing lifecycle | **Tested** | Explicit transition table; fixes Stage A bug where re-importing a calendar/Teams/Zoom event reset human confirmations; matter link locked after capture; idempotent session creation. |
-| 15 | Post-hearing pipeline (`/process`) | **Tested** (`wait=true`, VTT path and stub-Whisper path) · background mode **Not run** under test | Refuses before human confirm; `transcribed` then human `/review`. |
+| 15 | Post-hearing pipeline (`/process`) | **Tested + real-verified** | Background mode tested and run over real HTTP against real Whisper + Ollama (see Stage D). Refuses before human confirm; `transcribed` then human `/review`. |
 | 16 | Frontend API client for new endpoints | Done, typechecked | `src/lib/hakiscribe.ts`. |
-| 16b | Tracker UI wired to Stage B lifecycle | **Done (Stage C connection)** | Upload recording/VTT, Teams/Zoom fetch, process (`wait=true`), proceedings (grounded + ungrounded), review; Calendar/Teams/Zoom import; Settings deep local probe. |
+| 16b | Tracker UI wired to Stage B lifecycle | **Done**, typechecked, **not browser-tested** | Stage C wiring; Stage D fixes listed below. |
 
 ## Stage C connection pass (Cursor)
 
@@ -48,9 +48,25 @@ Legend: **Tested** = automated tests pass in this repo · **Contract-tested** = 
 | Frontend vitest | done | **22 passed** |
 | Tracker ↔ hearings pipeline | done | Full match → ingest → process → review UI |
 | AI mode Settings ↔ deep probe | done | `getAiMode(true)` → Ollama generation probe |
-| ADR-012 hearings persistence | still open | In-memory demo only; not blocking Stage B UI connection |
-| 17 | Production persistence for hearings (migration 003 repository, RLS path) | **Not implemented** | Hearings are in-memory; router + webhook mounted only when production auth is off. See ADR-012. |
-| 18 | Real-stack integration tests | Written, **skipped by default** | `tests/integration/test_local_stack.py` (`HAKISCRIBE_IT_LOCAL=1`). Includes no-egress assertion. |
+| ADR-012 hearings persistence | option (a) done in Stage D | See Stage D row D3 |
+
+## Stage D — real-stack completion (Claude Code, 2026-11-23)
+
+Host unblocked: disk freed to 4.4 GB; Ollama's missing CPU runner (`lib/ollama`, ~41 MB) restored from the matching 0.40.16 release; `qwen2.5:3b` pulled; faster-whisper installed natively. Docker still off.
+
+| # | Item | Status | Evidence / gap |
+| --- | --- | --- | --- |
+| D1 | Real local stack, `local_only` | **Real-verified** | `tests/integration` 2/2 passed; egress loopback-only. Backend `check_all(deep=True)`: Whisper ok, Ollama generating, no route warnings. |
+| D2 | End-to-end over HTTP (real backend process) | **Real-verified** | upload WAV → 409 before confirm → confirm → queued `/process` → poll → `transcribed` (7 timestamped segments, rules + Ollama items) → `/review`. |
+| D3 | Hearings persistence (ADR-012 option a) | **Tested + real-verified** | Hearings/candidates/confirmations in the workspace snapshot (store.json, or Postgres via `DATABASE_URL`). Real restart kept status `reviewed`, matter link, session transcript, proceedings. In-flight jobs become `error: interrupted by restart`. |
+| D4 | Production per-org hearings (ADR-012 option b) | **Not implemented** | Hearings router + Zoom webhook still mount only when `HAKISCRIBE_PRODUCTION_AUTH=false` — like matters, contacts and integrations. Needs a tenancy design. |
+| D5 | Whisper language safeguards | **Tested + real-measured** | Legal prompt English-only (Kiswahili WER 0.77 → 0.66 without it, and it was echoed as text); ≥5-word prompt echo dropped; auto-detect restricted to `en,sw`. |
+| D6 | PyAV pin | **Real-verified** | `av<15` — faster-whisper 1.2.1 fails on every file with PyAV 19. |
+| D7 | Proceedings grounding hardening | **Tested** (from real model output) | Schema placeholders echoed by qwen2.5:3b rejected; copied `[n] (mm:ss) Speaker:` prefixes tolerated only if the rest matches verbatim. |
+| D8 | Ollama client | **Tested + real-verified** | `OLLAMA_TIMEOUT_S` (default 600; was hard-coded 120 and timed out on CPU); JSON mode for action detection; error text keeps the exception type. |
+| D9 | Tracker UI fixes | Typechecked, **not browser-tested** | Process only with a recording; queue + poll (no long blocking request); reject; ambiguity warning; matter names; pipeline state/errors; EN/SW language hint. |
+| D10 | Diarization | **Not run** | `HF_TOKEN` exists in `.env.local`, but pyannote + torch need ~2 GB and PyPI ran at ~80 KB/s here. |
+| D11 | Zoom / Teams live | **Contract-tested only** | No sandbox tenants. |
 
 ## Frontier / hybrid invariants
 

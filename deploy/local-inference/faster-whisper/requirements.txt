@@ -2,3 +2,5 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 faster-whisper>=1.0.0
 python-multipart>=0.0.9
+# faster-whisper 1.2.x calls av.open(metadata_errors=...), removed in PyAV 15+.
+av>=11,<15

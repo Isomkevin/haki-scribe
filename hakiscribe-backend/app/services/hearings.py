@@ -1,4 +1,9 @@
-"""In-memory hearing store (demo) + lifecycle helpers. Postgres via migration 003.
+"""Hearing store + lifecycle helpers.
+
+State is in memory and saved with the rest of the workspace snapshot
+(`storage`: store.json, or Postgres when DATABASE_URL is set), so hearings,
+candidates and confirmations survive a restart. Migration 003 tables are the
+future per-organisation home (ADR-012).
 
 Lifecycle (enforced by `transition`):
 
@@ -48,8 +53,42 @@ _candidates: dict[UUID, list[HearingMatchCandidate]] = {}
 _confirmations: list[dict[str, Any]] = []
 
 
+# Pipeline states that only mean something while the worker that set them is alive.
+_IN_FLIGHT = frozenset({"queued", "running"})
+
+
 class InvalidTransition(ValueError):
     pass
+
+
+def _save() -> None:
+    storage.persist()
+
+
+def snapshot() -> dict[str, Any]:
+    return {
+        "hearings": [h.model_dump(mode="json") for h in _hearings.values()],
+        "candidates": {str(k): [c.model_dump(mode="json") for c in v] for k, v in _candidates.items()},
+        "confirmations": list(_confirmations),
+    }
+
+
+def restore(payload: Optional[dict[str, Any]]) -> None:
+    if not payload:
+        return
+    for raw in payload.get("hearings", []):
+        hearing = Hearing(**raw)
+        pipeline = (hearing.platform_metadata or {}).get("pipeline") or {}
+        if pipeline.get("state") in _IN_FLIGHT:
+            # The background task died with the previous process; let a human re-run it.
+            hearing.platform_metadata = {
+                **hearing.platform_metadata,
+                "pipeline": {**pipeline, "state": "error", "error": "Interrupted by a server restart; run /process again"},
+            }
+        _hearings[hearing.id] = hearing
+    for key, rows in payload.get("candidates", {}).items():
+        _candidates[UUID(key)] = [HearingMatchCandidate(**row) for row in rows]
+    _confirmations.extend(payload.get("confirmations", []))
 
 
 def reset() -> None:
@@ -63,6 +102,7 @@ def transition(hearing: Hearing, new_status: HearingStatus) -> Hearing:
         raise InvalidTransition(f"Hearing cannot move from {hearing.status.value} to {new_status.value}")
     hearing.status = new_status
     hearing.updated_at = datetime.utcnow()
+    _save()
     return hearing
 
 
@@ -97,6 +137,7 @@ def create_hearing(payload: HearingCreate) -> Hearing:
         status=HearingStatus.scheduled,
     )
     _hearings[hearing.id] = hearing
+    _save()
     return hearing
 
 
@@ -114,6 +155,7 @@ def upsert_external(payload: HearingCreate) -> Hearing:
     # Merge so pipeline / recording metadata survives a calendar re-import.
     existing.platform_metadata = {**(existing.platform_metadata or {}), **(payload.platform_metadata or {})}
     existing.updated_at = datetime.utcnow()
+    _save()
     return existing
 
 
@@ -153,6 +195,7 @@ def propose_matches(hearing_id: UUID) -> list[HearingMatchCandidate]:
             },
         }
     hearing.updated_at = datetime.utcnow()
+    _save()
     return candidates
 
 
@@ -189,6 +232,7 @@ def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str =
                 "created_at": datetime.utcnow().isoformat(),
             }
         )
+        _save()
         return hearing
 
     if not body.matter_id:
@@ -214,6 +258,7 @@ def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str =
     # A recording that arrived before the human confirmed is now usable.
     if hearing.recording_object_key:
         transition(hearing, S.ingested)
+    _save()
     return hearing
 
 
@@ -229,6 +274,7 @@ def attach_recording(hearing_id: UUID, *, object_key: str, meta: Optional[dict[s
     if hearing.status in (S.matched, S.capturing):
         transition(hearing, S.ingested)
     hearing.updated_at = datetime.utcnow()
+    _save()
     return hearing
 
 
@@ -254,6 +300,7 @@ def create_session_from_hearing(hearing_id: UUID) -> dict[str, Any]:
     if hearing.status == S.matched:
         transition(hearing, S.capturing)
     hearing.updated_at = datetime.utcnow()
+    _save()
     return {"hearing": hearing, "session": session}
 
 
@@ -266,6 +313,7 @@ def set_pipeline_state(hearing_id: UUID, **fields: Any) -> Hearing:
     pipeline["updated_at"] = datetime.utcnow().isoformat()
     hearing.platform_metadata = {**(hearing.platform_metadata or {}), "pipeline": pipeline}
     hearing.updated_at = datetime.utcnow()
+    _save()
     return hearing
 
 
@@ -279,8 +327,12 @@ def mark_reviewed(hearing_id: UUID, *, actor: str = "workspace") -> Hearing:
         **(hearing.platform_metadata or {}),
         "review": {"actor_label": actor, "reviewed_at": datetime.utcnow().isoformat()},
     }
+    _save()
     return hearing
 
 
 def pending_confirmations() -> list[Hearing]:
     return [h for h in _hearings.values() if h.status == HearingStatus.pending_confirm]
+
+
+restore(storage.take_hearings_payload())
