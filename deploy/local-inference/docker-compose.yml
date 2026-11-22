@@ -1,0 +1,80 @@
+# HakiScribe local inference stack
+# CPU:  docker compose --profile cpu up -d
+# GPU:  docker compose --profile gpu up -d
+# Both profiles share a network; point FastAPI at the published ports.
+
+name: hakiscribe-local-inference
+
+services:
+  faster-whisper:
+    profiles: ["cpu", "gpu"]
+    build:
+      context: ./faster-whisper
+    image: hakiscribe/faster-whisper:local
+    ports:
+      - "${LOCAL_WHISPER_PORT:-8001}:8000"
+    environment:
+      WHISPER_MODEL: ${LOCAL_WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    volumes:
+      - whisper-models:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["cpu", "gpu"]
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # GPU profile: optional OpenAI-compatible LLM (vLLM). Configure NVIDIA_NIM_* /
+  # OLLAMA or point LLM at this service. Requires NVIDIA Container Toolkit.
+  vllm:
+    profiles: ["gpu"]
+    image: vllm/vllm-openai:latest
+    runtime: nvidia
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    command:
+      - "--model"
+      - "${VLLM_MODEL:-meta-llama/Meta-Llama-3.1-8B-Instruct}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+    ports:
+      - "${VLLM_PORT:-8002}:8000"
+    volumes:
+      - vllm-models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  whisper-models:
+  ollama-models:
+  vllm-models:
+
+networks:
+  default:
+    name: hakiscribe-inference

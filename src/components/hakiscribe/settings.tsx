@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   ChartNoAxesCombined,
+  Cpu,
   History,
   Info,
   KeyRound,
@@ -30,6 +31,7 @@ import {
   productionAuthApi,
   productionAuthEnabled,
   productionTenancyApi,
+  type AiOperatingMode,
   type DiagnosticsResult,
   type Integration,
   type LlmUsageSummary,
@@ -60,6 +62,7 @@ const NAV: { id: SettingsSection; label: string; icon: ComponentType<{ className
   { id: "usage", label: "AI usage", icon: ChartNoAxesCombined },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "connectors", label: "Connectors", icon: Plug },
+  { id: "ai", label: "AI mode", icon: Cpu },
   { id: "backend", label: "Backend", icon: Server },
   { id: "about", label: "About", icon: Info },
 ];
@@ -107,6 +110,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
           {section === "usage" && <UsageSection />}
           {section === "security" && <SecuritySection />}
           {section === "connectors" && <ConnectorsSection />}
+          {section === "ai" && <AiModeSection />}
           {section === "backend" && <BackendSection />}
           {section === "about" && <AboutSection />}
         </div>
@@ -855,6 +859,133 @@ function SecuritySection() {
           <p className="mt-3 text-xs text-muted-foreground">Live integrations: {live.join(" · ")}</p>
         )}
       </div>
+    </section>
+  );
+}
+
+const AI_MODES: { id: AiOperatingMode; label: string; blurb: string }[] = [
+  { id: "cloud", label: "Cloud", blurb: "Default. Frontier connectors (Claude, ChatGPT, Gemini, Nebius, …) work as today." },
+  { id: "hybrid", label: "Hybrid", blurb: "Explicit per-task mix of cloud and local. Set routes below." },
+  { id: "private", label: "Private", blurb: "Self-hosted / VPC endpoints only (NIM, Ollama, custom URLs)." },
+  { id: "local_only", label: "Local only", blurb: "Compose local Whisper + Ollama. Blocks public cloud AI." },
+];
+
+const ROUTE_TASKS = [
+  { id: "asr", label: "Speech (ASR)" },
+  { id: "detect", label: "Detect (Action Tray)" },
+  { id: "draft", label: "Draft" },
+  { id: "ask", label: "Ask" },
+  { id: "research", label: "Research" },
+] as const;
+
+function AiModeSection() {
+  const queryClient = useQueryClient();
+  const modeQuery = useQuery({
+    queryKey: ["ai-mode"],
+    queryFn: hakiApi.getAiMode,
+    enabled: hasApiConfiguration,
+    retry: false,
+  });
+  const [mode, setMode] = useState<AiOperatingMode>("cloud");
+  const [routes, setRoutes] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!modeQuery.data) return;
+    setMode(modeQuery.data.mode);
+    setRoutes(modeQuery.data.routes ?? {});
+  }, [modeQuery.data]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await hakiApi.setAiMode({ mode, routes });
+      await queryClient.invalidateQueries({ queryKey: ["ai-mode"] });
+      await queryClient.invalidateQueries({ queryKey: ["ai-compute"] });
+      toast.success(`AI mode set to ${mode}`);
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not update AI mode."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inference = modeQuery.data?.inference as
+    | { local_whisper?: { ok?: boolean }; ollama?: { ok?: boolean } }
+    | undefined;
+
+  return (
+    <section>
+      <SectionIntro
+        eyebrow="AI mode"
+        title="Cloud, hybrid, private, or local-only"
+        copy="Local independence is additive. Cloud keeps Claude, ChatGPT, Gemini, Nebius and other connectors. Hybrid lets you assign each task explicitly — never silently."
+      />
+      {!hasApiConfiguration ? (
+        <p className="text-sm text-muted-foreground">Connect the API backend to manage AI mode.</p>
+      ) : modeQuery.isError ? (
+        <p className="text-sm text-destructive">{friendlyErrorMessage(modeQuery.error, "AI mode could not load.")}</p>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {AI_MODES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setMode(item.id)}
+                className={cn(
+                  "rounded-lg border p-4 text-left transition",
+                  mode === item.id ? "border-primary/40 bg-secondary" : "border-border bg-card hover:bg-muted/40",
+                )}
+              >
+                <p className="font-medium">{item.label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.blurb}</p>
+              </button>
+            ))}
+          </div>
+
+          {mode === "hybrid" && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <h3 className="font-serif text-lg font-semibold">Hybrid task routes</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Examples: local_whisper, ollama, nebius, openrouter, anthropic, openai, nvidia_nim. Research: tavily_exa,
+                off, local_stub.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {ROUTE_TASKS.map((task) => (
+                  <div key={task.id} className="space-y-1.5">
+                    <Label htmlFor={`route-${task.id}`}>{task.label}</Label>
+                    <Input
+                      id={`route-${task.id}`}
+                      value={routes[task.id] ?? ""}
+                      onChange={(e) => setRoutes((prev) => ({ ...prev, [task.id]: e.target.value.trim() }))}
+                      placeholder={task.id === "research" ? "tavily_exa" : "provider id"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border bg-card p-4 text-sm">
+            <p>
+              Frontier preserved:{" "}
+              <span className="font-medium">{mode === "cloud" || mode === "hybrid" ? "yes" : "mode restricts cloud"}</span>
+            </p>
+            <p className="mt-2 text-muted-foreground">
+              Local Whisper: {inference?.local_whisper?.ok ? "reachable" : "not reachable / optional"} · Ollama:{" "}
+              {inference?.ollama?.ok ? "reachable" : "not reachable / optional"}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Connectors under Settings → Connectors stay available. Local Compose is not required for cloud mode.
+            </p>
+          </div>
+
+          <Button type="button" onClick={() => void save()} disabled={saving || modeQuery.isLoading}>
+            {saving ? "Saving…" : "Save AI mode"}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

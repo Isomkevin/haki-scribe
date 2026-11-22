@@ -38,14 +38,43 @@ async def integrations_health():
 @router.get("/compute")
 async def ai_compute_status():
     """AI Compute panel: Nemotron/Nebius and Tavily status."""
-    from app.services import ai_runs, nebius, provider_settings, tavily
+    from app.services import ai_mode, ai_runs, inference_health, nebius, provider_settings, tavily
     return {
         "nebius": nebius.status(),
         "tavily": tavily.status(),
         "provider_settings": provider_settings.list_settings(),
         "recent_runs": ai_runs.recent(10),
         "secrets": provider_settings.secrets_status(),
+        "ai_mode": ai_mode.snapshot(),
+        "inference": await inference_health.check_all(),
     }
+
+
+class AiModeUpdate(BaseModel):
+    mode: Optional[str] = None
+    routes: Optional[dict[str, str]] = None
+
+
+@router.get("/ai-mode")
+async def get_ai_mode():
+    """Current AI operating mode + hybrid routes + inference probes."""
+    from app.services import ai_mode, inference_health
+
+    return {
+        **ai_mode.snapshot(),
+        "inference": await inference_health.check_all(),
+    }
+
+
+@router.put("/ai-mode")
+def put_ai_mode(body: AiModeUpdate):
+    """Update demo-workspace AI mode and hybrid routes (env remains deploy default)."""
+    from app.services import ai_mode
+
+    try:
+        return ai_mode.set_runtime_config(mode=body.mode, routes=body.routes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/diagnostics")

@@ -47,6 +47,14 @@ _FAILURE = {
 
 
 def _api_key() -> Optional[str]:
+    # Local-only mode must not ship transcripts to Trigger.dev cloud workers.
+    try:
+        from app.services import ai_mode
+
+        if ai_mode.prefer_in_process_jobs():
+            return None
+    except Exception:  # noqa: BLE001
+        pass
     return os.environ.get("TRIGGER_SECRET_KEY") or None
 
 

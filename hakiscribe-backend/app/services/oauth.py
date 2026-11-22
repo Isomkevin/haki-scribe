@@ -98,6 +98,31 @@ _CONFIG: dict[str, dict[str, Any]] = {
         "extra_auth_params": {},
         "console": "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps",
     },
+    "teams_graph": {
+        "label": "Microsoft Teams (Graph)",
+        "authorize_url": None,
+        "token_url": None,
+        "scopes": [
+            "offline_access",
+            "User.Read",
+            "Calendars.Read",
+            "OnlineMeetings.Read",
+        ],
+        "client_id_env": ("MICROSOFT_CLIENT_ID", "AZURE_CLIENT_ID"),
+        "client_secret_env": ("MICROSOFT_CLIENT_SECRET", "AZURE_CLIENT_SECRET"),
+        "extra_auth_params": {},
+        "console": "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps",
+    },
+    "zoom": {
+        "label": "Zoom",
+        "authorize_url": "https://zoom.us/oauth/authorize",
+        "token_url": "https://zoom.us/oauth/token",
+        "scopes": [],  # Zoom uses app-level scopes configured in Zoom Marketplace
+        "client_id_env": ("ZOOM_CLIENT_ID",),
+        "client_secret_env": ("ZOOM_CLIENT_SECRET",),
+        "extra_auth_params": {},
+        "console": "https://marketplace.zoom.us/develop/create",
+    },
 }
 
 
@@ -115,7 +140,7 @@ def _tenant() -> str:
 
 def _endpoints(provider_id: str) -> tuple[str, str]:
     cfg = _CONFIG[provider_id]
-    if provider_id == "onedrive":
+    if provider_id in ("onedrive", "teams_graph"):
         base = f"https://login.microsoftonline.com/{_tenant()}/oauth2/v2.0"
         return f"{base}/authorize", f"{base}/token"
     return str(cfg["authorize_url"]), str(cfg["token_url"])

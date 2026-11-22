@@ -278,3 +278,70 @@ class OmiWebhookPayload(BaseModel):
 
     session_external_id: Optional[str] = None
     segments: list[dict[str, Any]]
+
+
+class HearingSource(str, Enum):
+    google_calendar = "google_calendar"
+    teams_graph = "teams_graph"
+    zoom = "zoom"
+    manual_upload = "manual_upload"
+
+
+class HearingStatus(str, Enum):
+    scheduled = "scheduled"
+    pending_confirm = "pending_confirm"
+    matched = "matched"
+    capturing = "capturing"
+    ingested = "ingested"
+    transcribed = "transcribed"
+    reviewed = "reviewed"
+    filed = "filed"
+    rejected = "rejected"
+
+
+class Hearing(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    source: HearingSource
+    external_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    court_name: Optional[str] = None
+    case_reference: Optional[str] = None
+    meeting_url: Optional[str] = None
+    platform_metadata: dict[str, Any] = {}
+    status: HearingStatus = HearingStatus.scheduled
+    matter_id: Optional[uuid.UUID] = None
+    session_id: Optional[uuid.UUID] = None
+    match_confidence: Optional[float] = None
+    recording_object_key: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HearingCreate(BaseModel):
+    source: HearingSource
+    title: str
+    external_id: Optional[str] = None
+    description: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    court_name: Optional[str] = None
+    case_reference: Optional[str] = None
+    meeting_url: Optional[str] = None
+    platform_metadata: dict[str, Any] = {}
+
+
+class HearingMatchCandidate(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    hearing_id: uuid.UUID
+    matter_id: uuid.UUID
+    score: float
+    rationale: Optional[str] = None
+    requires_confirmation: bool = True
+
+
+class HearingConfirmRequest(BaseModel):
+    decision: str  # confirm | reject
+    matter_id: Optional[uuid.UUID] = None

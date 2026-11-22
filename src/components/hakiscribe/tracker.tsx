@@ -1,12 +1,22 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CalendarClock, ExternalLink, FileText, Flag, RefreshCw, Scale } from "lucide-react";
+import { CalendarClock, ExternalLink, FileText, Flag, Gavel, RefreshCw, Scale } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDemoMode } from "@/hooks/use-demo-mode";
 import { filterDemoSessions } from "@/lib/demo-mode";
-import { hakiApi, friendlyErrorMessage, type ActionResult, type SessionDetail } from "@/lib/hakiscribe";
+import {
+  hakiApi,
+  friendlyErrorMessage,
+  type ActionResult,
+  type HearingMatchCandidate,
+  type HearingRecord,
+  type SessionDetail,
+} from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
 import { TrustLine } from "./brand";
 import { ContactDirectory } from "./contacts";
@@ -171,6 +181,8 @@ export function TrackerPage() {
           <StatCard icon={<FileText className="size-4" />} label="Documents" value={documents.length} />
           <StatCard icon={<CalendarClock className="size-4" />} label="Upcoming dates" value={upcoming.length} />
         </section>
+
+        <HearingsPanel />
 
         <Tabs defaultValue="sessions">
           <TabsList className="mb-5 w-full justify-start overflow-x-auto">
@@ -386,6 +398,165 @@ export function TrackerPage() {
       </main>
       <WorkspaceFooter />
     </PageShell>
+  );
+}
+
+function HearingsPanel() {
+  const queryClient = useQueryClient();
+  const pending = useQuery({
+    queryKey: ["hearings-pending"],
+    queryFn: hakiApi.listPendingHearings,
+    retry: false,
+  });
+  const [title, setTitle] = useState("");
+  const [caseRef, setCaseRef] = useState("");
+  const [candidates, setCandidates] = useState<Record<string, HearingMatchCandidate[]>>({});
+  const [busy, setBusy] = useState(false);
+
+  async function importManual() {
+    if (!title.trim()) {
+      toast.error("Enter a hearing title");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await hakiApi.importManualHearing({
+        title: title.trim(),
+        case_reference: caseRef.trim() || undefined,
+      });
+      setCandidates((prev) => ({ ...prev, [result.hearing.id]: result.candidates }));
+      setTitle("");
+      setCaseRef("");
+      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+      toast.success("Hearing imported — confirm a matter match before opening a session");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not import hearing."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importCalendar() {
+    setBusy(true);
+    try {
+      const result = await hakiApi.importCalendarHearings();
+      toast.success(`Imported ${result.imported} calendar hearing(s)`);
+      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Calendar import failed. Connect Google Calendar first."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm(hearing: HearingRecord, matterId: string) {
+    setBusy(true);
+    try {
+      await hakiApi.confirmHearing(hearing.id, { decision: "confirm", matter_id: matterId });
+      const created = await hakiApi.createHearingSession(hearing.id);
+      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+      toast.success("Matter confirmed — session ready");
+      window.location.assign(`/sessions/${created.session.id}`);
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not confirm hearing."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadMatches(hearingId: string) {
+    try {
+      const result = await hakiApi.matchHearing(hearingId);
+      setCandidates((prev) => ({ ...prev, [hearingId]: result.candidates }));
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not propose matches."));
+    }
+  }
+
+  const rows = pending.data ?? [];
+
+  return (
+    <section className="mb-9 rounded-lg border border-border bg-card p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+            <Gavel className="size-3.5" />
+            Virtual hearings
+          </p>
+          <h2 className="mt-1 font-serif text-xl font-semibold">Matter match confirmation</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Ambiguous matches never attach silently. Confirm the HakiChain matter, then open a session.
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void importCalendar()}>
+          Import Google Calendar
+        </Button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Input
+          className="max-w-xs"
+          placeholder="Hearing title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <Input
+          className="max-w-[12rem]"
+          placeholder="Case / matter ref"
+          value={caseRef}
+          onChange={(e) => setCaseRef(e.target.value)}
+        />
+        <Button type="button" size="sm" disabled={busy} onClick={() => void importManual()}>
+          Add manual hearing
+        </Button>
+      </div>
+
+      {pending.isError ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Hearings API unavailable — start the backend to use virtual court matching.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">No hearings awaiting confirmation.</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {rows.map((hearing) => {
+            const cands = candidates[hearing.id] ?? [];
+            return (
+              <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{hearing.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hearing.source} · {hearing.status}
+                      {hearing.case_reference ? ` · ${hearing.case_reference}` : ""}
+                      {hearing.match_confidence != null ? ` · confidence ${(hearing.match_confidence * 100).toFixed(0)}%` : ""}
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void loadMatches(hearing.id)}>
+                    Propose matches
+                  </Button>
+                </div>
+                {cands.length > 0 && (
+                  <ul className="mt-3 space-y-2">
+                    {cands.map((c) => (
+                      <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span>
+                          Matter {c.matter_id.slice(0, 8)}… · score {(c.score * 100).toFixed(0)}%
+                          {c.rationale ? ` — ${c.rationale}` : ""}
+                        </span>
+                        <Button type="button" size="sm" disabled={busy} onClick={() => void confirm(hearing, c.matter_id)}>
+                          Confirm & open
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 

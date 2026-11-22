@@ -198,11 +198,53 @@ class OpenAIWhisperProvider(TranscriptionProvider):
         return TranscriptionResult(text=resp.text)
 
 
-class NvidiaNimWhisperProvider(TranscriptionProvider):
-    """NVIDIA NIM ASR with an OpenRouter Whisper fallback for live captions."""
+class LocalWhisperProvider(TranscriptionProvider):
+    """OpenAI-compatible local faster-whisper HTTP service (Compose cpu profile)."""
+
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = (
+            (base_url or os.environ.get("LOCAL_WHISPER_BASE_URL") or "http://127.0.0.1:8001")
+            .strip()
+            .rstrip("/")
+        )
 
     async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
-        from app.services import nvidia_nim
+        import httpx
+
+        url = f"{self.base_url}/v1/audio/transcriptions"
+        mime = {"webm": "audio/webm", "ogg": "audio/ogg", "wav": "audio/wav", "mp4": "audio/mp4"}.get(
+            audio_format(audio_bytes), "application/octet-stream"
+        )
+        data: dict[str, str] = {"model": os.environ.get("LOCAL_WHISPER_MODEL", "Systran/faster-whisper-large-v3")}
+        language = whisper_language(language_hint)
+        if language:
+            data["language"] = language
+        prompt = whisper_prompt(language_hint)
+        if prompt:
+            data["prompt"] = prompt
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(
+                    url,
+                    files={"file": (chunk_filename(audio_bytes), audio_bytes, mime)},
+                    data=data,
+                )
+                response.raise_for_status()
+                body = response.json()
+            text = body.get("text") if isinstance(body, dict) else ""
+            raw = body if isinstance(body, dict) else {"body": body}
+            raw["provider"] = "local_whisper"
+            return TranscriptionResult(text=text or "", raw=raw)
+        except Exception as exc:  # noqa: BLE001 — keep mic session open
+            logger.warning("Local Whisper ASR failed: %s", exc)
+            return TranscriptionResult(text="", raw={"error": "local_whisper_failed", "detail": str(exc)})
+
+
+class NvidiaNimWhisperProvider(TranscriptionProvider):
+    """NVIDIA NIM ASR. Cloud Whisper fallback only when AI mode allows public cloud."""
+
+    async def transcribe_chunk(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> TranscriptionResult:
+        from app.services import ai_mode, nvidia_nim
 
         url = nvidia_nim.asr_endpoint()
         try:
@@ -230,10 +272,17 @@ class NvidiaNimWhisperProvider(TranscriptionProvider):
                 body = response.json()
             return TranscriptionResult(text=body.get("text") or "", raw=body if isinstance(body, dict) else {})
         except Exception as exc:  # noqa: BLE001 — NIM is optional at runtime
-            logger.warning("NVIDIA NIM ASR failed (%s); falling back to OpenRouter Whisper", exc)
-            from app.integrations import llm_client
-            if llm_client.api_key():
-                return await OpenRouterWhisperProvider().transcribe_chunk(audio_bytes, language_hint)
+            allow_cloud_fallback = (
+                ai_mode.get_mode() == "cloud"
+                or (ai_mode.get_mode() == "hybrid" and ai_mode.hybrid_fallback_allowed())
+            )
+            if allow_cloud_fallback and ai_mode.is_provider_allowed("asr", "openrouter"):
+                logger.warning("NVIDIA NIM ASR failed (%s); falling back to OpenRouter Whisper", exc)
+                from app.integrations import llm_client
+                if llm_client.api_key():
+                    return await OpenRouterWhisperProvider().transcribe_chunk(audio_bytes, language_hint)
+            else:
+                logger.warning("NVIDIA NIM ASR failed (%s); cloud fallback disabled by AI mode", exc)
             return TranscriptionResult(text="", raw={"error": "nvidia_nim_transcription_failed", "detail": str(exc)})
 
 
@@ -377,10 +426,11 @@ class UnavailableProvider(TranscriptionProvider):
         return TranscriptionResult(text="", raw={"error": "ASR is not configured"})
 
 
-def get_provider() -> TranscriptionProvider:
+def _provider_for_name(name: str) -> TranscriptionProvider:
     from app.integrations import llm_client
 
-    name = os.environ.get("ASR_PROVIDER", "openrouter").lower()
+    if name == "local_whisper":
+        return LocalWhisperProvider()
     if name == "openrouter":
         return OpenRouterWhisperProvider() if llm_client.api_key() else UnavailableProvider()
     if name == "groq":
@@ -391,4 +441,21 @@ def get_provider() -> TranscriptionProvider:
         return IntronVoiceProvider() if intron_configured() else UnavailableProvider()
     if name == "nvidia_nim":
         return NvidiaNimWhisperProvider()
-    raise ValueError(f"Unknown ASR_PROVIDER: {name}")
+    raise ValueError(f"Unknown ASR provider: {name}")
+
+
+def get_provider() -> TranscriptionProvider:
+    """Resolve ASR from AI mode + hybrid routes. Default cloud behaviour unchanged."""
+    from app.services import ai_mode
+
+    try:
+        name = ai_mode.resolve_asr_provider_name()
+    except ai_mode.AiModeError as exc:
+        logger.error("ASR blocked by AI mode: %s", exc)
+        return UnavailableProvider()
+    try:
+        return _provider_for_name(name)
+    except ValueError:
+        # Preserve legacy ASR_PROVIDER when mode resolution returns unexpected id
+        legacy = os.environ.get("ASR_PROVIDER", "openrouter").lower()
+        return _provider_for_name(legacy)

@@ -359,10 +359,30 @@ async def detect_actions(
     context_block = _build_context_block(flags, known_matters)
     user_content = f"{context_block}\n\nTranscript:\n{transcript_text}" if context_block else transcript_text
 
+    from app.services import ai_mode
     from app.services import nebius as nebius_service
 
-    # Connected Nebius overrides a stale LLM_PROVIDER=openrouter on Render.
-    selected_provider = nebius_service.select_provider(provider)
+    # Mode-aware: cloud keeps Nebius precedence; hybrid/private/local_only use routes.
+    selected_provider = ai_mode.resolve_llm_provider("detect", provider)
+
+    if selected_provider == "ollama":
+        from app.services import ollama_client
+
+        result = await ollama_client.complete(
+            DETECTION_SYSTEM_PROMPT,
+            user_content,
+            task="detection",
+        )
+        actions = _actions_from_raw(session_id, usable_segments, _parse_action_payload(result["text"]))
+        stamped = _stamp_mode(actions, "model")
+        for action in stamped:
+            action.extracted_fields = {
+                **action.extracted_fields,
+                "ai_provider": "ollama",
+                "ai_model": result.get("model"),
+                "privileged_lines_excluded": privileged_excluded,
+            }
+        return stamped
 
     if selected_provider == "nebius":
         # No silent fallback: surface Nebius failures so the demo stays honest.

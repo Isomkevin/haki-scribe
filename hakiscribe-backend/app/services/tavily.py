@@ -56,6 +56,14 @@ async def search(
     Each hit: {"title", "url", "content", "score", "published_date"}.
     Raises RuntimeError with a plain-language message on failure.
     """
+    from app.services import ai_mode
+
+    research_route = ai_mode.resolve_research_route()
+    if research_route in ("off", "local_stub"):
+        raise RuntimeError(
+            f"External legal research is disabled in AI mode '{ai_mode.get_mode()}' "
+            f"(route={research_route})."
+        )
     key = _key(creds_override)
     if not key:
         raise RuntimeError("Tavily is not connected. Add your Tavily API key on the connector card.")

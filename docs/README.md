@@ -20,6 +20,7 @@ Index of project documentation. Start with the [root README](../README.md) for p
 | [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) | Tenancy, identity, MFA, and production migration plan |
 | [nvidia-nim.md](./nvidia-nim.md) | Optional self-hosted NVIDIA NIM ASR/LLM |
 | [DEPLOY_NEBIUS.md](./DEPLOY_NEBIUS.md) | Nebius Token Factory secrets and Render checklist |
+| [engineering/hakiscribe-resilience/](./engineering/hakiscribe-resilience/README.md) | Local AI independence, hybrid routing, virtual court SoT + agent handoffs |
 
 ## Backend & frontend module docs
 

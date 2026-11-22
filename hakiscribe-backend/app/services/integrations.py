@@ -398,6 +398,42 @@ _PROVIDERS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "teams_graph",
+        "name": "Microsoft Teams",
+        "group": "court",
+        "auth": "oauth",
+        "what_it_does": "Import scheduled Teams hearings via Microsoft Graph (metadata only in Stage A).",
+        "capabilities": ["Import hearings", "Meeting metadata"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Microsoft Graph access token",
+                "type": "password",
+                "help": "Prefer Sign in with Microsoft. Requires Calendars.Read and OnlineMeetings.Read.",
+                "placeholder": "eyJ…",
+                "mask": True,
+            },
+        ],
+    },
+    {
+        "id": "zoom",
+        "name": "Zoom",
+        "group": "court",
+        "auth": "oauth",
+        "what_it_does": "Import upcoming Zoom meetings for virtual court hearings (list only in Stage A).",
+        "capabilities": ["Import hearings", "Meeting metadata"],
+        "fields": [
+            {
+                "id": "access_token",
+                "label": "Zoom access token",
+                "type": "password",
+                "help": "Prefer Zoom OAuth. Recording download is Stage B.",
+                "placeholder": "eyJ…",
+                "mask": True,
+            },
+        ],
+    },
+    {
         "id": "hakichain",
         "name": "HakiChain",
         "group": "practice",
@@ -1222,6 +1258,40 @@ async def _verify_gemini_oauth(creds: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+async def _verify_teams_graph(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token — sign in with Microsoft Teams"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Microsoft Graph returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+async def _verify_zoom(creds: dict[str, Any]) -> dict[str, Any]:
+    token = creds.get("access_token", "")
+    if not token:
+        return {"ok": False, "error": "Missing access token — connect Zoom OAuth"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.zoom.us/v2/users/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code < 400:
+                return {"ok": True, "error": None}
+            return {"ok": False, "error": f"Zoom returned {resp.status_code}: {resp.text[:200]}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 _VERIFIERS = {
     "gemini_oauth": _verify_gemini_oauth,
     "google_calendar": _verify_google_calendar,
@@ -1239,6 +1309,8 @@ _VERIFIERS = {
     "google_drive": _verify_google_drive,
     "dropbox": _verify_dropbox,
     "onedrive": _verify_onedrive,
+    "teams_graph": _verify_teams_graph,
+    "zoom": _verify_zoom,
     "hakichain": _verify_hakichain,
     "ambiguous": _verify_ambiguous,
     "omi": _verify_omi,

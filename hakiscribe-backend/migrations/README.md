@@ -4,10 +4,12 @@
 
 `002_provider_settings_ai_runs.sql` adds Nebius/Nemotron `provider_settings` (no API keys) and metadata-only `ai_runs` with RLS. Demo mode mirrors these via in-process ledgers (`app.services.provider_settings`, `app.services.ai_runs`).
 
+`003_hearings_matter_resolution.sql` adds virtual-court `haki_hearings`, match candidates, and confirmation audit tables. Demo mode mirrors these via `app.services.hearings`.
+
 ## Apply
 
 1. Back up the target database.
-2. Run `001_tenant_security.sql`, then `002_provider_settings_ai_runs.sql`, in the Supabase SQL Editor or through the Supabase CLI against the production project.
+2. Run `001_tenant_security.sql`, then `002_provider_settings_ai_runs.sql`, then `003_hearings_matter_resolution.sql`, in the Supabase SQL Editor or through the Supabase CLI against the production project.
 3. Create the first organisation and owner membership using an audited, server-side onboarding flow.
 4. Run cross-tenant tests before migrating any real matter data.
 

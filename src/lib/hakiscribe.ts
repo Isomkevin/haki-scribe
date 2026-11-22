@@ -230,6 +230,43 @@ export interface AiComputeStatus {
     privileged_lines_excluded: number;
   }[];
   secrets?: Record<string, string>;
+  ai_mode?: AiModeSnapshot;
+  inference?: Record<string, unknown>;
+}
+
+export type AiOperatingMode = "cloud" | "hybrid" | "private" | "local_only";
+
+export interface AiModeSnapshot {
+  mode: AiOperatingMode;
+  routes: Record<string, string>;
+  routes_allowed?: Record<string, boolean>;
+  hybrid_fallback?: boolean;
+  frontier_preserved?: boolean;
+  prefer_in_process_jobs?: boolean;
+  inference?: Record<string, unknown>;
+}
+
+export interface HearingRecord {
+  id: string;
+  source: string;
+  title: string;
+  description?: string | null;
+  starts_at?: string | null;
+  status: string;
+  matter_id?: string | null;
+  session_id?: string | null;
+  match_confidence?: number | null;
+  meeting_url?: string | null;
+  case_reference?: string | null;
+}
+
+export interface HearingMatchCandidate {
+  id: string;
+  hearing_id: string;
+  matter_id: string;
+  score: number;
+  rationale?: string | null;
+  requires_confirmation: boolean;
 }
 
 export interface DiagnosticsResult {
@@ -289,6 +326,12 @@ export const productionAuthEnabled = (import.meta.env["VITE_PRODUCTION_AUTH"] as
 
 export interface HealthStatus {
   status: string;
+  ai_mode?: {
+    mode?: string;
+    routes?: Record<string, string>;
+    frontier_preserved?: boolean;
+  };
+  inference?: Record<string, unknown>;
   integrations?: Record<string, boolean>;
   environments?: string[];
   webhook?: string;
@@ -655,6 +698,35 @@ export const hakiApi = {
   checkIntegration: (providerId: string) =>
     request<ConnectorHealth>(`/integrations/${providerId}/check`, { method: "POST" }),
   aiComputeStatus: () => request<AiComputeStatus>("/integrations/compute"),
+  getAiMode: () => request<AiModeSnapshot>("/integrations/ai-mode"),
+  setAiMode: (body: { mode?: AiOperatingMode; routes?: Record<string, string> }) =>
+    request<AiModeSnapshot>("/integrations/ai-mode", { method: "PUT", body: JSON.stringify(body) }),
+  listHearings: () => request<HearingRecord[]>("/hearings"),
+  listPendingHearings: () => request<HearingRecord[]>("/hearings/pending-confirm"),
+  importManualHearing: (body: {
+    title: string;
+    description?: string;
+    case_reference?: string;
+    meeting_url?: string;
+  }) =>
+    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>("/hearings/import/manual", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  importCalendarHearings: () =>
+    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+      "/hearings/import/calendar",
+      { method: "POST" },
+    ),
+  confirmHearing: (hearingId: string, body: { decision: "confirm" | "reject"; matter_id?: string }) =>
+    request<HearingRecord>(`/hearings/${hearingId}/confirm`, { method: "POST", body: JSON.stringify(body) }),
+  createHearingSession: (hearingId: string) =>
+    request<{ hearing: HearingRecord; session: Session }>(`/hearings/${hearingId}/session`, { method: "POST" }),
+  matchHearing: (hearingId: string) =>
+    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[]; requires_human_confirmation: boolean }>(
+      `/hearings/${hearingId}/match`,
+      { method: "POST" },
+    ),
   runDiagnostics: () => request<DiagnosticsResult>("/integrations/diagnostics"),
   disconnectIntegration: (providerId: string) =>
     request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {

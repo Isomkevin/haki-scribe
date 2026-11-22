@@ -35,6 +35,7 @@ from app.routers import (
     actions,
     auth,
     demo,
+    hearings,
     integrations,
     internal,
     matters,
@@ -102,6 +103,7 @@ if not production_auth_enabled_flag:
     app.include_router(omi_webhook.router, prefix="/webhooks", tags=["omi"])
     app.include_router(matters.router, prefix="/matters", tags=["matters"])
     app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
+    app.include_router(hearings.router, prefix="/hearings", tags=["hearings"])
     app.include_router(internal.router, prefix="/internal", tags=["internal"])
     app.include_router(demo.router, prefix="/demo", tags=["demo"])
     app.include_router(news.router, prefix="/news", tags=["news"])
@@ -117,12 +119,18 @@ def root():
 @app.get("/health")
 async def health():
     from app.integrations import ambiguous_client
-    from app.services import db, integrations, nvidia_nim, object_store, omi_pairing
+    from app.services import ai_mode, db, inference_health, integrations, nvidia_nim, object_store, omi_pairing
 
     omi_linked = bool(omi_pairing.linked_uid())
+    inference = await inference_health.check_all()
     return {
         "status": "ok",
         "mode": "production" if production_auth_enabled_flag else "demo",
+        "ai_mode": ai_mode.describe_for_health(),
+        "inference": {
+            "local_whisper": inference.get("local_whisper"),
+            "ollama": inference.get("ollama"),
+        },
         "production_readiness": {
             "enabled": production_auth_enabled_flag,
             "ready": production_auth_ready(),
@@ -133,7 +141,7 @@ async def health():
         "integrations": {
             "openrouter": bool(integrations.get_creds("openrouter")),
             "intron": bool(integrations.get_creds("intron")),
-            "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")),
+            "trigger": bool(os.environ.get("TRIGGER_SECRET_KEY")) and not ai_mode.prefer_in_process_jobs(),
             "exa": bool(os.environ.get("EXA_API_KEY")),
             "ambiguous": ambiguous_client.configured(),
             "ambiguous_ok": await ambiguous_client.ping() if ambiguous_client.configured() else False,

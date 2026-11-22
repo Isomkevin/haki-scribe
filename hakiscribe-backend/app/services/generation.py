@@ -90,10 +90,23 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
     Privileged lines are never present in the prompt — callers pass usable transcript only.
     """
     global _last_completion
+    from app.services import ai_mode
     from app.services import nebius as nebius_service
 
-    # Connected Nebius overrides a stale LLM_PROVIDER=openrouter on Render.
-    selected_provider = nebius_service.select_provider(provider)
+    route_task = "draft" if task == "draft" else "detect"
+    selected_provider = ai_mode.resolve_llm_provider(route_task, provider)
+
+    if selected_provider == "ollama":
+        from app.services import ollama_client
+
+        result = await ollama_client.complete(system_prompt, user_prompt, task=task)
+        _last_completion = {
+            "provider": "Ollama (local)",
+            "tier": None,
+            "model": result.get("model"),
+            "latency_ms": None,
+        }
+        return result.get("text")
 
     if selected_provider == "nebius":
         # privileged_lines_excluded is 0 here; callers already stripped redacted lines.
@@ -119,7 +132,22 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
             from app.services import nvidia_nim
             return await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
         except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
-            logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
+            allow_cloud = ai_mode.get_mode() == "cloud" or (
+                ai_mode.get_mode() == "hybrid" and ai_mode.hybrid_fallback_allowed()
+            )
+            if allow_cloud and ai_mode.is_provider_allowed("draft", "openrouter"):
+                logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
+            else:
+                logger.warning("NVIDIA NIM generation failed (%s); cloud fallback disabled by AI mode", exc)
+                raise
+
+    if not ai_mode.is_provider_allowed(route_task, "openrouter"):
+        raise ai_mode.AiModeError(
+            f"OpenRouter is not allowed for task '{route_task}' in mode '{ai_mode.get_mode()}'",
+            mode=ai_mode.get_mode(),
+            task=route_task,
+            provider="openrouter",
+        )
 
     api_key = llm_client.api_key()
     if not api_key:
