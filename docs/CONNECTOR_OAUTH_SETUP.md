@@ -348,6 +348,48 @@ vaults are the next step.
 
 Set `GROQ_API_KEY` on Render. Groq appears on the Connectors page as a workspace key and its Llama models join the Ask picker. Users can also paste their own key from console.groq.com.
 
+## Live hearing bots (official SDKs only)
+
+### Microsoft Teams calling bot
+
+1. Create an Azure Bot + Entra app registration with application permissions: `Calls.AccessMedia.All`, `Calls.JoinGroupCall.All`, `OnlineMeetings.Read.All` (admin consent).
+2. Set on the backend:
+
+```
+TEAMS_BOT_APP_ID=<app id>
+TEAMS_BOT_APP_SECRET=<client secret>
+TEAMS_BOT_TENANT_ID=<tenant id>
+TEAMS_BOT_CALLBACK_URI=https://<your-backend-host>
+```
+
+3. Graph posts call notifications to `POST /webhooks/teams-bot/calls`.
+4. Tracker **Start capture** on a matched Teams hearing calls the bot join path. Tenant policy may still block recording — capability notes report that honestly.
+
+### Zoom Meeting SDK bot
+
+1. Create a Zoom Marketplace **Meeting SDK** app; enable host consent for the bot participant.
+2. Set:
+
+```
+ZOOM_MEETING_SDK_KEY=<sdk key>
+ZOOM_MEETING_SDK_SECRET=<sdk secret>
+ZOOM_BOT_DISPLAY_NAME=HakiScribe Capture
+```
+
+3. Tracker **Start capture** issues an SDK signature for the meeting number; the host must admit the bot.
+
+### Production Zoom webhook tenancy
+
+When `HAKISCRIBE_PRODUCTION_AUTH=true`, map Zoom hosts to firms:
+
+```
+ZOOM_HOST_ORG_MAP={"zoom-host-id":"<organisation-uuid>"}
+# or
+ZOOM_DEFAULT_ORGANISATION_ID=<organisation-uuid>
+```
+
+Unsigned or unmapped production events are rejected.
+
 ## Connection health and sign-in errors
 
 The Connectors page runs a live check on every connected service (`GET /integrations/health`, `POST /integrations/{id}/check`) and labels each Valid, Expired, Invalid or Unreachable. Failed or cancelled sign-ins show a plain-language reason and next step; exports with lapsed access return `reauth_required` with a Reconnect prompt.

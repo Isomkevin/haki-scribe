@@ -74,6 +74,8 @@ def snapshot() -> dict[str, Any]:
 
 
 def restore(payload: Optional[dict[str, Any]]) -> None:
+    """Replace in-memory hearings state from a workspace snapshot (ADR-012 a)."""
+    reset()
     if not payload:
         return
     for raw in payload.get("hearings", []):
@@ -333,6 +335,48 @@ def mark_reviewed(hearing_id: UUID, *, actor: str = "workspace") -> Hearing:
 
 def pending_confirmations() -> list[Hearing]:
     return [h for h in _hearings.values() if h.status == HearingStatus.pending_confirm]
+
+
+def start_capture(hearing_id: UUID, *, meta: Optional[dict[str, Any]] = None) -> Hearing:
+    hearing = _hearings.get(hearing_id)
+    if not hearing:
+        raise KeyError("hearing_not_found")
+    if hearing.matter_id is None:
+        raise ValueError("Confirm the matter link before starting capture")
+    if hearing.status not in (S.matched, S.capturing):
+        raise InvalidTransition(f"Cannot start capture from {hearing.status.value}")
+    if hearing.status == S.matched:
+        transition(hearing, S.capturing)
+    hearing.platform_metadata = {
+        **(hearing.platform_metadata or {}),
+        "capture": {**(meta or {}), "state": "active", "started_at": datetime.utcnow().isoformat()},
+    }
+    hearing.updated_at = datetime.utcnow()
+    _save()
+    return hearing
+
+
+def stop_capture(
+    hearing_id: UUID,
+    *,
+    object_key: Optional[str] = None,
+    meta: Optional[dict[str, Any]] = None,
+) -> Hearing:
+    hearing = _hearings.get(hearing_id)
+    if not hearing:
+        raise KeyError("hearing_not_found")
+    if hearing.status != S.capturing:
+        raise InvalidTransition(f"Hearing is not capturing (status {hearing.status.value})")
+    capture = dict((hearing.platform_metadata or {}).get("capture") or {})
+    capture.update(meta or {})
+    capture["state"] = "stopped"
+    capture["stopped_at"] = datetime.utcnow().isoformat()
+    hearing.platform_metadata = {**(hearing.platform_metadata or {}), "capture": capture}
+    if object_key:
+        return attach_recording(hearing_id, object_key=object_key, meta=meta)
+    hearing.updated_at = datetime.utcnow()
+    _save()
+    return hearing
 
 
 restore(storage.take_hearings_payload())

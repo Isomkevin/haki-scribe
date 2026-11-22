@@ -95,3 +95,27 @@ Stage B blockers 1–2 were resolved in Stage D (see top); 3–4 still apply.
 - `cloud` mode detect/generate/Ask with Nebius or OpenRouter
 - Connector cards still connect Anthropic/OpenAI/Gemini
 - Trigger.dev path when keyed (cloud/hybrid only)
+
+## Close Open Gaps — verification harnesses (1A / 1B)
+
+### 1A entry points (shipped)
+
+| Entry | Path |
+| --- | --- |
+| Overview | `docs/engineering/hakiscribe-resilience/verification/README.md` |
+| Zoom/Teams checklist | `verification/zoom-teams-checklist.md` |
+| Kiswahili ASR checklist | `verification/kiswahili-asr-checklist.md` |
+| Court sandbox script | `hakiscribe-backend/scripts/verify_court_adapters_sandbox.py` (opt-in `HAKISCRIBE_VERIFY_ZOOM` / `TEAMS`) |
+| WER script | `hakiscribe-backend/scripts/verify_asr_wer.py` (opt-in `HAKISCRIBE_VERIFY_ASR`) |
+| Contract tests | `tests/test_production_hearings.py`, `tests/test_live_bots.py` |
+
+### 1B live runs (credentials required)
+
+| Run | Result (2026-11-23) |
+| --- | --- |
+| Zoom sandbox E2E | **Not run** — no sandbox tenant / OAuth credentials provided |
+| Teams sandbox E2E | **Not run** — no Graph admin-consent tenant provided |
+| Kiswahili WER (`large-v3` / Sahara) | **Not run** — no consented court audio / model download this session |
+| Live bot join | **Not run** — Teams bot / Zoom Meeting SDK credentials not provided |
+
+Do **not** mark Zoom/Teams/Kiswahili/bots verified until 1B evidence is pasted here.

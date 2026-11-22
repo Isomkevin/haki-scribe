@@ -63,11 +63,13 @@
 
 **Why:** Fixes re-import wiping human confirmations; keeps "never silently attach".
 
-## ADR-010: No live bots in Stage B
+## ADR-010: No live bots in Stage B (superseded by ADR-015)
 
-**Decision:** Not built. Recording/transcript retrieval after the hearing only.
+**Decision (Stage B):** Not built. Recording/transcript retrieval after the hearing only.
 
-**Why:** Teams requires an Azure Bot / calling-bot registration and policy-based recording; Zoom requires the Meeting SDK bot model and host consent. Neither was in scope or authorised.
+**Why:** Teams requires an Azure Bot / calling-bot registration and policy-based recording; Zoom requires the Meeting SDK bot model and host consent. Neither was in scope or authorised for Stage B.
+
+**Superseded:** ADR-015 adds official SDK bots in the Close Open Gaps phase.
 
 ## ADR-011: Health is shallow by default, deep on request
 
@@ -75,13 +77,21 @@
 
 **Why:** Found in practice — a listed model can be unloadable.
 
-## ADR-012: hearings persistence — option (a) implemented 2026-11-23, (b) open
+## ADR-012: hearings persistence — **complete**
 
-**Problem:** Hearings, candidates and confirmations are in-memory (`hearings.py`) while sessions persist (`store.json` / `DATABASE_URL`) and recordings persist on disk. A restart loses hearings and orphans their sessions and recordings. The hearings router and Zoom webhook are also mounted only when production auth is off.
+**Problem:** Hearings were process-local while sessions/recordings survived restart; production auth did not mount hearings.
 
-**Proposed correction (not implemented):** (a) short term — include hearings in `storage._snapshot/_restore` like matters; (b) production — a repository over migration 003 tables with org scoping, and production-mode routers. Option (a) is low-risk; (b) needs a tenancy design pass.
+**Status:**
+- **(a) fully complete** — demo snapshot persistence via `storage` / `DATABASE_URL`; `restore` clears before load; interrupted jobs → `error`.
+- **(b) fully complete** — `ProductionHearingsRepo` + `/production/hearings/*` under production auth; Zoom webhook always mounted with `ZOOM_HOST_ORG_MAP` / `ZOOM_DEFAULT_ORGANISATION_ID` tenant resolution; frontend switches when `VITE_PRODUCTION_AUTH`.
 
-**Status:** (a) implemented in Stage D. `hearings.snapshot/restore` ride on the storage snapshot, so they reach Postgres when `DATABASE_URL` is set, and every mutation saves. `storage` parks the raw payload because it loads before `hearings` finishes importing. Jobs left `queued`/`running` by a restart are restored as `error` so they can be re-run. Real backend restart verified (09). (b) remains open: in production-auth mode the hearings router and Zoom webhook are not mounted. The same is true of matters, contacts and integrations, so production hearings need the production-matters design first.
+## ADR-015: Official live meeting bots
+
+**Decision:** Implement Teams calling-bot (Bot Framework + Graph Calls) and Zoom Meeting SDK join/capture only. No unofficial scrapers. Consent gates: confirmed matter + explicit Start capture. Capability notes stay honest when credentials or tenant policy block recording.
+
+**Lifecycle:** `matched` → `capturing` → `ingested` → existing `/process`.
+
+**Status:** Adapters + Tracker Start/Stop capture + contract tests shipped. Live join **not verified** until 1B sandbox credentials exist.
 
 ## Stage B risks
 
@@ -89,7 +99,7 @@
 | --- | --- |
 | Zoom `download_token` sent as `Authorization: Bearer` | Matches current Zoom docs as understood; not verified against a live tenant. If Zoom rejects, switch to `?access_token=` query param in `download_preferred`. |
 | Graph `/me/onlineMeetings` is organiser-only; transcript/recording scopes need admin consent | Errors say so explicitly; documented in `.env.example` and adapter capability notes. |
-| `/process` background tasks are in-process | Lost on restart; since Stage D they are restored as `error: interrupted by a server restart` and can be re-run. A job queue is still needed for production. |
+| `/process` background tasks are in-process | Demo/local_only still use BackgroundTasks (interrupted → error on restart). Cloud/hybrid enqueue Trigger `process-hearing` → `/internal/process-hearing` when `TRIGGER_SECRET_KEY` is set. |
 | large-v3 on CPU is slow (realtime factor often > 1) | `.env.example` recommends small/medium for CPU-only boxes. |
 | "Thinking" LLMs (e.g. gemma4) may wrap JSON in prose | `_parse_json_object` extracts the outermost `{…}`; qwen2.5:3b returned parseable JSON in every real proceedings run; detection uses Ollama JSON mode. gemma4 not run (RAM). |
 | No-egress proof is at the httpx layer only | Firewalled container run still owed (09). |

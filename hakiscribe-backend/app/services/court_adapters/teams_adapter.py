@@ -53,10 +53,11 @@ class TeamsGraphAdapter(CourtAdapter):
                 ],
                 "admin_consent_required": True,
                 "organizer_only": True,
-                "live_bot_join": False,
+                "live_bot_join": False,  # see TeamsCallingBot when TEAMS_BOT_* is set
                 "recording_download": True,
                 "transcript_download": True,
                 "stage": "B",
+                "companion_bot": "teams_calling_bot",
             }
         )
         return notes

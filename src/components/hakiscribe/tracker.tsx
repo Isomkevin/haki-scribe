@@ -609,6 +609,32 @@ function HearingsPanel() {
     }
   }
 
+  async function onStartCapture(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.startHearingCapture(hearing.id);
+      await refreshHearings();
+      toast.success("Capture started — bot joining when SDK credentials are configured");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not start live capture."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onStopCapture(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.stopHearingCapture(hearing.id);
+      await refreshHearings();
+      toast.success("Capture stopped");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not stop capture."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const rows = hearings.data ?? [];
   const pendingCount = rows.filter((h) => h.status === "pending_confirm" || h.status === "scheduled").length;
 
@@ -696,6 +722,11 @@ function HearingsPanel() {
                 !pipelineActive;
               const canReview = hearing.status === "transcribed";
               const platformFetch = hearing.source === "zoom" || hearing.source === "teams_graph";
+              const canLiveCapture =
+                Boolean(hearing.matter_id) &&
+                platformFetch &&
+                (hearing.status === "matched" || hearing.status === "capturing");
+              const captureActive = hearing.status === "capturing";
 
               return (
                 <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
@@ -832,6 +863,28 @@ function HearingsPanel() {
                             Fetch transcript
                           </Button>
                         </>
+                      )}
+                      {canLiveCapture && !captureActive && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={rowBusy}
+                          onClick={() => void onStartCapture(hearing)}
+                        >
+                          Start capture
+                        </Button>
+                      )}
+                      {captureActive && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={rowBusy}
+                          onClick={() => void onStopCapture(hearing)}
+                        >
+                          Stop capture
+                        </Button>
                       )}
                     </div>
                   )}

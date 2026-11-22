@@ -38,7 +38,15 @@ def pending_confirm():
 
 @router.get("/adapters")
 def adapter_status():
-    adapters = [GoogleCalendarAdapter(), TeamsGraphAdapter(), ZoomAdapter()]
+    from app.services.court_adapters import teams_bot, zoom_bot
+
+    adapters = [
+        GoogleCalendarAdapter(),
+        TeamsGraphAdapter(),
+        ZoomAdapter(),
+        teams_bot.TeamsCallingBot(),
+        zoom_bot.ZoomMeetingBot(),
+    ]
     return [
         {
             "source": a.source,
@@ -304,7 +312,20 @@ async def process_hearing(
     if not wait:
         if hearing.matter_id is None:
             raise HTTPException(status_code=409, detail="Confirm the matter link before processing this hearing")
+        from app.services import ai_mode, trigger_client
+
         hearings_service.set_pipeline_state(hearing_id, state="queued", step="queued", error=None)
+        run_id = None
+        if not ai_mode.prefer_in_process_jobs():
+            run_id = await trigger_client.trigger_enqueue(
+                "process-hearing",
+                {"hearing_id": str(hearing_id), **kwargs},
+            )
+        if run_id:
+            hearings_service.set_pipeline_state(
+                hearing_id, job_id=run_id, run_id=run_id, queue="trigger"
+            )
+            return {"status": "queued", "run_id": run_id, "hearing": hearing.model_dump(mode="json")}
         background_tasks.add_task(_process_in_background, hearing_id, **kwargs)
         return {"status": "queued", "hearing": hearing.model_dump(mode="json")}
     from app.services import ai_mode
@@ -318,6 +339,32 @@ async def process_hearing(
     except Exception as exc:  # noqa: BLE001 — surface ASR / network failures honestly
         raise HTTPException(status_code=502, detail=f"processing failed: {exc}"[:400]) from exc
     return {**result, "hearing": result["hearing"].model_dump(mode="json")}
+
+
+@router.post("/{hearing_id}/capture/start")
+async def start_capture(hearing_id: UUID):
+    hearing = _require(hearing_id)
+    from app.services.court_adapters import live_capture
+
+    try:
+        return await live_capture.start_capture(hearing)
+    except live_capture.CaptureError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (hearings_service.InvalidTransition, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{hearing_id}/capture/stop")
+async def stop_capture(hearing_id: UUID):
+    hearing = _require(hearing_id)
+    from app.services.court_adapters import live_capture
+
+    try:
+        return await live_capture.stop_capture(hearing)
+    except live_capture.CaptureError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (hearings_service.InvalidTransition, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/{hearing_id}/proceedings")

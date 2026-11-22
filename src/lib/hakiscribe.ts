@@ -741,47 +741,96 @@ export const hakiApi = {
     request<AiModeSnapshot>(`/integrations/ai-mode${deep ? "?deep=true" : ""}`),
   setAiMode: (body: { mode?: AiOperatingMode; routes?: Record<string, string> }) =>
     request<AiModeSnapshot>("/integrations/ai-mode", { method: "PUT", body: JSON.stringify(body) }),
-  listHearings: () => request<HearingRecord[]>("/hearings"),
-  listPendingHearings: () => request<HearingRecord[]>("/hearings/pending-confirm"),
+  listHearings: () =>
+    productionAuthEnabled
+      ? request<HearingRecord[]>("/production/hearings", { headers: productionSessionHeaders() })
+      : request<HearingRecord[]>("/hearings"),
+  listPendingHearings: () =>
+    productionAuthEnabled
+      ? request<HearingRecord[]>("/production/hearings/pending-confirm", { headers: productionSessionHeaders() })
+      : request<HearingRecord[]>("/hearings/pending-confirm"),
   importManualHearing: (body: {
     title: string;
     description?: string | undefined;
     case_reference?: string | undefined;
     meeting_url?: string | undefined;
   }) =>
-    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>("/hearings/import/manual", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>("/production/hearings/import/manual", {
+          method: "POST",
+          headers: productionSessionHeaders(true),
+          body: JSON.stringify(body),
+        })
+      : request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>("/hearings/import/manual", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
   importCalendarHearings: () =>
-    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
-      "/hearings/import/calendar",
-      { method: "POST" },
-    ),
+    productionAuthEnabled
+      ? request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/production/hearings/import/calendar",
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/hearings/import/calendar",
+          { method: "POST" },
+        ),
   importTeamsHearings: () =>
-    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
-      "/hearings/import/teams",
-      { method: "POST" },
-    ),
+    productionAuthEnabled
+      ? request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/production/hearings/import/teams",
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/hearings/import/teams",
+          { method: "POST" },
+        ),
   importZoomHearings: () =>
-    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
-      "/hearings/import/zoom",
-      { method: "POST" },
-    ),
+    productionAuthEnabled
+      ? request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/production/hearings/import/zoom",
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+          "/hearings/import/zoom",
+          { method: "POST" },
+        ),
   confirmHearing: (hearingId: string, body: { decision: "confirm" | "reject"; matter_id?: string }) =>
-    request<HearingRecord>(`/hearings/${hearingId}/confirm`, { method: "POST", body: JSON.stringify(body) }),
+    productionAuthEnabled
+      ? request<HearingRecord>(`/production/hearings/${hearingId}/confirm`, {
+          method: "POST",
+          headers: productionSessionHeaders(true),
+          body: JSON.stringify(body),
+        })
+      : request<HearingRecord>(`/hearings/${hearingId}/confirm`, { method: "POST", body: JSON.stringify(body) }),
   createHearingSession: (hearingId: string) =>
-    request<{ hearing: HearingRecord; session: Session }>(`/hearings/${hearingId}/session`, { method: "POST" }),
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; session: Session }>(`/production/hearings/${hearingId}/session`, {
+          method: "POST",
+          headers: productionSessionHeaders(true),
+        })
+      : request<{ hearing: HearingRecord; session: Session }>(`/hearings/${hearingId}/session`, { method: "POST" }),
   matchHearing: (hearingId: string) =>
-    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[]; requires_human_confirmation: boolean }>(
-      `/hearings/${hearingId}/match`,
-      { method: "POST" },
-    ),
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[]; requires_human_confirmation: boolean }>(
+          `/production/hearings/${hearingId}/match`,
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[]; requires_human_confirmation: boolean }>(
+          `/hearings/${hearingId}/match`,
+          { method: "POST" },
+        ),
   getHearing: (hearingId: string) =>
-    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>(`/hearings/${hearingId}`),
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>(`/production/hearings/${hearingId}`, {
+          headers: productionSessionHeaders(),
+        })
+      : request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>(`/hearings/${hearingId}`),
   /** kind "recording" → audio/video; "transcript" → Teams/Zoom WebVTT export. */
   uploadHearingFile: async (hearingId: string, file: Blob, filename: string, kind: "recording" | "transcript" = "recording") => {
-    const path = `/hearings/${hearingId}/${kind === "transcript" ? "transcript" : "upload"}`;
+    const path = productionAuthEnabled
+      ? `/production/hearings/${hearingId}/${kind === "transcript" ? "transcript" : "upload"}`
+      : `/hearings/${hearingId}/${kind === "transcript" ? "transcript" : "upload"}`;
     const form = new FormData();
     form.append("file", file, filename);
     let response: Response;
@@ -791,6 +840,7 @@ export const hakiApi = {
         method: "POST",
         body: form,
         credentials: productionAuthEnabled ? "include" : "same-origin",
+        headers: productionAuthEnabled ? productionSessionHeaders(true) : {},
       });
     } catch {
       throw new ApiError("We couldn’t connect to the HakiScribe service. Check the service URL and try again.");
@@ -803,10 +853,15 @@ export const hakiApi = {
     return (await response.json()) as HearingRecord;
   },
   fetchHearingRecording: (hearingId: string, prefer: "audio" | "transcript" = "audio") =>
-    request<{ hearing: HearingRecord; artifact: Record<string, unknown> }>(
-      `/hearings/${hearingId}/fetch-recording?prefer=${prefer}`,
-      { method: "POST" },
-    ),
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; artifact: Record<string, unknown> }>(
+          `/production/hearings/${hearingId}/fetch-recording?prefer=${prefer}`,
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ hearing: HearingRecord; artifact: Record<string, unknown> }>(
+          `/hearings/${hearingId}/fetch-recording?prefer=${prefer}`,
+          { method: "POST" },
+        ),
   processHearing: (
     hearingId: string,
     opts: { diarize?: boolean; languageHint?: string; wait?: boolean; useLlm?: boolean } = {},
@@ -817,13 +872,50 @@ export const hakiApi = {
     if (opts.useLlm === false) params.set("use_llm", "false");
     if (opts.languageHint) params.set("language_hint", opts.languageHint);
     const qs = params.toString();
-    return request<{ status?: string; hearing: HearingRecord; proceedings?: HearingProceedings["proceedings"] }>(
-      `/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`,
-      { method: "POST" },
+    const path = productionAuthEnabled
+      ? `/production/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`
+      : `/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`;
+    return request<{ status?: string; run_id?: string; hearing: HearingRecord; proceedings?: HearingProceedings["proceedings"] }>(
+      path,
+      {
+        method: "POST",
+        ...(productionAuthEnabled ? { headers: productionSessionHeaders(true) } : {}),
+      },
     );
   },
-  getHearingProceedings: (hearingId: string) => request<HearingProceedings>(`/hearings/${hearingId}/proceedings`),
-  reviewHearing: (hearingId: string) => request<HearingRecord>(`/hearings/${hearingId}/review`, { method: "POST" }),
+  getHearingProceedings: (hearingId: string) =>
+    productionAuthEnabled
+      ? request<HearingProceedings>(`/production/hearings/${hearingId}/proceedings`, {
+          headers: productionSessionHeaders(),
+        })
+      : request<HearingProceedings>(`/hearings/${hearingId}/proceedings`),
+  reviewHearing: (hearingId: string) =>
+    productionAuthEnabled
+      ? request<HearingRecord>(`/production/hearings/${hearingId}/review`, {
+          method: "POST",
+          headers: productionSessionHeaders(true),
+        })
+      : request<HearingRecord>(`/hearings/${hearingId}/review`, { method: "POST" }),
+  startHearingCapture: (hearingId: string) =>
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; capture: Record<string, unknown> }>(
+          `/production/hearings/${hearingId}/capture/start`,
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ hearing: HearingRecord; capture: Record<string, unknown> }>(
+          `/hearings/${hearingId}/capture/start`,
+          { method: "POST" },
+        ),
+  stopHearingCapture: (hearingId: string) =>
+    productionAuthEnabled
+      ? request<{ hearing: HearingRecord; capture: Record<string, unknown> }>(
+          `/production/hearings/${hearingId}/capture/stop`,
+          { method: "POST", headers: productionSessionHeaders(true) },
+        )
+      : request<{ hearing: HearingRecord; capture: Record<string, unknown> }>(
+          `/hearings/${hearingId}/capture/stop`,
+          { method: "POST" },
+        ),
   runDiagnostics: () => request<DiagnosticsResult>("/integrations/diagnostics"),
   disconnectIntegration: (providerId: string) =>
     request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {

@@ -14,7 +14,7 @@
 
 **6. Known issues.** Kiswahili with `small` WER ≈ 0.66 — not record-grade. 3B extraction quality is inconsistent. Tracker changes not browser-tested. Docker image not rebuilt. The next Ollama auto-update needs ≥6 GB free or it breaks again. Running the backend in `local_only` makes demo-library seeding call the local LLM at startup (slow on CPU, but non-blocking).
 
-**7. Outstanding.** ADR-012 (b), production per-org hearings. Kiswahili with `large-v3` / Intron Sahara. Diarization run. Zoom/Teams sandbox runs. Job queue for `/process`.
+**7. Outstanding.** Kiswahili with `large-v3` / Intron Sahara (1B). Diarization run. Zoom/Teams sandbox + live bot runs when credentials exist (1B). ADR-012 (a+b), process queue, bots (contract), and 1A harnesses are done in Close Open Gaps.
 
 **8. Dependencies.** Free disk (≥3 GB for large-v3, ≥6 GB for Ollama updates); Docker Desktop; Zoom/Entra apps; consented court audio.
 

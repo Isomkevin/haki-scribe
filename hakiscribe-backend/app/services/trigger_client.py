@@ -98,6 +98,26 @@ async def _output_from_run(client: httpx.AsyncClient, run: dict[str, Any]) -> An
     return _parse_output(result.get("output"), result.get("outputType"))
 
 
+async def trigger_enqueue(task_id: str, payload: dict[str, Any]) -> Optional[str]:
+    """Fire-and-forget Trigger.dev run. Returns run id, or None to fall back in-process."""
+    api_key = _api_key()
+    if not api_key:
+        return None
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            trigger_resp = await client.post(
+                f"{API_BASE_V1}/tasks/{task_id}/trigger",
+                headers=headers,
+                json={"payload": payload},
+            )
+            trigger_resp.raise_for_status()
+            return str(trigger_resp.json()["id"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Trigger.dev enqueue %s failed (%s); fall back in-process", task_id, exc)
+        return None
+
+
 async def trigger_and_wait(
     task_id: str,
     payload: dict[str, Any],

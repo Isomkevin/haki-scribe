@@ -38,7 +38,7 @@ Tables (org-scoped when production auth on):
 - `haki_hearing_match_candidates` — hearing_id, matter_id, score, rationale
 - `haki_hearing_confirmations` — audit of human confirm/reject
 
-Demo mode mirrors via in-memory store in `hearings.py` / `storage` helpers.
+Demo mode keeps hearings in process memory and **persists them in the workspace snapshot** (`store.json`, or Postgres via `DATABASE_URL`) — ADR-012 (a). Production mode uses migration-003 tables via `/production/hearings` — ADR-012 (b).
 
 ## Stage B additions (Claude Code)
 
@@ -82,4 +82,4 @@ Demo mode mirrors via in-memory store in `hearings.py` / `storage` helpers.
 
 ### Database
 
-No new migration. Stage B state lives in existing columns: `haki_hearings.platform_metadata` (jsonb) holds `pipeline`, `asr`, `proceedings`, `recording`, `review`, `match`; `recording_object_key` holds the recordings-store key. **Hearings are still in-memory only** — migration 003 is not wired to a repository (see 10 / ADR-012).
+No new migration required for Stage B / Close Open Gaps fields: `platform_metadata` (jsonb) holds `pipeline` (incl. Trigger `job_id` / `run_id`), `asr`, `proceedings`, `recording`, `review`, `match`, `capture`; `recording_object_key` holds the recordings-store key. ADR-012 (a)+(b) complete. Live capture: `POST …/capture/start|stop`. Durable process: Trigger task `process-hearing` → `POST /internal/process-hearing`.

@@ -44,10 +44,11 @@ class ZoomAdapter(CourtAdapter):
             {
                 "oauth": True,
                 "list_meetings": True,
-                "live_bot_join": False,
+                "live_bot_join": False,  # see ZoomMeetingBot when ZOOM_MEETING_SDK_* is set
                 "recording_download": True,
                 "recording_webhook": True,
                 "stage": "B",
+                "companion_bot": "zoom_meeting_bot",
                 "oauth_scopes": [
                     "meeting:read:list_meetings",
                     "cloud_recording:read:list_recording_files",

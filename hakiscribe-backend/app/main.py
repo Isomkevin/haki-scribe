@@ -47,6 +47,7 @@ from app.routers import (
     production_actions,
     production_auth,
     production_chats,
+    production_hearings,
     production_sessions,
     stream,
 )
@@ -91,11 +92,20 @@ app.include_router(organisations.router, prefix="/organisations", tags=["organis
 app.include_router(production_actions.router, prefix="/production", tags=["production-actions"])
 app.include_router(production_chats.router, prefix="/production", tags=["production-chats"])
 app.include_router(production_sessions.router, prefix="/production", tags=["production"])
+# Trigger.dev relays must reach the backend in both modes.
+app.include_router(internal.router, prefix="/internal", tags=["internal"])
+# Zoom/Teams webhooks are signed; production resolves tenant via ZOOM_HOST_ORG_MAP.
+app.include_router(court_webhooks.router, prefix="/webhooks", tags=["court-webhooks"])
 
-# The original stateful routers share demo-era storage. They are available only
-# in demo mode; production never mounts them, so a missed UI migration cannot
-# cross the tenant boundary by accident.
-if not production_auth_enabled_flag:
+if production_auth_enabled_flag:
+    app.include_router(
+        production_hearings.router,
+        prefix="/production/hearings",
+        tags=["production-hearings"],
+    )
+else:
+    # Demo-era routers share in-process / snapshot storage. Production never
+    # mounts them, so a missed UI migration cannot cross the tenant boundary.
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
     app.include_router(stream.router, prefix="/sessions", tags=["stream"])
@@ -105,8 +115,6 @@ if not production_auth_enabled_flag:
     app.include_router(matters.router, prefix="/matters", tags=["matters"])
     app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
     app.include_router(hearings.router, prefix="/hearings", tags=["hearings"])
-    app.include_router(court_webhooks.router, prefix="/webhooks", tags=["court-webhooks"])
-    app.include_router(internal.router, prefix="/internal", tags=["internal"])
     app.include_router(demo.router, prefix="/demo", tags=["demo"])
     app.include_router(news.router, prefix="/news", tags=["news"])
     app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
