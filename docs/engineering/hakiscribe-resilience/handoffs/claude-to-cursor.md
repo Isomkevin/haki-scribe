@@ -76,7 +76,7 @@ See 06 "Stage B additions". Breaking-ish: `/confirm` now 409s once capture start
 ## 7. Outstanding
 
 1. Decide and implement ADR-012 (hearings persistence / production routers).
-2. Tracker UI: upload recording/VTT, fetch-recording, process, show proceedings (grounded items with jump-to-segment via `segment_id`/`start_ms`), ungrounded items flagged, review button.
+2. ~~Tracker UI: upload / process / proceedings / review~~ — **done in Stage C connection pass** (`tracker.tsx` + `hakiscribe.ts` Teams/Zoom import + `wait=true` process).
 3. Real-stack runs listed in 09 "Still to verify".
 4. Job queue for `/process` if long recordings are expected in production.
 5. Live meeting capture only if the owner wants to register a Teams calling bot / Zoom Meeting SDK app.

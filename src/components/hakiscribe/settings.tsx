@@ -882,13 +882,15 @@ function AiModeSection() {
   const queryClient = useQueryClient();
   const modeQuery = useQuery({
     queryKey: ["ai-mode"],
-    queryFn: hakiApi.getAiMode,
+    queryFn: () => hakiApi.getAiMode(false),
     enabled: hasApiConfiguration,
     retry: false,
   });
   const [mode, setMode] = useState<AiOperatingMode>("cloud");
   const [routes, setRoutes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [deepInference, setDeepInference] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!modeQuery.data) return;
@@ -910,8 +912,21 @@ function AiModeSection() {
     }
   }
 
-  const inference = modeQuery.data?.inference as
-    | { local_whisper?: { ok?: boolean }; ollama?: { ok?: boolean } }
+  async function probeLocal() {
+    setProbing(true);
+    try {
+      const snap = await hakiApi.getAiMode(true);
+      setDeepInference((snap.inference as Record<string, unknown>) ?? null);
+      toast.success("Local inference probed");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Local probe failed."));
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  const inference = (deepInference ?? modeQuery.data?.inference) as
+    | { local_whisper?: { ok?: boolean; detail?: string }; ollama?: { ok?: boolean; detail?: string } }
     | undefined;
 
   return (
@@ -981,9 +996,19 @@ function AiModeSection() {
             </p>
           </div>
 
-          <Button type="button" onClick={() => void save()} disabled={saving || modeQuery.isLoading}>
-            {saving ? "Saving…" : "Save AI mode"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void save()} disabled={saving || modeQuery.isLoading}>
+              {saving ? "Saving…" : "Save AI mode"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void probeLocal()} disabled={probing}>
+              {probing ? "Probing…" : "Probe local inference"}
+            </Button>
+            <Button type="button" variant="outline" asChild>
+              <Link to="/settings" search={{ section: "connectors" }}>
+                Open Connectors
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
     </section>

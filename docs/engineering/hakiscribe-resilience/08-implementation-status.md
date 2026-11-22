@@ -37,7 +37,18 @@ Legend: **Tested** = automated tests pass in this repo · **Contract-tested** = 
 | 13 | Matter Resolution Engine | **Tested** | Canonical Kenyan case refs (`E045 of 2024` = `E45/2024`), boundary-safe matching, conflicting-case-number penalty, near-tie ambiguity. |
 | 14 | Hearing lifecycle | **Tested** | Explicit transition table; fixes Stage A bug where re-importing a calendar/Teams/Zoom event reset human confirmations; matter link locked after capture; idempotent session creation. |
 | 15 | Post-hearing pipeline (`/process`) | **Tested** (`wait=true`, VTT path and stub-Whisper path) · background mode **Not run** under test | Refuses before human confirm; `transcribed` then human `/review`. |
-| 16 | Frontend API client for new endpoints | Done, typechecked | `src/lib/hakiscribe.ts`. **No UI wired** — Stage C. |
+| 16 | Frontend API client for new endpoints | Done, typechecked | `src/lib/hakiscribe.ts`. |
+| 16b | Tracker UI wired to Stage B lifecycle | **Done (Stage C connection)** | Upload recording/VTT, Teams/Zoom fetch, process (`wait=true`), proceedings (grounded + ungrounded), review; Calendar/Teams/Zoom import; Settings deep local probe. |
+
+## Stage C connection pass (Cursor)
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| Backend Stage B verification | done | `pytest` → **88 passed, 2 skipped** |
+| Frontend vitest | done | **22 passed** |
+| Tracker ↔ hearings pipeline | done | Full match → ingest → process → review UI |
+| AI mode Settings ↔ deep probe | done | `getAiMode(true)` → Ollama generation probe |
+| ADR-012 hearings persistence | still open | In-memory demo only; not blocking Stage B UI connection |
 | 17 | Production persistence for hearings (migration 003 repository, RLS path) | **Not implemented** | Hearings are in-memory; router + webhook mounted only when production auth is off. See ADR-012. |
 | 18 | Real-stack integration tests | Written, **skipped by default** | `tests/integration/test_local_stack.py` (`HAKISCRIBE_IT_LOCAL=1`). Includes no-egress assertion. |
 

@@ -14,7 +14,9 @@ import {
   friendlyErrorMessage,
   type ActionResult,
   type HearingMatchCandidate,
+  type HearingProceedings,
   type HearingRecord,
+  type ProceedingsItem,
   type SessionDetail,
 } from "@/lib/hakiscribe";
 import { PageShell, SectionHeading, SourceIcon, StatusBadge, WorkspaceFooter } from "./shell";
@@ -403,15 +405,23 @@ export function TrackerPage() {
 
 function HearingsPanel() {
   const queryClient = useQueryClient();
-  const pending = useQuery({
-    queryKey: ["hearings-pending"],
-    queryFn: hakiApi.listPendingHearings,
+  const hearings = useQuery({
+    queryKey: ["hearings"],
+    queryFn: hakiApi.listHearings,
     retry: false,
+    refetchInterval: REFRESH_MS,
   });
   const [title, setTitle] = useState("");
   const [caseRef, setCaseRef] = useState("");
   const [candidates, setCandidates] = useState<Record<string, HearingMatchCandidate[]>>({});
+  const [proceedings, setProceedings] = useState<Record<string, HearingProceedings>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  async function refreshHearings() {
+    await queryClient.invalidateQueries({ queryKey: ["hearings"] });
+    await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+  }
 
   async function importManual() {
     if (!title.trim()) {
@@ -427,8 +437,8 @@ function HearingsPanel() {
       setCandidates((prev) => ({ ...prev, [result.hearing.id]: result.candidates }));
       setTitle("");
       setCaseRef("");
-      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
-      toast.success("Hearing imported — confirm a matter match before opening a session");
+      await refreshHearings();
+      toast.success("Hearing imported — confirm a matter match before processing");
     } catch (error) {
       toast.error(friendlyErrorMessage(error, "Could not import hearing."));
     } finally {
@@ -436,31 +446,37 @@ function HearingsPanel() {
     }
   }
 
-  async function importCalendar() {
+  async function importFrom(source: "calendar" | "teams" | "zoom") {
     setBusy(true);
     try {
-      const result = await hakiApi.importCalendarHearings();
-      toast.success(`Imported ${result.imported} calendar hearing(s)`);
-      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+      const result =
+        source === "calendar"
+          ? await hakiApi.importCalendarHearings()
+          : source === "teams"
+            ? await hakiApi.importTeamsHearings()
+            : await hakiApi.importZoomHearings();
+      toast.success(`Imported ${result.imported} ${source} hearing(s)`);
+      await refreshHearings();
     } catch (error) {
-      toast.error(friendlyErrorMessage(error, "Calendar import failed. Connect Google Calendar first."));
+      toast.error(friendlyErrorMessage(error, `${source} import failed. Connect the connector first.`));
     } finally {
       setBusy(false);
     }
   }
 
   async function confirm(hearing: HearingRecord, matterId: string) {
-    setBusy(true);
+    setBusyId(hearing.id);
     try {
       await hakiApi.confirmHearing(hearing.id, { decision: "confirm", matter_id: matterId });
       const created = await hakiApi.createHearingSession(hearing.id);
-      await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
-      toast.success("Matter confirmed — session ready");
-      window.location.assign(`/sessions/${created.session.id}`);
+      await refreshHearings();
+      toast.success("Matter confirmed — session linked. Upload or fetch the recording next.");
+      // Keep the user on tracker for ingest/process; session is available via link.
+      void created;
     } catch (error) {
       toast.error(friendlyErrorMessage(error, "Could not confirm hearing."));
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
 
@@ -473,7 +489,71 @@ function HearingsPanel() {
     }
   }
 
-  const rows = pending.data ?? [];
+  async function onUpload(hearing: HearingRecord, file: File, kind: "recording" | "transcript") {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.uploadHearingFile(hearing.id, file, file.name, kind);
+      await refreshHearings();
+      toast.success(kind === "transcript" ? "Transcript attached" : "Recording attached");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Upload failed."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onFetch(hearing: HearingRecord, prefer: "audio" | "transcript") {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.fetchHearingRecording(hearing.id, prefer);
+      await refreshHearings();
+      toast.success(prefer === "transcript" ? "Platform transcript fetched" : "Platform recording fetched");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Platform fetch failed."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onProcess(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      const result = await hakiApi.processHearing(hearing.id, { wait: true });
+      await refreshHearings();
+      const proc = await hakiApi.getHearingProceedings(hearing.id);
+      setProceedings((prev) => ({ ...prev, [hearing.id]: proc }));
+      toast.success(result.hearing.status === "transcribed" ? "Hearing processed" : `Process finished (${result.hearing.status})`);
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Processing failed."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onLoadProceedings(hearingId: string) {
+    try {
+      const proc = await hakiApi.getHearingProceedings(hearingId);
+      setProceedings((prev) => ({ ...prev, [hearingId]: proc }));
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not load proceedings."));
+    }
+  }
+
+  async function onReview(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      await hakiApi.reviewHearing(hearing.id);
+      await refreshHearings();
+      toast.success("Hearing marked reviewed");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Review failed — process the hearing first."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const rows = hearings.data ?? [];
+  const pendingCount = rows.filter((h) => h.status === "pending_confirm" || h.status === "scheduled").length;
 
   return (
     <section className="mb-9 rounded-lg border border-border bg-card p-4 sm:p-5">
@@ -483,14 +563,23 @@ function HearingsPanel() {
             <Gavel className="size-3.5" />
             Virtual hearings
           </p>
-          <h2 className="mt-1 font-serif text-xl font-semibold">Matter match confirmation</h2>
+          <h2 className="mt-1 font-serif text-xl font-semibold">Match → ingest → process → review</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Ambiguous matches never attach silently. Confirm the HakiChain matter, then open a session.
+            Connected to Stage B pipeline. Matter matches never attach silently. AI summaries are not court orders —
+            grounded items cite transcript quotes; ungrounded items are flagged.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void importCalendar()}>
-          Import Google Calendar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void importFrom("calendar")}>
+            Google Calendar
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void importFrom("teams")}>
+            Teams
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void importFrom("zoom")}>
+            Zoom
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -501,7 +590,7 @@ function HearingsPanel() {
           onChange={(e) => setTitle(e.target.value)}
         />
         <Input
-          className="max-w-[12rem]"
+          className="max-w-48"
           placeholder="Case / matter ref"
           value={caseRef}
           onChange={(e) => setCaseRef(e.target.value)}
@@ -511,52 +600,220 @@ function HearingsPanel() {
         </Button>
       </div>
 
-      {pending.isError ? (
+      {hearings.isError ? (
         <p className="mt-4 text-sm text-muted-foreground">
           Hearings API unavailable — start the backend to use virtual court matching.
         </p>
       ) : rows.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">No hearings awaiting confirmation.</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          No hearings yet. Import from Calendar/Teams/Zoom or add a manual hearing.
+        </p>
       ) : (
-        <ul className="mt-4 space-y-3">
-          {rows.map((hearing) => {
-            const cands = candidates[hearing.id] ?? [];
-            return (
-              <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{hearing.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {hearing.source} · {hearing.status}
-                      {hearing.case_reference ? ` · ${hearing.case_reference}` : ""}
-                      {hearing.match_confidence != null ? ` · confidence ${(hearing.match_confidence * 100).toFixed(0)}%` : ""}
-                    </p>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void loadMatches(hearing.id)}>
-                    Propose matches
-                  </Button>
-                </div>
-                {cands.length > 0 && (
-                  <ul className="mt-3 space-y-2">
-                    {cands.map((c) => (
-                      <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <span>
-                          Matter {c.matter_id.slice(0, 8)}… · score {(c.score * 100).toFixed(0)}%
-                          {c.rationale ? ` — ${c.rationale}` : ""}
-                        </span>
-                        <Button type="button" size="sm" disabled={busy} onClick={() => void confirm(hearing, c.matter_id)}>
-                          Confirm & open
+        <>
+          <p className="mt-4 text-xs text-muted-foreground">
+            {rows.length} hearing(s) · {pendingCount} awaiting match confirmation
+          </p>
+          <ul className="mt-3 space-y-3">
+            {rows.map((hearing) => {
+              const cands = candidates[hearing.id] ?? [];
+              const proc = proceedings[hearing.id];
+              const rowBusy = busyId === hearing.id;
+              const canIngest = Boolean(hearing.matter_id) && !["transcribed", "reviewed", "filed", "rejected"].includes(hearing.status);
+              const canProcess = Boolean(hearing.matter_id) && ["matched", "capturing", "ingested"].includes(hearing.status);
+              const canReview = hearing.status === "transcribed";
+              const platformFetch = hearing.source === "zoom" || hearing.source === "teams_graph";
+
+              return (
+                <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{hearing.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {hearing.source} · {hearing.status}
+                        {hearing.case_reference ? ` · ${hearing.case_reference}` : ""}
+                        {hearing.match_confidence != null
+                          ? ` · confidence ${(hearing.match_confidence * 100).toFixed(0)}%`
+                          : ""}
+                        {hearing.recording_object_key ? " · recording on file" : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(hearing.status === "scheduled" || hearing.status === "pending_confirm") && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => void loadMatches(hearing.id)}>
+                          Propose matches
                         </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                      )}
+                      {hearing.session_id && (
+                        <Button asChild variant="outline" size="sm">
+                          <Link to="/sessions/$sessionId" params={{ sessionId: hearing.session_id }} search={{ fresh: false }}>
+                            Open session
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {cands.length > 0 && (hearing.status === "scheduled" || hearing.status === "pending_confirm") && (
+                    <ul className="mt-3 space-y-2">
+                      {cands.map((c) => (
+                        <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span>
+                            Matter {c.matter_id.slice(0, 8)}… · score {(c.score * 100).toFixed(0)}%
+                            {c.rationale ? ` — ${c.rationale}` : ""}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={rowBusy}
+                            onClick={() => void confirm(hearing, c.matter_id)}
+                          >
+                            Confirm matter
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {canIngest && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
+                        <span className="rounded-md border border-border bg-background px-2 py-1.5 font-medium">
+                          Upload recording
+                        </span>
+                        <input
+                          type="file"
+                          accept="audio/*,video/*,.webm,.wav,.mp3,.mp4,.m4a"
+                          className="sr-only"
+                          disabled={rowBusy}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void onUpload(hearing, file, "recording");
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
+                        <span className="rounded-md border border-border bg-background px-2 py-1.5 font-medium">
+                          Upload VTT
+                        </span>
+                        <input
+                          type="file"
+                          accept=".vtt,text/vtt,text/plain"
+                          className="sr-only"
+                          disabled={rowBusy}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void onUpload(hearing, file, "transcript");
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      {platformFetch && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={rowBusy}
+                            onClick={() => void onFetch(hearing, "audio")}
+                          >
+                            Fetch recording
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={rowBusy}
+                            onClick={() => void onFetch(hearing, "transcript")}
+                          >
+                            Fetch transcript
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {canProcess && (
+                      <Button type="button" size="sm" disabled={rowBusy} onClick={() => void onProcess(hearing)}>
+                        {rowBusy ? "Processing…" : "Process hearing"}
+                      </Button>
+                    )}
+                    {(hearing.status === "transcribed" || hearing.status === "reviewed" || hearing.status === "ingested") && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => void onLoadProceedings(hearing.id)}>
+                        Show proceedings
+                      </Button>
+                    )}
+                    {canReview && (
+                      <Button type="button" size="sm" disabled={rowBusy} onClick={() => void onReview(hearing)}>
+                        Mark reviewed
+                      </Button>
+                    )}
+                  </div>
+
+                  {proc?.proceedings && <ProceedingsView proceedings={proc} />}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </section>
+  );
+}
+
+function ProceedingsView({ proceedings }: { proceedings: HearingProceedings }) {
+  const rules = proceedings.proceedings?.rules ?? [];
+  const llmItems = proceedings.proceedings?.llm?.items ?? [];
+  const ungrounded = proceedings.proceedings?.llm?.ungrounded ?? [];
+  const grounded = [...rules, ...llmItems];
+
+  return (
+    <div className="mt-3 rounded-md border border-border/60 bg-background/80 p-3 text-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Proceedings intelligence
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Pipeline: {proceedings.pipeline?.state ?? "—"}
+        {proceedings.pipeline?.step ? ` / ${proceedings.pipeline.step}` : ""}
+        {proceedings.proceedings?.llm?.status ? ` · LLM ${proceedings.proceedings.llm.status}` : ""}
+      </p>
+      {grounded.length === 0 && ungrounded.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">No extracted items yet.</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {grounded.map((item, idx) => (
+            <ProceedingsRow key={`g-${idx}`} item={item} flagged={false} />
+          ))}
+          {ungrounded.map((item, idx) => (
+            <ProceedingsRow key={`u-${idx}`} item={item} flagged />
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        AI-generated items are not authenticated court orders. Prefer quote-grounded rows.
+      </p>
+    </div>
+  );
+}
+
+function ProceedingsRow({ item, flagged }: { item: ProceedingsItem; flagged: boolean }) {
+  const label = item.text || item.purpose || item.name || item.kind;
+  const jump =
+    item.segment_id && item.start_ms != null
+      ? `seg ${item.segment_id.slice(0, 8)}… @ ${Math.round(item.start_ms / 1000)}s`
+      : null;
+  return (
+    <li className={flagged ? "rounded border border-amber-500/40 bg-amber-500/5 p-2" : "rounded border border-border/50 p-2"}>
+      <p className="font-medium">
+        {item.kind}
+        {flagged ? " · ungrounded" : ""} · {item.method}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+      {item.quote ? <p className="mt-1 text-xs italic text-foreground/80">“{item.quote}”</p> : null}
+      {jump ? <p className="mt-1 text-[11px] text-muted-foreground">{jump}</p> : null}
+      {item.reason ? <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">{item.reason}</p> : null}
+    </li>
   );
 }
 

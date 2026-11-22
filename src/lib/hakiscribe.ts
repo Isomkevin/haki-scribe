@@ -737,7 +737,8 @@ export const hakiApi = {
   checkIntegration: (providerId: string) =>
     request<ConnectorHealth>(`/integrations/${providerId}/check`, { method: "POST" }),
   aiComputeStatus: () => request<AiComputeStatus>("/integrations/compute"),
-  getAiMode: () => request<AiModeSnapshot>("/integrations/ai-mode"),
+  getAiMode: (deep = false) =>
+    request<AiModeSnapshot>(`/integrations/ai-mode${deep ? "?deep=true" : ""}`),
   setAiMode: (body: { mode?: AiOperatingMode; routes?: Record<string, string> }) =>
     request<AiModeSnapshot>("/integrations/ai-mode", { method: "PUT", body: JSON.stringify(body) }),
   listHearings: () => request<HearingRecord[]>("/hearings"),
@@ -757,6 +758,16 @@ export const hakiApi = {
       "/hearings/import/calendar",
       { method: "POST" },
     ),
+  importTeamsHearings: () =>
+    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+      "/hearings/import/teams",
+      { method: "POST" },
+    ),
+  importZoomHearings: () =>
+    request<{ imported: number; items: { hearing: HearingRecord; candidates: HearingMatchCandidate[] }[] }>(
+      "/hearings/import/zoom",
+      { method: "POST" },
+    ),
   confirmHearing: (hearingId: string, body: { decision: "confirm" | "reject"; matter_id?: string }) =>
     request<HearingRecord>(`/hearings/${hearingId}/confirm`, { method: "POST", body: JSON.stringify(body) }),
   createHearingSession: (hearingId: string) =>
@@ -766,6 +777,8 @@ export const hakiApi = {
       `/hearings/${hearingId}/match`,
       { method: "POST" },
     ),
+  getHearing: (hearingId: string) =>
+    request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>(`/hearings/${hearingId}`),
   /** kind "recording" → audio/video; "transcript" → Teams/Zoom WebVTT export. */
   uploadHearingFile: async (hearingId: string, file: Blob, filename: string, kind: "recording" | "transcript" = "recording") => {
     const path = `/hearings/${hearingId}/${kind === "transcript" ? "transcript" : "upload"}`;
@@ -773,7 +786,12 @@ export const hakiApi = {
     form.append("file", file, filename);
     let response: Response;
     try {
-      response = await fetch(apiUrl(path), { method: "POST", body: form });
+      // Do not set Content-Type — the browser adds the multipart boundary.
+      response = await fetch(apiUrl(path), {
+        method: "POST",
+        body: form,
+        credentials: productionAuthEnabled ? "include" : "same-origin",
+      });
     } catch {
       throw new ApiError("We couldn’t connect to the HakiScribe service. Check the service URL and try again.");
     }
@@ -789,14 +807,20 @@ export const hakiApi = {
       `/hearings/${hearingId}/fetch-recording?prefer=${prefer}`,
       { method: "POST" },
     ),
-  processHearing: (hearingId: string, opts: { diarize?: boolean; languageHint?: string } = {}) => {
+  processHearing: (
+    hearingId: string,
+    opts: { diarize?: boolean; languageHint?: string; wait?: boolean; useLlm?: boolean } = {},
+  ) => {
     const params = new URLSearchParams();
+    if (opts.wait ?? true) params.set("wait", "true");
     if (opts.diarize) params.set("diarize", "true");
+    if (opts.useLlm === false) params.set("use_llm", "false");
     if (opts.languageHint) params.set("language_hint", opts.languageHint);
     const qs = params.toString();
-    return request<{ status: string; hearing: HearingRecord }>(`/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`, {
-      method: "POST",
-    });
+    return request<{ status?: string; hearing: HearingRecord; proceedings?: HearingProceedings["proceedings"] }>(
+      `/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`,
+      { method: "POST" },
+    );
   },
   getHearingProceedings: (hearingId: string) => request<HearingProceedings>(`/hearings/${hearingId}/proceedings`),
   reviewHearing: (hearingId: string) => request<HearingRecord>(`/hearings/${hearingId}/review`, { method: "POST" }),
