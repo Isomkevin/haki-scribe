@@ -34,6 +34,7 @@ from app.routers import (
     chats,
     actions,
     auth,
+    court_webhooks,
     demo,
     hearings,
     integrations,
@@ -104,6 +105,7 @@ if not production_auth_enabled_flag:
     app.include_router(matters.router, prefix="/matters", tags=["matters"])
     app.include_router(matters.contacts_router, prefix="/contacts", tags=["contacts"])
     app.include_router(hearings.router, prefix="/hearings", tags=["hearings"])
+    app.include_router(court_webhooks.router, prefix="/webhooks", tags=["court-webhooks"])
     app.include_router(internal.router, prefix="/internal", tags=["internal"])
     app.include_router(demo.router, prefix="/demo", tags=["demo"])
     app.include_router(news.router, prefix="/news", tags=["news"])

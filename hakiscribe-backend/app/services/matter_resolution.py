@@ -17,6 +17,16 @@ from app.models.schemas import Matter
 AUTO_MATCH_THRESHOLD = 0.85
 # Below this, status becomes pending_confirm (human required).
 CONFIRM_THRESHOLD = 0.85
+# Top two candidates closer than this are ambiguous (e.g. one client, two suits).
+AMBIGUITY_MARGIN = 0.1
+# Multiplier when hearing and matter carry different case numbers.
+CONFLICT_PENALTY = 0.4
+
+# Kenyan registry style: "E123 of 2024", "HCCC No. E123 of 2024", "45/2023", "E045/2024".
+FULL_REF_RE = re.compile(
+    r"\b(?:([A-Za-z])\s?)?0*(\d{1,6})\s*(?:of|/)\s*((?:19|20)\d{2})\b",
+    re.I,
+)
 
 CASE_REF_RE = re.compile(
     r"\b(?:case|matter|cause|suit|petition|misc\.?|civil|criminal)"
@@ -33,6 +43,26 @@ def extract_case_reference(*texts: Optional[str]) -> Optional[str]:
         if m:
             return m.group(1).strip()
     return None
+
+
+def canonical_case_refs(*texts: Optional[str]) -> set[str]:
+    """Canonical "PREFIX+NUMBER/YEAR" refs, e.g. "HCCC No. E045 of 2024" → {"E45/2024"}.
+
+    Court-division prefixes (HCCC, ELRC, …) are dropped; only the single
+    registry letter (E/F/…) before the number is kept, since that is what varies.
+    """
+    refs: set[str] = set()
+    for text in texts:
+        for m in FULL_REF_RE.finditer(text or ""):
+            refs.add(f"{(m.group(1) or '').upper()}{int(m.group(2))}/{m.group(3)}")
+    return refs
+
+
+def _contains_token(haystack: str, needle: str) -> bool:
+    """Boundary-aware containment so ref "12" does not match "120/2023"."""
+    if not needle:
+        return False
+    return re.search(rf"(?<![\w]){re.escape(needle)}(?![\w])", haystack) is not None
 
 
 def _norm(value: Optional[str]) -> str:
@@ -64,10 +94,17 @@ def score_matter(
     mname = _norm(matter.matter_name)
     ref = _norm(case_reference or extract_case_reference(title, description) or "")
 
-    if ref and (ref in _norm(matter.matter_name) or ref in hay and ref in mname):
+    hearing_refs = canonical_case_refs(case_reference, title, description)
+    matter_refs = canonical_case_refs(matter.matter_name, matter.client_name)
+    conflict = bool(hearing_refs and matter_refs and not (hearing_refs & matter_refs))
+
+    if hearing_refs & matter_refs:
+        score += 0.55
+        reasons.append(f"case reference match ({', '.join(sorted(hearing_refs & matter_refs))})")
+    elif not conflict and ref and _contains_token(mname, ref):
         score += 0.55
         reasons.append(f"case reference overlap ({ref})")
-    elif ref and ref in hay and (ref in client or ref in mname):
+    elif not conflict and ref and _contains_token(hay, ref) and _contains_token(client, ref):
         score += 0.45
         reasons.append(f"case reference in hearing text ({ref})")
 
@@ -92,6 +129,13 @@ def score_matter(
     # Soft time prior: hearings without date do not lose score.
     if starts_at is not None:
         reasons.append(f"hearing time {starts_at.isoformat()}")
+
+    if conflict:
+        score *= CONFLICT_PENALTY
+        reasons.append(
+            f"case reference conflict (hearing {', '.join(sorted(hearing_refs))} "
+            f"vs matter {', '.join(sorted(matter_refs))})"
+        )
 
     score = min(1.0, score)
     rationale = "; ".join(reasons) if reasons else "no strong overlap"
@@ -136,9 +180,18 @@ def best_match(candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     if not candidates:
         return None
     top = candidates[0]
-    if float(top["score"]) >= AUTO_MATCH_THRESHOLD:
-        return top
-    return None
+    if float(top["score"]) < AUTO_MATCH_THRESHOLD:
+        return None
+    if is_ambiguous(candidates):
+        return None
+    return top
+
+
+def is_ambiguous(candidates: list[dict[str, Any]]) -> bool:
+    """Two near-equal top candidates — a human must pick, whatever the score."""
+    if len(candidates) < 2:
+        return False
+    return float(candidates[0]["score"]) - float(candidates[1]["score"]) < AMBIGUITY_MARGIN
 
 
 def requires_human_confirmation(candidates: list[dict[str, Any]]) -> bool:

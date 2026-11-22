@@ -63,5 +63,29 @@ def archive_document(key: str, text: str, content_type: str = "text/plain; chars
         return None
 
 
+def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> bool:
+    """Store raw bytes (e.g. hearing recordings). Returns False when unconfigured or failed."""
+    client = _client()
+    if client is None:
+        return False
+    try:
+        client.put_object(Bucket=bucket(), Key=key, Body=data, ContentType=content_type)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not store %s to S3: %s", key, exc)
+        return False
+
+
+def get_bytes(key: str) -> Optional[bytes]:
+    client = _client()
+    if client is None:
+        return None
+    try:
+        return client.get_object(Bucket=bucket(), Key=key)["Body"].read()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read %s from S3: %s", key, exc)
+        return None
+
+
 def status() -> dict:
     return {"configured": configured(), "bucket": bucket() or None}

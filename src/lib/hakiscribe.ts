@@ -258,6 +258,45 @@ export interface HearingRecord {
   match_confidence?: number | null;
   meeting_url?: string | null;
   case_reference?: string | null;
+  recording_object_key?: string | null;
+  platform_metadata?: Record<string, unknown>;
+}
+
+/** One extracted item, always tied to a transcript segment via its verbatim quote. */
+export interface ProceedingsItem {
+  kind: "outcome" | "next_date" | "order" | "direction" | "appearance";
+  method: "rules" | "llm";
+  grounded: boolean;
+  quote: string;
+  segment_id?: string;
+  start_ms?: number;
+  end_ms?: number;
+  speaker?: string | null;
+  date?: string;
+  purpose?: string | null;
+  text?: string;
+  name?: string;
+  role?: string;
+  reason?: string;
+}
+
+export interface HearingProceedings {
+  hearing_id: string;
+  status: string;
+  pipeline?: { state: string; step?: string; error?: string | null; segments?: number } | null;
+  asr?: Record<string, unknown> | null;
+  proceedings?: {
+    generated_at: string;
+    rules: ProceedingsItem[];
+    llm: {
+      status: "ok" | "error" | "blocked_by_ai_mode";
+      items: ProceedingsItem[];
+      ungrounded: ProceedingsItem[];
+      provider?: string | null;
+      model?: string | null;
+      error?: string;
+    } | null;
+  } | null;
 }
 
 export interface HearingMatchCandidate {
@@ -705,9 +744,9 @@ export const hakiApi = {
   listPendingHearings: () => request<HearingRecord[]>("/hearings/pending-confirm"),
   importManualHearing: (body: {
     title: string;
-    description?: string;
-    case_reference?: string;
-    meeting_url?: string;
+    description?: string | undefined;
+    case_reference?: string | undefined;
+    meeting_url?: string | undefined;
   }) =>
     request<{ hearing: HearingRecord; candidates: HearingMatchCandidate[] }>("/hearings/import/manual", {
       method: "POST",
@@ -727,6 +766,40 @@ export const hakiApi = {
       `/hearings/${hearingId}/match`,
       { method: "POST" },
     ),
+  /** kind "recording" → audio/video; "transcript" → Teams/Zoom WebVTT export. */
+  uploadHearingFile: async (hearingId: string, file: Blob, filename: string, kind: "recording" | "transcript" = "recording") => {
+    const path = `/hearings/${hearingId}/${kind === "transcript" ? "transcript" : "upload"}`;
+    const form = new FormData();
+    form.append("file", file, filename);
+    let response: Response;
+    try {
+      response = await fetch(apiUrl(path), { method: "POST", body: form });
+    } catch {
+      throw new ApiError("We couldn’t connect to the HakiScribe service. Check the service URL and try again.");
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      const detail = extractErrorDetail(body);
+      throw new ApiError(humanizeApiFailure(response.status, detail, path), response.status);
+    }
+    return (await response.json()) as HearingRecord;
+  },
+  fetchHearingRecording: (hearingId: string, prefer: "audio" | "transcript" = "audio") =>
+    request<{ hearing: HearingRecord; artifact: Record<string, unknown> }>(
+      `/hearings/${hearingId}/fetch-recording?prefer=${prefer}`,
+      { method: "POST" },
+    ),
+  processHearing: (hearingId: string, opts: { diarize?: boolean; languageHint?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.diarize) params.set("diarize", "true");
+    if (opts.languageHint) params.set("language_hint", opts.languageHint);
+    const qs = params.toString();
+    return request<{ status: string; hearing: HearingRecord }>(`/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
+  getHearingProceedings: (hearingId: string) => request<HearingProceedings>(`/hearings/${hearingId}/proceedings`),
+  reviewHearing: (hearingId: string) => request<HearingRecord>(`/hearings/${hearingId}/review`, { method: "POST" }),
   runDiagnostics: () => request<DiagnosticsResult>("/integrations/diagnostics"),
   disconnectIntegration: (providerId: string) =>
     request<{ provider_id: string; connected: boolean }>(`/integrations/${providerId}`, {

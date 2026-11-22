@@ -239,6 +239,46 @@ class LocalWhisperProvider(TranscriptionProvider):
             logger.warning("Local Whisper ASR failed: %s", exc)
             return TranscriptionResult(text="", raw={"error": "local_whisper_failed", "detail": str(exc)})
 
+    async def transcribe_file(
+        self,
+        audio_bytes: bytes,
+        *,
+        filename: Optional[str] = None,
+        language_hint: Optional[str] = None,
+        diarize: bool = False,
+        timeout_s: float = 3600.0,
+    ) -> TranscriptionResult:
+        """Full recording → timestamped segments (verbose_json). Raises on failure.
+
+        Unlike live chunks, a hearing recording must not degrade to an empty
+        transcript silently, so errors propagate to the hearing pipeline.
+        """
+        import httpx
+
+        data: dict[str, str] = {
+            "model": os.environ.get("LOCAL_WHISPER_MODEL", "Systran/faster-whisper-large-v3"),
+            "response_format": "verbose_json",
+            "diarize_speakers": "true" if diarize else "false",
+        }
+        language = whisper_language(language_hint)
+        if language:
+            data["language"] = language
+        prompt = whisper_prompt(language_hint)
+        if prompt:
+            data["prompt"] = prompt
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"{self.base_url}/v1/audio/transcriptions",
+                files={"file": (filename or chunk_filename(audio_bytes), audio_bytes, "application/octet-stream")},
+                data=data,
+            )
+            response.raise_for_status()
+            body = response.json()
+        if not isinstance(body, dict):
+            raise RuntimeError("local_whisper returned a non-JSON body")
+        body["provider"] = "local_whisper"
+        return TranscriptionResult(text=body.get("text") or "", raw=body)
+
 
 class NvidiaNimWhisperProvider(TranscriptionProvider):
     """NVIDIA NIM ASR. Cloud Whisper fallback only when AI mode allows public cloud."""
@@ -272,14 +312,11 @@ class NvidiaNimWhisperProvider(TranscriptionProvider):
                 body = response.json()
             return TranscriptionResult(text=body.get("text") or "", raw=body if isinstance(body, dict) else {})
         except Exception as exc:  # noqa: BLE001 — NIM is optional at runtime
-            allow_cloud_fallback = (
-                ai_mode.get_mode() == "cloud"
-                or (ai_mode.get_mode() == "hybrid" and ai_mode.hybrid_fallback_allowed())
-            )
-            if allow_cloud_fallback and ai_mode.is_provider_allowed("asr", "openrouter"):
+            if ai_mode.cloud_fallback_allowed("asr"):
                 logger.warning("NVIDIA NIM ASR failed (%s); falling back to OpenRouter Whisper", exc)
                 from app.integrations import llm_client
                 if llm_client.api_key():
+                    ai_mode.record_fallback("asr", "nvidia_nim", "openrouter")
                     return await OpenRouterWhisperProvider().transcribe_chunk(audio_bytes, language_hint)
             else:
                 logger.warning("NVIDIA NIM ASR failed (%s); cloud fallback disabled by AI mode", exc)

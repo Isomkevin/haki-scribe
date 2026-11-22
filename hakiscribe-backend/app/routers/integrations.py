@@ -56,13 +56,16 @@ class AiModeUpdate(BaseModel):
 
 
 @router.get("/ai-mode")
-async def get_ai_mode():
-    """Current AI operating mode + hybrid routes + inference probes."""
+async def get_ai_mode(deep: bool = False):
+    """Current AI operating mode + hybrid routes + inference probes.
+
+    ?deep=true also asks Ollama to generate one token (slow on first model load).
+    """
     from app.services import ai_mode, inference_health
 
     return {
         **ai_mode.snapshot(),
-        "inference": await inference_health.check_all(),
+        "inference": await inference_health.check_all(deep=deep),
     }
 
 

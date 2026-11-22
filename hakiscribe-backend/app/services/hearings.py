@@ -1,8 +1,16 @@
-"""In-memory hearing store (demo) + lifecycle helpers. Postgres via migration 003."""
+"""In-memory hearing store (demo) + lifecycle helpers. Postgres via migration 003.
+
+Lifecycle (enforced by `transition`):
+
+  scheduled ─┬─> pending_confirm ──> matched ──> capturing ──> ingested ──> transcribed ──> reviewed ──> filed
+             └─> rejected <─────────────┘  (re-match allowed from rejected)
+
+A matter link is only ever set by a human confirm. Re-importing or
+re-matching a hearing refreshes candidates but never undoes a confirmation.
+"""
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -18,9 +26,30 @@ from app.models.schemas import (
 )
 from app.services import matter_resolution, storage
 
+S = HearingStatus
+
+ALLOWED_TRANSITIONS: dict[HearingStatus, frozenset[HearingStatus]] = {
+    S.scheduled: frozenset({S.pending_confirm, S.matched, S.rejected}),
+    S.pending_confirm: frozenset({S.pending_confirm, S.matched, S.rejected}),
+    S.rejected: frozenset({S.pending_confirm, S.matched}),
+    S.matched: frozenset({S.matched, S.capturing, S.ingested, S.rejected}),
+    S.capturing: frozenset({S.ingested}),
+    S.ingested: frozenset({S.transcribed}),
+    S.transcribed: frozenset({S.transcribed, S.reviewed}),
+    S.reviewed: frozenset({S.transcribed, S.filed}),
+    S.filed: frozenset(),
+}
+
+# Before a session exists the matter link can still change.
+_UNCOMMITTED = frozenset({S.scheduled, S.pending_confirm, S.rejected, S.matched})
+
 _hearings: dict[UUID, Hearing] = {}
 _candidates: dict[UUID, list[HearingMatchCandidate]] = {}
 _confirmations: list[dict[str, Any]] = []
+
+
+class InvalidTransition(ValueError):
+    pass
 
 
 def reset() -> None:
@@ -29,12 +58,27 @@ def reset() -> None:
     _confirmations.clear()
 
 
+def transition(hearing: Hearing, new_status: HearingStatus) -> Hearing:
+    if new_status not in ALLOWED_TRANSITIONS[hearing.status]:
+        raise InvalidTransition(f"Hearing cannot move from {hearing.status.value} to {new_status.value}")
+    hearing.status = new_status
+    hearing.updated_at = datetime.utcnow()
+    return hearing
+
+
 def list_hearings() -> list[Hearing]:
     return sorted(_hearings.values(), key=lambda h: h.starts_at or h.created_at, reverse=True)
 
 
 def get_hearing(hearing_id: UUID) -> Optional[Hearing]:
     return _hearings.get(hearing_id)
+
+
+def find_external(source: Any, external_id: str) -> Optional[Hearing]:
+    for existing in _hearings.values():
+        if existing.source == source and existing.external_id == external_id:
+            return existing
+    return None
 
 
 def create_hearing(payload: HearingCreate) -> Hearing:
@@ -57,20 +101,20 @@ def create_hearing(payload: HearingCreate) -> Hearing:
 
 
 def upsert_external(payload: HearingCreate) -> Hearing:
-    if payload.external_id:
-        for existing in _hearings.values():
-            if existing.source == payload.source and existing.external_id == payload.external_id:
-                existing.title = payload.title
-                existing.description = payload.description
-                existing.starts_at = payload.starts_at
-                existing.ends_at = payload.ends_at
-                existing.court_name = payload.court_name
-                existing.case_reference = payload.case_reference or existing.case_reference
-                existing.meeting_url = payload.meeting_url
-                existing.platform_metadata = payload.platform_metadata or existing.platform_metadata
-                existing.updated_at = datetime.utcnow()
-                return existing
-    return create_hearing(payload)
+    existing = find_external(payload.source, payload.external_id) if payload.external_id else None
+    if existing is None:
+        return create_hearing(payload)
+    existing.title = payload.title
+    existing.description = payload.description
+    existing.starts_at = payload.starts_at
+    existing.ends_at = payload.ends_at
+    existing.court_name = payload.court_name
+    existing.case_reference = payload.case_reference or existing.case_reference
+    existing.meeting_url = payload.meeting_url
+    # Merge so pipeline / recording metadata survives a calendar re-import.
+    existing.platform_metadata = {**(existing.platform_metadata or {}), **(payload.platform_metadata or {})}
+    existing.updated_at = datetime.utcnow()
+    return existing
 
 
 def propose_matches(hearing_id: UUID) -> list[HearingMatchCandidate]:
@@ -95,16 +139,19 @@ def propose_matches(hearing_id: UUID) -> list[HearingMatchCandidate]:
         for row in raw
     ]
     _candidates[hearing_id] = candidates
-    top = matter_resolution.best_match(raw)
-    if top is None:
-        hearing.status = HearingStatus.pending_confirm
+    # Only unconfirmed hearings move to pending_confirm; a confirmed or
+    # rejected decision stands until a human changes it.
+    if hearing.status in (S.scheduled, S.pending_confirm):
+        transition(hearing, S.pending_confirm)
         hearing.match_confidence = float(raw[0]["score"]) if raw else 0.0
         hearing.matter_id = None
-    else:
-        hearing.status = HearingStatus.pending_confirm if True else HearingStatus.matched
-        # Even high confidence requires explicit confirm in Stage A (safe default).
-        hearing.match_confidence = float(top["score"])
-        hearing.matter_id = None
+        hearing.platform_metadata = {
+            **(hearing.platform_metadata or {}),
+            "match": {
+                "ambiguous": matter_resolution.is_ambiguous(raw),
+                "suggested_matter_id": (matter_resolution.best_match(raw) or {}).get("matter_id"),
+            },
+        }
     hearing.updated_at = datetime.utcnow()
     return candidates
 
@@ -113,12 +160,24 @@ def list_candidates(hearing_id: UUID) -> list[HearingMatchCandidate]:
     return list(_candidates.get(hearing_id, []))
 
 
+def list_confirmations(hearing_id: Optional[UUID] = None) -> list[dict[str, Any]]:
+    if hearing_id is None:
+        return list(_confirmations)
+    return [c for c in _confirmations if c["hearing_id"] == str(hearing_id)]
+
+
 def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str = "workspace") -> Hearing:
     hearing = _hearings.get(hearing_id)
     if not hearing:
         raise KeyError("hearing_not_found")
+    if hearing.status not in _UNCOMMITTED:
+        raise InvalidTransition(
+            f"Matter link is locked once capture has started (status {hearing.status.value})"
+        )
+    if body.decision not in ("confirm", "reject"):
+        raise ValueError("decision must be 'confirm' or 'reject'")
     if body.decision == "reject":
-        hearing.status = HearingStatus.rejected
+        transition(hearing, S.rejected)
         hearing.matter_id = None
         hearing.match_confidence = None
         _confirmations.append(
@@ -130,7 +189,6 @@ def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str =
                 "created_at": datetime.utcnow().isoformat(),
             }
         )
-        hearing.updated_at = datetime.utcnow()
         return hearing
 
     if not body.matter_id:
@@ -138,10 +196,9 @@ def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str =
     matter = storage.get_matter(body.matter_id)
     if not matter:
         raise ValueError("matter_not_found")
+    transition(hearing, S.matched)
     hearing.matter_id = body.matter_id
-    hearing.status = HearingStatus.matched
-    cands = _candidates.get(hearing_id) or []
-    for c in cands:
+    for c in _candidates.get(hearing_id) or []:
         if c.matter_id == body.matter_id:
             hearing.match_confidence = c.score
             break
@@ -154,17 +211,23 @@ def confirm_match(hearing_id: UUID, body: HearingConfirmRequest, *, actor: str =
             "created_at": datetime.utcnow().isoformat(),
         }
     )
-    hearing.updated_at = datetime.utcnow()
+    # A recording that arrived before the human confirmed is now usable.
+    if hearing.recording_object_key:
+        transition(hearing, S.ingested)
     return hearing
 
 
 def attach_recording(hearing_id: UUID, *, object_key: str, meta: Optional[dict[str, Any]] = None) -> Hearing:
+    """Attach a stored recording. Only advances to `ingested` once a matter is confirmed."""
     hearing = _hearings.get(hearing_id)
     if not hearing:
         raise KeyError("hearing_not_found")
+    if hearing.status in (S.transcribed, S.reviewed, S.filed):
+        raise InvalidTransition(f"Hearing already {hearing.status.value}; create a new hearing for a new recording")
     hearing.recording_object_key = object_key
     hearing.platform_metadata = {**(hearing.platform_metadata or {}), "recording": meta or {}}
-    hearing.status = HearingStatus.ingested
+    if hearing.status in (S.matched, S.capturing):
+        transition(hearing, S.ingested)
     hearing.updated_at = datetime.utcnow()
     return hearing
 
@@ -173,9 +236,12 @@ def create_session_from_hearing(hearing_id: UUID) -> dict[str, Any]:
     hearing = _hearings.get(hearing_id)
     if not hearing:
         raise KeyError("hearing_not_found")
-    if hearing.status not in (HearingStatus.matched, HearingStatus.ingested, HearingStatus.transcribed):
-        if hearing.matter_id is None:
-            raise ValueError("Confirm a matter match before creating a session")
+    if hearing.matter_id is None:
+        raise ValueError("Confirm a matter match before creating a session")
+    if hearing.session_id:
+        existing = storage.get_session(hearing.session_id)
+        if existing is not None:
+            return {"hearing": hearing, "session": existing}
     session = storage.create_session(
         Session(
             title=hearing.title,
@@ -183,12 +249,37 @@ def create_session_from_hearing(hearing_id: UUID) -> dict[str, Any]:
             language_hint=None,
         )
     )
-    if hearing.matter_id:
-        storage.link_matter_to_session(session.id, hearing.matter_id)
+    storage.link_matter_to_session(session.id, hearing.matter_id)
     hearing.session_id = session.id
-    hearing.status = HearingStatus.capturing if hearing.status == HearingStatus.matched else hearing.status
+    if hearing.status == S.matched:
+        transition(hearing, S.capturing)
     hearing.updated_at = datetime.utcnow()
     return {"hearing": hearing, "session": session}
+
+
+def set_pipeline_state(hearing_id: UUID, **fields: Any) -> Hearing:
+    hearing = _hearings.get(hearing_id)
+    if not hearing:
+        raise KeyError("hearing_not_found")
+    pipeline = dict((hearing.platform_metadata or {}).get("pipeline") or {})
+    pipeline.update(fields)
+    pipeline["updated_at"] = datetime.utcnow().isoformat()
+    hearing.platform_metadata = {**(hearing.platform_metadata or {}), "pipeline": pipeline}
+    hearing.updated_at = datetime.utcnow()
+    return hearing
+
+
+def mark_reviewed(hearing_id: UUID, *, actor: str = "workspace") -> Hearing:
+    """Human sign-off that the transcript and extracted record are correct."""
+    hearing = _hearings.get(hearing_id)
+    if not hearing:
+        raise KeyError("hearing_not_found")
+    transition(hearing, S.reviewed)
+    hearing.platform_metadata = {
+        **(hearing.platform_metadata or {}),
+        "review": {"actor_label": actor, "reviewed_at": datetime.utcnow().isoformat()},
+    }
+    return hearing
 
 
 def pending_confirmations() -> list[Hearing]:

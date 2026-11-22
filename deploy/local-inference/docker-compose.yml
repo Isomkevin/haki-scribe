@@ -10,6 +10,8 @@ services:
     profiles: ["cpu", "gpu"]
     build:
       context: ./faster-whisper
+      args:
+        WITH_DIARIZATION: ${WITH_DIARIZATION:-0}
     image: hakiscribe/faster-whisper:local
     ports:
       - "${LOCAL_WHISPER_PORT:-8001}:8000"
@@ -17,6 +19,8 @@ services:
       WHISPER_MODEL: ${LOCAL_WHISPER_MODEL:-Systran/faster-whisper-large-v3}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      DIARIZATION_ENABLED: ${DIARIZATION_ENABLED:-0}
+      HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - whisper-models:/root/.cache/huggingface
     healthcheck:

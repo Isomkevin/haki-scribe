@@ -130,13 +130,13 @@ async def complete_text(system_prompt: str, user_prompt: str, provider: str | No
     if selected_provider == "nvidia_nim":
         try:
             from app.services import nvidia_nim
-            return await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
+            text = await nvidia_nim.complete(system_prompt, user_prompt, model=model, task=task)
+            _last_completion = {"provider": "NVIDIA NIM", "tier": None, "model": model, "latency_ms": None}
+            return text
         except Exception as exc:  # noqa: BLE001 — NIM must not interrupt generation
-            allow_cloud = ai_mode.get_mode() == "cloud" or (
-                ai_mode.get_mode() == "hybrid" and ai_mode.hybrid_fallback_allowed()
-            )
-            if allow_cloud and ai_mode.is_provider_allowed("draft", "openrouter"):
+            if ai_mode.cloud_fallback_allowed(route_task):
                 logger.warning("NVIDIA NIM generation failed (%s); falling back to OpenRouter GPT-4o", exc)
+                ai_mode.record_fallback(route_task, "nvidia_nim", "openrouter")
             else:
                 logger.warning("NVIDIA NIM generation failed (%s); cloud fallback disabled by AI mode", exc)
                 raise

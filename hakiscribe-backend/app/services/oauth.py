@@ -107,6 +107,9 @@ _CONFIG: dict[str, dict[str, Any]] = {
             "User.Read",
             "Calendars.Read",
             "OnlineMeetings.Read",
+            # Recording/transcript download (Stage B); both need tenant admin consent.
+            "OnlineMeetingTranscript.Read.All",
+            "OnlineMeetingRecording.Read.All",
         ],
         "client_id_env": ("MICROSOFT_CLIENT_ID", "AZURE_CLIENT_ID"),
         "client_secret_env": ("MICROSOFT_CLIENT_SECRET", "AZURE_CLIENT_SECRET"),

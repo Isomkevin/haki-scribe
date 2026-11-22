@@ -91,6 +91,33 @@ def hybrid_fallback_allowed() -> bool:
     return _norm(os.environ.get("HAKISCRIBE_HYBRID_FALLBACK")) == "explicit_allow"
 
 
+def cloud_fallback_allowed(task: TaskName) -> bool:
+    """May a failing private provider fall back to OpenRouter for this task?
+
+    cloud: yes (historical behaviour). hybrid: only with explicit_allow.
+    private / local_only: never.
+    """
+    mode = get_mode()
+    allowed = mode == "cloud" or (mode == "hybrid" and hybrid_fallback_allowed())
+    return allowed and is_provider_allowed(task, "openrouter")
+
+
+def record_fallback(task: str, from_provider: str, to_provider: str) -> None:
+    """Log a cross-provider fallback in ai_runs (ADR-002: no silent swaps)."""
+    try:
+        from app.services import ai_runs
+
+        ai_runs.record(
+            task=task,
+            provider=to_provider,
+            model_id="fallback",
+            latency_ms=0,
+            status=f"fallback_from:{from_provider}",
+        )
+    except Exception:  # noqa: BLE001 — logging must not break the call path
+        pass
+
+
 def set_runtime_config(
     *,
     mode: Optional[str] = None,
