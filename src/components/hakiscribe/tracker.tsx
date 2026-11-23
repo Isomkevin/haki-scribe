@@ -611,6 +611,28 @@ function HearingsPanel() {
     }
   }
 
+  async function onFileToHakiChain(hearing: HearingRecord) {
+    setBusyId(hearing.id);
+    try {
+      const result = await hakiApi.fileHearingToHakiChain(hearing.id);
+      await refreshHearings();
+      toast.success(
+        result.workspace_url
+          ? "Filed to HakiChain WorkSpace — use Open WorkSpace on the hearing row"
+          : "Hearing pack filed to HakiChain",
+      );
+    } catch (error) {
+      toast.error(
+        friendlyErrorMessage(
+          error,
+          "Filing failed — mark reviewed and connect HakiChain under Settings → Connectors.",
+        ),
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onStartCapture(hearing: HearingRecord) {
     setBusyId(hearing.id);
     try {
@@ -723,6 +745,13 @@ function HearingsPanel() {
                 ["ingested", "transcribed"].includes(hearing.status) &&
                 !pipelineActive;
               const canReview = hearing.status === "transcribed";
+              const canFile =
+                Boolean(hearing.matter_id) &&
+                Boolean(hearing.session_id) &&
+                (hearing.status === "reviewed" || hearing.status === "filed");
+              const filingMeta = (hearing.platform_metadata?.hakichain_filing ?? null) as
+                | { workspace_url?: string; ok?: boolean; filed_at?: string }
+                | null;
               const platformFetch = hearing.source === "zoom" || hearing.source === "teams_graph";
               const canLiveCapture =
                 Boolean(hearing.matter_id) &&
@@ -905,6 +934,28 @@ function HearingsPanel() {
                     {canReview && (
                       <Button type="button" size="sm" disabled={rowBusy} onClick={() => void onReview(hearing)}>
                         Mark reviewed
+                      </Button>
+                    )}
+                    {canFile && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={hearing.status === "filed" ? "outline" : "default"}
+                        disabled={rowBusy}
+                        onClick={() => void onFileToHakiChain(hearing)}
+                      >
+                        {rowBusy
+                          ? "Filing…"
+                          : hearing.status === "filed"
+                            ? "Re-file to HakiChain"
+                            : "File to HakiChain"}
+                      </Button>
+                    )}
+                    {filingMeta?.workspace_url && (
+                      <Button type="button" variant="ghost" size="sm" asChild>
+                        <a href={filingMeta.workspace_url} target="_blank" rel="noopener noreferrer">
+                          Open WorkSpace
+                        </a>
                       </Button>
                     )}
                   </div>

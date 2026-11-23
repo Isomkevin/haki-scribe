@@ -418,6 +418,35 @@ async def review_hearing(
     return hearing.model_dump(mode="json")
 
 
+@router.post("/{hearing_id}/file")
+async def file_hearing(
+    hearing_id: UUID,
+    context=Depends(require_organisation),
+    _csrf: None = Depends(require_csrf),
+):
+    """File the reviewed hearing pack into the external HakiChain WorkSpace."""
+    from app.services import hearing_filing
+
+    user, organisation_id = context
+    repo = _repo(organisation_id)
+    repo.get_hearing(hearing_id)
+    try:
+        result = await hearing_filing.file_hearing_pack(
+            hearing_id,
+            actor=user.email or user.id,
+            store=repo,
+        )
+    except hearing_filing.FilingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except InvalidTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    hearing = result.pop("hearing")
+    return {
+        **{k: v for k, v in result.items() if k != "hearing"},
+        "hearing": hearing.model_dump(mode="json") if hasattr(hearing, "model_dump") else hearing,
+    }
+
+
 @router.post("/{hearing_id}/capture/start")
 async def start_capture(
     hearing_id: UUID,

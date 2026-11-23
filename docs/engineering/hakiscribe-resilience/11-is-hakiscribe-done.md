@@ -15,12 +15,12 @@ HakiScribe can now:
 1. Run AI work **in the cloud** (Claude, ChatGPT, Gemini, Nebius, OpenRouter, and other connectors) exactly as before — this is still the default.
 2. Run AI work **only on local machines** (`local_only`) with Whisper for speech and Ollama for text, without calling public AI services.
 3. Run a **hybrid mix** (for example: local speech captions + Claude for drafting) when you set that up deliberately.
-4. Import hearings from Google Calendar, Teams, or Zoom (or add one manually), **match them to a matter with human confirmation**, attach a recording or transcript, process it, show grounded proceedings findings, and mark them reviewed.
+4. Import hearings from Google Calendar, Teams, or Zoom (or add one manually), **match them to a matter with human confirmation**, attach a recording or transcript, process it, show grounded proceedings findings, mark them reviewed, and **file the hearing pack** (matter + transcript + proceedings + next-date reminders) into the external HakiChain WorkSpace when a `hkc_` connector is linked.
 5. Keep hearing jobs durable across backend restarts in demo mode, and has production-org hearing APIs when production auth is enabled.
 
 That is a large, real capability jump from the original cloud-only Action Tray product.
 
-But HakiScribe is **not** “fully done” if that means: every Kenyan virtual-court platform proven live, Kiswahili transcripts good enough for a court record, every hearing automatically filed into the external HakiChain WorkSpace, and multi-firm production security proven on a live Supabase project. Those pieces are either contract-tested only, quality-limited, or still waiting on real credentials and ops setup.
+But HakiScribe is **not** “fully done” if that means: every Kenyan virtual-court platform proven live, Kiswahili transcripts good enough for a court record, and multi-firm production security proven on a live Supabase project. Those pieces are either contract-tested only, quality-limited, or still waiting on real credentials and ops setup.
 
 Think of it as: **the house is built and the lights work in the workshop; the courtroom keys and final inspection for every live court platform are not all finished.**
 
@@ -37,7 +37,7 @@ Think of it as: **the house is built and the lights work in the workshop; the co
 | 5 | Correct matter association | **Done** | Confidence matching + required human confirm; never silent attach. |
 | 6 | Hearing audio capture/ingest | **Partial** | Upload, VTT, and platform fetch work. Live meeting bots exist as official SDK adapters but **were not proven against real meetings.** |
 | 7 | Transcripts + proceedings + review | **Done for English demo** | End-to-end process and review verified. Kiswahili with the small Whisper model is **not court-grade** (measured WER ~0.66). |
-| 8 | HakiChain matter / WorkSpace | **Partial** | Linked into HakiScribe matters/sessions. Automatic filing of hearing packs into the external HakiChain product is **not** a completed end-to-end hearing pipeline. |
+| 8 | HakiChain matter / WorkSpace | **Done (code path)** | Local matter/session link + explicit post-review filing of hearing packs via `POST …/hearings/{id}/file` (demo + production) into HakiChain ingress (`file_matter` / `file_document` / `file_reminder`). Tracker “File to HakiChain”. Still needs a live `hkc_` token against real ingress to prove in production. |
 | 9 | Security / access control | **Partial** | Tenancy, RLS migrations, and production route gates exist and are unit-tested. **Live Supabase production was not proven.** Demo mode is still not for real client data. |
 | 10 | Existing features intact | **Done** | Default remains cloud; frontier connectors were not removed. |
 | 11 | Tests + documented limits | **Done** | Large automated suite passes; limitations are written down in this pack. |
@@ -47,7 +47,7 @@ Think of it as: **the house is built and the lights work in the workshop; the co
 
 ## What is ready to use today
 
-- **Demo / workshop path:** Settings → AI mode (cloud / hybrid / local-only); Tracker → Virtual hearings (import → confirm → upload/fetch → process → proceedings → review → open session).
+- **Demo / workshop path:** Settings → AI mode (cloud / hybrid / local-only); Tracker → Virtual hearings (import → confirm → upload/fetch → process → proceedings → review → **File to HakiChain** → open session). Connect HakiChain under Settings → Connectors first.
 - **Local independence:** With Whisper + Ollama running, `HAKISCRIBE_AI_MODE=local_only` can complete a supported hearing process without public AI calls.
 - **Frontier models:** Still first-class when mode is `cloud` or when hybrid routes point at them.
 - **Developers:** Compose files, migrations 001–004, verification checklists under `verification/`.
@@ -59,7 +59,7 @@ Think of it as: **the house is built and the lights work in the workshop; the co
 3. **Speaker diarization (pyannote)** — code exists; not run with real multi-speaker models here.
 4. **Live meeting bots** — official adapters exist; live join not verified.
 5. **Live multi-tenant production** — apply migrations on real Supabase; configure per-deployment connector org; do not treat demo auth as production.
-6. **Automatic HakiChain product filing of hearing records** — local matter/session link works; full external WorkSpace hearing packet sync is not the completed path.
+6. **Live HakiChain ingress proof** — hearing-pack filing code path is complete (review → file → WorkSpace URL); still needs a real `hkc_` token and live ingress acceptance in the target environment.
 7. **Docker rebuild of the local Whisper image** on every host — optional if using the native Whisper path, but Compose rebuild was not always verified.
 
 ---

@@ -354,6 +354,28 @@ def mark_reviewed(hearing_id: UUID, *, actor: str = "workspace") -> Hearing:
     return hearing
 
 
+def mark_filed(hearing_id: UUID, *, filing: dict[str, Any], actor: str = "workspace") -> Hearing:
+    """Record that the hearing pack was filed into the external HakiChain WorkSpace."""
+    hearing = _hearings.get(hearing_id)
+    if not hearing:
+        raise KeyError("hearing_not_found")
+    if hearing.status == S.reviewed:
+        transition(hearing, S.filed)
+    elif hearing.status != S.filed:
+        raise InvalidTransition(f"Cannot file from {hearing.status.value}; mark reviewed first")
+    hearing.platform_metadata = {
+        **(hearing.platform_metadata or {}),
+        "hakichain_filing": {
+            **{k: v for k, v in filing.items() if k != "hearing"},
+            "actor": actor,
+            "filed_at": datetime.utcnow().isoformat(),
+        },
+    }
+    hearing.updated_at = datetime.utcnow()
+    _save()
+    return hearing
+
+
 def pending_confirmations() -> list[Hearing]:
     return [h for h in _hearings.values() if h.status == HearingStatus.pending_confirm]
 

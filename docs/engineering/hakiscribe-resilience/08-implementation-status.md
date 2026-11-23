@@ -46,7 +46,7 @@ Legend: **Tested** = automated tests pass in this repo · **Contract-tested** = 
 | --- | --- | --- |
 | Backend Stage B verification | done | `pytest` → **88 passed, 2 skipped** |
 | Frontend vitest | done | **22 passed** |
-| Tracker ↔ hearings pipeline | done | Full match → ingest → process → review UI |
+| Tracker ↔ hearings pipeline | done | Full match → ingest → process → review → File to HakiChain UI |
 | AI mode Settings ↔ deep probe | done | `getAiMode(true)` → Ollama generation probe |
 | ADR-012 hearings persistence | **(a)+(b) complete** | Demo snapshot + `/production/hearings` + org webhook |
 
@@ -92,6 +92,7 @@ Review of the Close Open Gaps commit (`5a3a2e9`) found production hearings unusa
 | E5 | Deployment-wide connectors in multi-tenant production | **Fixed, tested** | Calendar/Teams/Zoom import, fetch and live capture used one server-wide account for every org. Now only `HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID` may use them (403 otherwise). Per-org OAuth connections: **not implemented**. |
 | E6 | `/internal/*` without a secret in production | **Fixed, tested** | Fails closed (503). `/internal/process-hearing` now takes only `job_id`; org/workspace/user come from the job row. |
 | E7 | Tracker UI in a browser | **Verified (headless Edge, demo mode)** | Login → add manual hearing → candidates (93%, case ref match) → confirm → VTT upload → process (queued job + poll) → proceedings (rules: 12 Mar 2025, quote-grounded) → reviewed → open session. No console errors. Not run: audio upload (Whisper off), production-mode UI (no Supabase project here). |
+| E8 | External HakiChain WorkSpace hearing-pack filing | **Done (code + unit tests)** | `hearing_filing.py`: after `/review`, `POST …/hearings/{id}/file` (demo + production) runs `file_matter` → transcript + proceedings `file_document` → next-date `file_reminder`, then `mark_filed`. Tracker “File to HakiChain” / “Open WorkSpace”. `tests/test_hearing_filing.py`. Live ingress with a real `hkc_` token: **not run** here. |
 
 ## Frontier / hybrid invariants
 

@@ -322,6 +322,63 @@ class ProductionHearingsRepo:
         }
         return self.upsert(hearing)
 
+    def mark_filed(self, hearing_id: UUID, *, filing: dict[str, Any], actor: str) -> Hearing:
+        hearing = self.get_hearing(hearing_id)
+        if hearing.status == HearingStatus.reviewed:
+            hearing = self.transition(hearing, HearingStatus.filed)
+        elif hearing.status != HearingStatus.filed:
+            raise InvalidTransition(f"Cannot file from {hearing.status.value}; mark reviewed first")
+        hearing.platform_metadata = {
+            **(hearing.platform_metadata or {}),
+            "hakichain_filing": {
+                **{k: v for k, v in filing.items() if k != "hearing"},
+                "actor": actor,
+                "filed_at": datetime.utcnow().isoformat(),
+            },
+        }
+        return self.upsert(hearing)
+
+    def get_matter(self, matter_id: UUID) -> Optional[Any]:
+        from app.models.schemas import Matter
+
+        result = (
+            self.client.table("haki_matters")
+            .select("id, client_name, matter_name")
+            .eq("organisation_id", str(self.organisation_id))
+            .eq("id", str(matter_id))
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        row = result.data[0]
+        return Matter(
+            id=UUID(str(row["id"])),
+            client_name=row["client_name"],
+            matter_name=row["matter_name"],
+        )
+
+    def get_transcript_segments(self, session_id: UUID) -> list[Any]:
+        from app.models.schemas import TranscriptSegment
+
+        result = (
+            self.client.table("haki_session_records")
+            .select("payload")
+            .eq("session_id", str(session_id))
+            .eq("record_type", "segment")
+            .order("created_at")
+            .execute()
+        )
+        segments: list[Any] = []
+        for row in result.data or []:
+            payload = row.get("payload") or {}
+            if isinstance(payload, dict):
+                try:
+                    segments.append(TranscriptSegment(**payload))
+                except Exception:  # noqa: BLE001 — tolerate partial payloads
+                    continue
+        return segments
+
     def pending_confirmations(self) -> list[Hearing]:
         return [h for h in self.list_hearings() if h.status == HearingStatus.pending_confirm]
 

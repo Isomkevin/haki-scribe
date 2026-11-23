@@ -378,3 +378,22 @@ def review_hearing(hearing_id: UUID):
     except hearings_service.InvalidTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return hearing.model_dump(mode="json")
+
+
+@router.post("/{hearing_id}/file")
+async def file_hearing(hearing_id: UUID):
+    """File the reviewed hearing pack into the external HakiChain WorkSpace."""
+    from app.services import hearing_filing
+
+    _require(hearing_id)
+    try:
+        result = await hearing_filing.file_hearing_pack(hearing_id)
+    except hearing_filing.FilingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except hearings_service.InvalidTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    hearing = result.pop("hearing")
+    return {
+        **{k: v for k, v in result.items() if k != "hearing"},
+        "hearing": hearing.model_dump(mode="json") if hasattr(hearing, "model_dump") else hearing,
+    }

@@ -911,6 +911,27 @@ export const hakiApi = {
           headers: productionSessionHeaders(true),
         })
       : request<HearingRecord>(`/hearings/${hearingId}/review`, { method: "POST" }),
+  fileHearingToHakiChain: (hearingId: string) =>
+    productionAuthEnabled
+      ? request<{
+          ok: boolean;
+          workspace_url?: string | null;
+          client_id?: string;
+          steps?: Record<string, unknown>;
+          errors?: string[];
+          hearing: HearingRecord;
+        }>(`/production/hearings/${hearingId}/file`, {
+          method: "POST",
+          headers: productionSessionHeaders(true),
+        })
+      : request<{
+          ok: boolean;
+          workspace_url?: string | null;
+          client_id?: string;
+          steps?: Record<string, unknown>;
+          errors?: string[];
+          hearing: HearingRecord;
+        }>(`/hearings/${hearingId}/file`, { method: "POST" }),
   startHearingCapture: (hearingId: string) =>
     productionAuthEnabled
       ? request<{ hearing: HearingRecord; capture: Record<string, unknown> }>(
