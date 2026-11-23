@@ -23,6 +23,7 @@ All agents (Cursor, Claude Code, reviewers) must:
 | [08-implementation-status.md](./08-implementation-status.md) | Living checklist |
 | [09-testing-and-verification.md](./09-testing-and-verification.md) | Test plan |
 | [10-decisions-and-risks.md](./10-decisions-and-risks.md) | ADRs |
+| [11-is-hakiscribe-done.md](./11-is-hakiscribe-done.md) | Plain-English completion verdict (honest scorecard) |
 | [handoffs/cursor-to-claude.md](./handoffs/cursor-to-claude.md) | Stage A → B handoff |
 | [handoffs/claude-to-cursor.md](./handoffs/claude-to-cursor.md) | Stage B → C handoff (filled by Claude Code) |
 
