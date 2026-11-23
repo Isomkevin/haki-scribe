@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -10,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from pydantic import BaseModel
 
 from app.models.schemas import HearingConfirmRequest, HearingCreate, HearingSource
-from app.services import hearing_pipeline, recording_store
+from app.services import hearing_jobs, hearing_pipeline, recording_store
 from app.services.court_adapters import AdapterError, GoogleCalendarAdapter, TeamsGraphAdapter, ZoomAdapter
 from app.services.hearings import InvalidTransition
 from app.services.production_auth import require_csrf
@@ -32,6 +33,27 @@ class ManualHearingRequest(BaseModel):
 
 def _repo(organisation_id: UUID) -> ProductionHearingsRepo:
     return ProductionHearingsRepo(production_client(), organisation_id)
+
+
+def _require_connector_org(organisation_id: UUID) -> None:
+    """Calendar/Teams/Zoom credentials are one deployment-wide connection
+    (app.services.integrations), not per organisation. Only the organisation
+    named in HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID may use them; anyone else
+    would be reading another firm's calendar or recordings."""
+    configured = (os.environ.get("HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID") or "").strip()
+    if not configured:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Calendar, Teams and Zoom connections are not assigned to an organisation on this server "
+                "(set HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID). Use manual import and upload instead."
+            ),
+        )
+    if configured.lower() != str(organisation_id).lower():
+        raise HTTPException(
+            status_code=403,
+            detail="This server's Calendar, Teams and Zoom connections belong to another organisation. Use manual import and upload.",
+        )
 
 
 def _parse_dt(v: Optional[str]):
@@ -143,6 +165,7 @@ async def import_calendar(
     _csrf: None = Depends(require_csrf),
 ):
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     adapter = GoogleCalendarAdapter()
     if not adapter.configured():
         raise HTTPException(status_code=400, detail="Google Calendar is not connected")
@@ -156,6 +179,7 @@ async def import_teams(
     _csrf: None = Depends(require_csrf),
 ):
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     adapter = TeamsGraphAdapter()
     if not adapter.configured():
         raise HTTPException(
@@ -172,6 +196,7 @@ async def import_zoom(
     _csrf: None = Depends(require_csrf),
 ):
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     adapter = ZoomAdapter()
     if not adapter.configured():
         raise HTTPException(status_code=400, detail="Zoom is not connected")
@@ -284,6 +309,7 @@ async def fetch_recording(
     _csrf: None = Depends(require_csrf),
 ):
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     repo = _repo(organisation_id)
     hearing = repo.get_hearing(hearing_id)
     adapter_cls = _FETCH_ADAPTERS.get(hearing.source.value)
@@ -310,19 +336,6 @@ async def fetch_recording(
     return {"hearing": updated.model_dump(mode="json"), "artifact": {"kind": artifact.kind, **artifact.metadata}}
 
 
-async def _process_in_background(hearing_id: UUID, organisation_id: UUID, workspace_id: UUID, user_id: str, **kwargs: Any) -> None:
-    try:
-        repo = _repo(organisation_id)
-        await hearing_pipeline.process_hearing(
-            hearing_id,
-            store=repo,
-            create_session_kwargs={"workspace_id": workspace_id, "user_id": user_id},
-            **kwargs,
-        )
-    except Exception:  # noqa: BLE001
-        pass
-
-
 @router.post("/{hearing_id}/process")
 async def process_hearing(
     hearing_id: UUID,
@@ -340,33 +353,30 @@ async def process_hearing(
     kwargs = {"use_llm": use_llm, "diarize": diarize, "language_hint": language_hint}
     session_kwargs = {"workspace_id": workspace_id, "user_id": user.id}
     if not wait:
-        if hearing.matter_id is None:
-            raise HTTPException(status_code=409, detail="Confirm the matter link before processing this hearing")
-        from app.services import ai_mode, trigger_client
-
-        repo.set_pipeline_state(hearing_id, state="queued", step="queued", error=None)
-        run_id = None
-        if not ai_mode.prefer_in_process_jobs():
-            run_id = await trigger_client.trigger_enqueue(
-                "process-hearing",
-                {
-                    "hearing_id": str(hearing_id),
-                    "organisation_id": str(organisation_id),
-                    "workspace_id": str(workspace_id),
-                    "user_id": user.id,
-                    **kwargs,
-                },
+        try:
+            hearing_pipeline.check_processable(hearing)
+            job = hearing_jobs.enqueue(
+                hearing_id,
+                kwargs,
+                hearing_store=repo,
+                organisation_id=organisation_id,
+                workspace_id=workspace_id,
+                user_id=user.id,
             )
-        if run_id:
-            repo.set_pipeline_state(hearing_id, job_id=run_id, run_id=run_id, queue="trigger")
-            return {"status": "queued", "run_id": run_id, "hearing": hearing.model_dump(mode="json")}
-        background_tasks.add_task(
-            _process_in_background, hearing_id, organisation_id, workspace_id, user.id, **kwargs
-        )
-        return {"status": "queued", "hearing": hearing.model_dump(mode="json")}
+        except (hearing_pipeline.PipelineError, hearing_jobs.JobConflict) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        run_id = await hearing_jobs.dispatch(job, background_tasks)
+        return {
+            "status": "queued",
+            "job_id": job["id"],
+            "run_id": run_id,
+            "hearing": repo.get_hearing(hearing_id).model_dump(mode="json"),
+        }
 
     from app.services import ai_mode
 
+    if hearing_jobs.default_store().active_for(str(hearing_id)):
+        raise HTTPException(status_code=409, detail="This hearing is already queued or processing")
     try:
         result = await hearing_pipeline.process_hearing(
             hearing_id, store=repo, create_session_kwargs=session_kwargs, **kwargs
@@ -416,6 +426,7 @@ async def start_capture(
 ):
     """Join via official Teams calling-bot or Zoom Meeting SDK when configured."""
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     repo = _repo(organisation_id)
     hearing = repo.get_hearing(hearing_id)
     from app.services.court_adapters import live_capture
@@ -436,6 +447,7 @@ async def stop_capture(
     _csrf: None = Depends(require_csrf),
 ):
     _, organisation_id = context
+    _require_connector_org(organisation_id)
     repo = _repo(organisation_id)
     hearing = repo.get_hearing(hearing_id)
     from app.services.court_adapters import live_capture

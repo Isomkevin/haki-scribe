@@ -48,19 +48,28 @@ from app.routers import (
     production_auth,
     production_chats,
     production_hearings,
+    production_matters,
     production_sessions,
     stream,
 )
-from app.services import demo_library
+from app.services import demo_library, hearing_jobs
 from app.services.production_auth import production_auth_ready, production_configuration_issues
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     task = asyncio.create_task(demo_library.bootstrap_demo_library())
+    worker = None
+    if hearing_jobs.worker_enabled() and (
+        not production_auth_enabled_flag or (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
+    ):
+        worker = hearing_jobs.JobWorker()
+        worker.start()
     try:
         yield
     finally:
+        if worker is not None:
+            await worker.stop()
         task.cancel()
         try:
             await task
@@ -87,6 +96,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if production_auth_enabled_flag:
+    # Mounted before production_sessions: its GET /production/{session_id} would
+    # otherwise capture /production/hearings, /production/matters and
+    # /production/contacts and answer 422 (not a UUID).
+    app.include_router(
+        production_hearings.router,
+        prefix="/production/hearings",
+        tags=["production-hearings"],
+    )
+    app.include_router(production_matters.router, prefix="/production/matters", tags=["production-matters"])
+    app.include_router(production_matters.contacts_router, prefix="/production/contacts", tags=["production-contacts"])
+
 app.include_router(production_auth.router, prefix="/auth/production", tags=["production-auth"])
 app.include_router(organisations.router, prefix="/organisations", tags=["organisations"])
 app.include_router(production_actions.router, prefix="/production", tags=["production-actions"])
@@ -97,13 +118,7 @@ app.include_router(internal.router, prefix="/internal", tags=["internal"])
 # Zoom/Teams webhooks are signed; production resolves tenant via ZOOM_HOST_ORG_MAP.
 app.include_router(court_webhooks.router, prefix="/webhooks", tags=["court-webhooks"])
 
-if production_auth_enabled_flag:
-    app.include_router(
-        production_hearings.router,
-        prefix="/production/hearings",
-        tags=["production-hearings"],
-    )
-else:
+if not production_auth_enabled_flag:
     # Demo-era routers share in-process / snapshot storage. Production never
     # mounts them, so a missed UI migration cannot cross the tenant boundary.
     app.include_router(auth.router, prefix="/auth", tags=["auth"])

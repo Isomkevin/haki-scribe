@@ -51,6 +51,8 @@ _UNCOMMITTED = frozenset({S.scheduled, S.pending_confirm, S.rejected, S.matched}
 _hearings: dict[UUID, Hearing] = {}
 _candidates: dict[UUID, list[HearingMatchCandidate]] = {}
 _confirmations: list[dict[str, Any]] = []
+# Demo-mode /process job rows (hearing_jobs.MemoryJobStore), persisted with hearings.
+_jobs: dict[str, dict[str, Any]] = {}
 
 
 # Pipeline states that only mean something while the worker that set them is alive.
@@ -70,18 +72,36 @@ def snapshot() -> dict[str, Any]:
         "hearings": [h.model_dump(mode="json") for h in _hearings.values()],
         "candidates": {str(k): [c.model_dump(mode="json") for c in v] for k, v in _candidates.items()},
         "confirmations": list(_confirmations),
+        "jobs": [dict(job) for job in _jobs.values()],
     }
 
 
 def restore(payload: Optional[dict[str, Any]]) -> None:
-    """Replace in-memory hearings state from a workspace snapshot (ADR-012 a)."""
+    """Replace in-memory hearings state from a workspace snapshot (ADR-012 a).
+
+    A /process job that was queued or running when the process died is put back
+    on the queue, so the job worker resumes it without anyone re-clicking.
+    """
     reset()
     if not payload:
         return
+    resumed: set[str] = set()
+    for raw in payload.get("jobs", []):
+        job = dict(raw)
+        if job.get("status") in _IN_FLIGHT:
+            # Only one demo process owns this store, so a running job's worker is gone.
+            job.update(status="queued", worker_id=None, lease_expires_at=None)
+            resumed.add(str(job["hearing_id"]))
+        _jobs[str(job["id"])] = job
     for raw in payload.get("hearings", []):
         hearing = Hearing(**raw)
         pipeline = (hearing.platform_metadata or {}).get("pipeline") or {}
-        if pipeline.get("state") in _IN_FLIGHT:
+        if str(hearing.id) in resumed:
+            hearing.platform_metadata = {
+                **hearing.platform_metadata,
+                "pipeline": {**pipeline, "state": "queued", "step": "resuming", "error": None},
+            }
+        elif pipeline.get("state") in _IN_FLIGHT:
             # The background task died with the previous process; let a human re-run it.
             hearing.platform_metadata = {
                 **hearing.platform_metadata,
@@ -97,6 +117,7 @@ def reset() -> None:
     _hearings.clear()
     _candidates.clear()
     _confirmations.clear()
+    _jobs.clear()
 
 
 def transition(hearing: Hearing, new_status: HearingStatus) -> Hearing:

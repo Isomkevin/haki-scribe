@@ -385,16 +385,22 @@ class ProductionHearingsRepo:
         return {"hearing": hearing, "session": session}
 
     def write_transcript_segments(self, session_id: UUID, segments: list[Any], *, user_id: str) -> None:
-        for seg in segments:
-            payload = seg.model_dump(mode="json") if hasattr(seg, "model_dump") else seg
-            self.client.table("haki_session_records").insert(
-                {
-                    "session_id": str(session_id),
-                    "record_type": "segment",
-                    "payload": payload,
-                    "created_by": user_id,
-                }
-            ).execute()
+        # Replace, not append: re-processing or a retried job must not duplicate the transcript.
+        self.client.table("haki_session_records").delete().eq("session_id", str(session_id)).eq(
+            "record_type", "segment"
+        ).execute()
+        rows = [
+            {
+                "session_id": str(session_id),
+                "record_type": "segment",
+                "payload": seg.model_dump(mode="json") if hasattr(seg, "model_dump") else seg,
+                "created_by": user_id,
+            }
+            for seg in segments
+        ]
+        # Batched: a three-hour hearing has thousands of segments.
+        for start in range(0, len(rows), 500):
+            self.client.table("haki_session_records").insert(rows[start : start + 500]).execute()
 
     def mark_session_ready(self, session_id: UUID) -> None:
         self.client.table("haki_sessions").update({"status": SessionStatus.ready.value}).eq(

@@ -16,7 +16,7 @@ import uuid
 from fastapi import APIRouter, Header, HTTPException
 
 from app.models.schemas import DetectedAction, FlaggedMoment, Matter, TranscriptSegment
-from app.services import action_detector, action_executor, hearing_pipeline
+from app.services import action_detector, action_executor, hearing_jobs
 
 router = APIRouter()
 
@@ -24,6 +24,9 @@ INTERNAL_SECRET = os.environ.get("BACKEND_INTERNAL_SECRET", "")
 
 
 def _check_secret(x_internal_secret: str) -> None:
+    if not INTERNAL_SECRET and hearing_jobs.production_mode():
+        # Fail closed: in production these endpoints act on tenant data.
+        raise HTTPException(status_code=503, detail="BACKEND_INTERNAL_SECRET is not configured")
     if INTERNAL_SECRET and x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=401, detail="Invalid internal secret")
 
@@ -58,41 +61,20 @@ async def internal_generate(body: dict, x_internal_secret: str = Header(default=
 
 @router.post("/process-hearing")
 async def internal_process_hearing(body: dict, x_internal_secret: str = Header(default="")):
-    """Durable hearing transcription + proceedings (Trigger process-hearing relay)."""
-    _check_secret(x_internal_secret)
-    hearing_id = uuid.UUID(body["hearing_id"])
-    kwargs = {
-        "use_llm": bool(body.get("use_llm", True)),
-        "diarize": bool(body.get("diarize", False)),
-        "language_hint": body.get("language_hint"),
-    }
-    org_raw = body.get("organisation_id")
-    try:
-        if org_raw:
-            from app.services.production_hearings import ProductionHearingsRepo
-            from app.services.tenant_context import production_client
+    """Trigger.dev process-hearing relay: claim and run one queued hearing job.
 
-            repo = ProductionHearingsRepo(production_client(), uuid.UUID(str(org_raw)))
-            result = await hearing_pipeline.process_hearing(
-                hearing_id,
-                store=repo,
-                create_session_kwargs={
-                    "workspace_id": uuid.UUID(str(body["workspace_id"])),
-                    "user_id": str(body.get("user_id") or "trigger"),
-                },
-                **kwargs,
-            )
-        else:
-            result = await hearing_pipeline.process_hearing(hearing_id, **kwargs)
-    except hearing_pipeline.PipelineError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    hearing = result["hearing"]
-    return {
-        "hearing": hearing.model_dump(mode="json") if hasattr(hearing, "model_dump") else hearing,
-        "session_id": result.get("session_id"),
-        "segments": result.get("segments"),
-        "asr": result.get("asr"),
-        "proceedings": result.get("proceedings"),
-    }
+    The payload names only the job; organisation, workspace and user come from
+    the job row written by the authenticated /process request, so a caller
+    cannot point the pipeline at another organisation's hearing.
+    """
+    _check_secret(x_internal_secret)
+    job_id = body.get("job_id")
+    if not job_id:
+        raise HTTPException(status_code=400, detail="job_id is required")
+    wid = f"trigger:{hearing_jobs.worker_id()}"
+    job = hearing_jobs.claim_job(str(job_id), wid)
+    if job is None:
+        # Already done, or another worker holds it. 200 so Trigger does not retry.
+        return {"status": "not_claimed", "job_id": job_id}
+    status = await hearing_jobs.run_job(job, wid)
+    return {"status": status, "job_id": job_id, "hearing_id": job["hearing_id"]}

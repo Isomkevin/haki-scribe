@@ -99,7 +99,7 @@
 | --- | --- |
 | Zoom `download_token` sent as `Authorization: Bearer` | Matches current Zoom docs as understood; not verified against a live tenant. If Zoom rejects, switch to `?access_token=` query param in `download_preferred`. |
 | Graph `/me/onlineMeetings` is organiser-only; transcript/recording scopes need admin consent | Errors say so explicitly; documented in `.env.example` and adapter capability notes. |
-| `/process` background tasks are in-process | Demo/local_only still use BackgroundTasks (interrupted → error on restart). Cloud/hybrid enqueue Trigger `process-hearing` → `/internal/process-hearing` when `TRIGGER_SECRET_KEY` is set. |
+| `/process` background tasks are in-process | Resolved by ADR-016: durable job rows with leases in every mode. |
 | large-v3 on CPU is slow (realtime factor often > 1) | `.env.example` recommends small/medium for CPU-only boxes. |
 | "Thinking" LLMs (e.g. gemma4) may wrap JSON in prose | `_parse_json_object` extracts the outermost `{…}`; qwen2.5:3b returned parseable JSON in every real proceedings run; detection uses Ollama JSON mode. gemma4 not run (RAM). |
 | No-egress proof is at the httpx layer only | Firewalled container run still owed (09). |
@@ -128,3 +128,19 @@
 | 3B local models are inconsistent at extraction | Rules pass + strict quote grounding + placeholder rejection; human `/review` required before filing |
 | Host Ollama repaired by restoring only the CPU runner files | The next Ollama auto-update reinstalls everything (~5 GB incl. GPU libraries) and will fail the same way unless ≥6 GB is free |
 | Docker image not rebuilt with the new server/requirements | Native venv verified; rebuild when Docker is available |
+
+## ADR-016: Durable hearing job queue with leases
+
+**Context:** `/process` ran as a FastAPI background task (demo, `local_only`, and production whenever Trigger.dev was not configured). A restart lost the job; in production the hearing then stayed `queued` forever and the Tracker refused to re-process it. Trigger.dev cannot be used in `local_only` (cloud orchestration), and its 900 s `maxDuration` is shorter than CPU transcription of a long hearing.
+
+**Decision:** Every `/process` inserts a job row (demo: `hearings._jobs` in the snapshot; production: `haki_hearing_jobs`, migration 004). Each backend process runs a worker (`HAKISCRIBE_JOB_WORKER`, default on) that claims a job with a conditional UPDATE (expected `attempts` + status in the WHERE clause), holds a lease (`HAKISCRIBE_JOB_LEASE_S`, 120 s) and renews it every `HAKISCRIBE_JOB_HEARTBEAT_S` (30 s). An expired lease means the worker died; any worker reclaims the job, up to `HAKISCRIBE_JOB_MAX_ATTEMPTS` (3). Transient errors (ASR/LLM/network) are retried; `PipelineError`/`AiModeError` are not. A partial unique index allows one active job per hearing. A worker that loses its lease cancels its run. The Trigger.dev relay stays as an optional worker for deployments that turn the in-process worker off: it claims the same row by `job_id`.
+
+**Why:** No new infrastructure (Postgres is already the production store), works offline in `local_only`, safe across several backend instances.
+
+**Risks:** A synchronous step that blocks the event loop past the lease (supabase-py calls are sync) could let another worker take the job; the heartbeat then cancels the first run. Multi-instance production also needs recordings in S3 (`object_store`), because local recording files are per machine.
+
+## ADR-017: Production matters/contacts; deployment-wide connectors bound to one organisation
+
+**Decision:** Add `/production/matters` and `/production/contacts` over `haki_matters` / `haki_contacts`, with the same visibility as RLS (matter members + owners/admins). Calendar/Teams/Zoom credentials remain one per server (`app.services.integrations`), so in production only `HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID` may use them; other organisations use manual import + upload.
+
+**Open:** per-organisation OAuth connections (per-org token storage, production integrations router) are not implemented.

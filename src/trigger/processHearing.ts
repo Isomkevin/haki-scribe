@@ -1,17 +1,15 @@
 import { task } from "@trigger.dev/sdk";
 
 // Thin relay: hearing ASR + proceedings live in the Python backend
-// (`hearing_pipeline.process_hearing`), called via /internal/process-hearing.
-// Durable retries survive worker restart; local_only never enqueues this task.
+// (`hearing_jobs.run_job`), called via /internal/process-hearing. The backend
+// only uses this when its own job worker is off (HAKISCRIBE_JOB_WORKER=false);
+// the job row is the source of truth, so a retry after the backend already
+// claimed or finished the job returns `not_claimed` instead of running twice.
+// local_only never enqueues this task.
 
 type ProcessHearingPayload = {
+  job_id: string;
   hearing_id: string;
-  organisation_id?: string;
-  workspace_id?: string;
-  user_id?: string;
-  use_llm?: boolean;
-  diarize?: boolean;
-  language_hint?: string | null;
 };
 
 export const processHearing = task({

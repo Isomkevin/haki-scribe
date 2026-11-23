@@ -104,6 +104,16 @@ async def _segments_from_audio(data: bytes, filename: str, language_hint: Option
     )
 
 
+def check_processable(hearing: Any) -> None:
+    """Raise PipelineError unless the hearing can be transcribed now."""
+    if hearing.matter_id is None:
+        raise PipelineError("Confirm the matter link before processing this hearing")
+    if not hearing.recording_object_key:
+        raise PipelineError("No recording or transcript attached to this hearing")
+    if hearing.status not in (HearingStatus.ingested, HearingStatus.transcribed):
+        raise PipelineError(f"Hearing is {hearing.status.value}; expected ingested or transcribed")
+
+
 async def process_hearing(
     hearing_id: UUID,
     *,
@@ -117,12 +127,7 @@ async def process_hearing(
     hearing = store.get_hearing(hearing_id)
     if hearing is None:
         raise KeyError("hearing_not_found")
-    if hearing.matter_id is None:
-        raise PipelineError("Confirm the matter link before processing this hearing")
-    if not hearing.recording_object_key:
-        raise PipelineError("No recording or transcript attached to this hearing")
-    if hearing.status not in (HearingStatus.ingested, HearingStatus.transcribed):
-        raise PipelineError(f"Hearing is {hearing.status.value}; expected ingested or transcribed")
+    check_processable(hearing)
 
     store.set_pipeline_state(hearing_id, state="running", step="load", error=None)
     try:
@@ -166,17 +171,18 @@ async def process_hearing(
                 storage.update_session_fields(session.id, detected_language=asr_meta["language"])
             storage.update_session_status(session.id, SessionStatus.ready)
             transcript_for_intel = storage.get_transcript(session.id)
+        # Re-read before every save: the session step stored session_id on the row,
+        # and a stale copy written back would drop it (production repo rows are copies).
+        hearing = store.get_hearing(hearing_id)
         if hearing.status == HearingStatus.ingested:
             store.transition(hearing, HearingStatus.transcribed)
 
         store.set_pipeline_state(hearing_id, step="proceedings")
         record = await proceedings_intel.extract(transcript_for_intel, use_llm=use_llm)
+        hearing = store.get_hearing(hearing_id)
         hearing.platform_metadata = {**(hearing.platform_metadata or {}), "asr": asr_meta, "proceedings": record}
-        # Persist proceedings onto the hearing row / snapshot.
         if hasattr(store, "upsert"):
-            store.upsert(hearing)
-        elif hasattr(store, "set_pipeline_state"):
-            pass
+            store.upsert(hearing)  # demo objects are shared; set_pipeline_state below saves them
         store.set_pipeline_state(hearing_id, state="done", step="complete", segments=len(segments))
         hearing = store.get_hearing(hearing_id) or hearing
     except Exception as exc:

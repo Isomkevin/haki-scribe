@@ -1,5 +1,21 @@
 # Handoff: Claude Code → Cursor
 
+## Production hearings + job queue update (2026-11-23, on top of `5a3a2e9`) — uncommitted
+
+**1. Completed.** See 08 rows E1–E7 and ADR-016/017. Found and fixed in `5a3a2e9`: `GET /production/hearings` unreachable (route order); no production matters API, so nothing could be confirmed; in-process jobs stuck `queued` after a restart; re-process duplicated production sessions/segments; deployment-wide connectors usable by every org; `/internal/*` open in production without a secret. Added a durable lease-based job queue (all modes), production matters/contacts, migration 004. Tracker clicked through in headless Edge.
+
+**2. Files.** New: `app/services/{hearing_jobs,production_matters}.py`, `app/routers/production_matters.py`, `migrations/004_hearing_jobs_contacts.sql`, `tests/{fake_supabase,test_hearing_jobs,test_production_matters}.py`. Modified: `app/main.py`, `app/routers/{hearings,internal,production_hearings}.py`, `app/services/{hearing_pipeline,hearings,production_hearings}.py`, `.env.example`, `migrations/README.md`, `src/lib/hakiscribe.ts`, `src/components/hakiscribe/tracker.tsx`, `src/trigger/processHearing.ts`, docs 08/09/10.
+
+**3. Migrations.** Apply `004_hearing_jobs_contacts.sql` after 003, before enabling production auth.
+
+**4. Interface changes.** Queued `/process` returns `job_id` (+ `run_id` only when Trigger is used) and 409s up front if the hearing is not processable or already has an active job. `/internal/process-hearing` body is `{job_id}` only. New env: `HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID`, `HAKISCRIBE_JOB_{WORKER,LEASE_S,HEARTBEAT_S,MAX_ATTEMPTS,POLL_S}`. `BACKEND_INTERNAL_SECRET` is required in production.
+
+**5. Tests.** Backend 133 passed / 2 skipped; vitest 22; tsc only the 2 pre-existing errors; migrations 001–004 on PGlite; real restart resume; browser flow.
+
+**6. Known issues / outstanding.** No live Supabase run. Per-org OAuth connections not implemented (ADR-017). Multi-instance production needs S3 for recordings. Redeploy the Trigger task (payload is now `{job_id, hearing_id}`) if Trigger is used.
+
+---
+
 ## Stage D update (2026-11-23, on top of `2cf89e0`) — uncommitted working-tree changes
 
 **1. Completed.** The real local stack now works on the reference host and is verified end to end. Ollama was repaired (CPU runner restored) and runs `qwen2.5:3b`; faster-whisper `small` runs in a native venv. Hearings persistence (ADR-012 option a) is done. Fixed the defects that only real runs exposed: PyAV pin, Whisper prompt echo and language safeguards (ADR-013), Ollama timeout and JSON mode (ADR-014), proceedings placeholder and prefix grounding. Tracker fixes: process gating, queue + poll, reject, ambiguity warning, matter names, pipeline state, EN/SW selector.

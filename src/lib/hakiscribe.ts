@@ -702,15 +702,30 @@ export const hakiApi = {
       ? request<ActionResult>(`/production/${id}/ask`, { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
       : request<ActionResult>(`/sessions/${id}/ask`, { method: "POST", body: JSON.stringify(body) }),
   listModels: () => request<ModelCatalogue>("/models"),
-  listMatters: () => request<Matter[]>("/matters"),
+  listMatters: () =>
+    productionAuthEnabled
+      ? request<Matter[]>("/production/matters", { headers: productionSessionHeaders() })
+      : request<Matter[]>("/matters"),
   createMatter: (body: { client_name: string; matter_name: string; session_id?: string }) =>
-    request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),
-  listContacts: () => request<Contact[]>("/contacts"),
+    productionAuthEnabled
+      ? request<Matter>("/production/matters", { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),
+  listContacts: () =>
+    productionAuthEnabled
+      ? request<Contact[]>("/production/contacts", { headers: productionSessionHeaders() })
+      : request<Contact[]>("/contacts"),
   createContact: (body: { name: string; updates?: Record<string, unknown>; matter_id?: string; session_id?: string }) =>
-    request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
-  getContact: (id: string) => request<Contact>(`/contacts/${id}`),
+    productionAuthEnabled
+      ? request<Contact>("/production/contacts", { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<Contact>("/contacts", { method: "POST", body: JSON.stringify(body) }),
+  getContact: (id: string) =>
+    productionAuthEnabled
+      ? request<Contact>(`/production/contacts/${id}`, { headers: productionSessionHeaders() })
+      : request<Contact>(`/contacts/${id}`),
   updateContact: (id: string, body: ContactUpdate) =>
-    request<Contact>(`/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    productionAuthEnabled
+      ? request<Contact>(`/production/contacts/${id}`, { method: "PATCH", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
+      : request<Contact>(`/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   health: () => request<HealthStatus>("/health"),
   usage: () => request<LlmUsageSummary>("/usage"),
   listIntegrations: () => request<Integration[]>("/integrations"),
@@ -875,7 +890,7 @@ export const hakiApi = {
     const path = productionAuthEnabled
       ? `/production/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`
       : `/hearings/${hearingId}/process${qs ? `?${qs}` : ""}`;
-    return request<{ status?: string; run_id?: string; hearing: HearingRecord; proceedings?: HearingProceedings["proceedings"] }>(
+    return request<{ status?: string; job_id?: string; run_id?: string | null; hearing: HearingRecord; proceedings?: HearingProceedings["proceedings"] }>(
       path,
       {
         method: "POST",

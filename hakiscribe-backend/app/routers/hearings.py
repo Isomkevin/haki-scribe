@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Uplo
 from pydantic import BaseModel
 
 from app.models.schemas import HearingConfirmRequest, HearingCreate, HearingSource
-from app.services import hearing_pipeline, recording_store
+from app.services import hearing_jobs, hearing_pipeline, recording_store
 from app.services import hearings as hearings_service
 from app.services.court_adapters import AdapterError, GoogleCalendarAdapter, TeamsGraphAdapter, ZoomAdapter
 
@@ -290,13 +290,6 @@ async def fetch_recording(hearing_id: UUID, prefer: str = Query("audio", pattern
     return {"hearing": updated.model_dump(mode="json"), "artifact": {"kind": artifact.kind, **artifact.metadata}}
 
 
-async def _process_in_background(hearing_id: UUID, **kwargs: Any) -> None:
-    try:
-        await hearing_pipeline.process_hearing(hearing_id, **kwargs)
-    except Exception:  # noqa: BLE001 — error is recorded in platform_metadata.pipeline
-        pass
-
-
 @router.post("/{hearing_id}/process")
 async def process_hearing(
     hearing_id: UUID,
@@ -310,26 +303,22 @@ async def process_hearing(
     hearing = _require(hearing_id)
     kwargs = {"use_llm": use_llm, "diarize": diarize, "language_hint": language_hint}
     if not wait:
-        if hearing.matter_id is None:
-            raise HTTPException(status_code=409, detail="Confirm the matter link before processing this hearing")
-        from app.services import ai_mode, trigger_client
-
-        hearings_service.set_pipeline_state(hearing_id, state="queued", step="queued", error=None)
-        run_id = None
-        if not ai_mode.prefer_in_process_jobs():
-            run_id = await trigger_client.trigger_enqueue(
-                "process-hearing",
-                {"hearing_id": str(hearing_id), **kwargs},
-            )
-        if run_id:
-            hearings_service.set_pipeline_state(
-                hearing_id, job_id=run_id, run_id=run_id, queue="trigger"
-            )
-            return {"status": "queued", "run_id": run_id, "hearing": hearing.model_dump(mode="json")}
-        background_tasks.add_task(_process_in_background, hearing_id, **kwargs)
-        return {"status": "queued", "hearing": hearing.model_dump(mode="json")}
+        try:
+            hearing_pipeline.check_processable(hearing)
+            job = hearing_jobs.enqueue(hearing_id, kwargs)
+        except (hearing_pipeline.PipelineError, hearing_jobs.JobConflict) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        run_id = await hearing_jobs.dispatch(job, background_tasks)
+        return {
+            "status": "queued",
+            "job_id": job["id"],
+            "run_id": run_id,
+            "hearing": hearings_service.get_hearing(hearing_id).model_dump(mode="json"),
+        }
     from app.services import ai_mode
 
+    if hearing_jobs.default_store().active_for(str(hearing_id)):
+        raise HTTPException(status_code=409, detail="This hearing is already queued or processing")
     try:
         result = await hearing_pipeline.process_hearing(hearing_id, **kwargs)
     except hearing_pipeline.PipelineError as exc:

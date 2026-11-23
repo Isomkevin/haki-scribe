@@ -455,6 +455,8 @@ function HearingsPanel() {
   async function refreshHearings() {
     await queryClient.invalidateQueries({ queryKey: ["hearings"] });
     await queryClient.invalidateQueries({ queryKey: ["hearings-pending"] });
+    // Confirming or processing a hearing creates/fills its session in the list below.
+    await queryClient.invalidateQueries({ queryKey: ["sessions"] });
   }
 
   async function importManual() {

@@ -1,5 +1,19 @@
 # 09 — Testing and verification
 
+## Results after production hearings + job queue pass (2026-11-23)
+
+| Suite | Command | Result |
+| --- | --- | --- |
+| Backend, all | `cd hakiscribe-backend && python -m pytest -q` | **133 passed, 2 skipped** |
+| Job queue | `pytest tests/test_hearing_jobs.py` | 18 passed: enqueue conflict, retry, no retry on `PipelineError`, lease-expiry takeover, give up after 3 dead workers, restart resume, lost-lease cancel, demo route, Trigger relay claim, racing claim, production pipeline through the queue (no duplicate session/segments) |
+| Production matters/contacts/routing | `pytest tests/test_production_matters.py` | 7 passed: membership visibility, cross-org isolation, session linking, connector org gate, route order (503 vs 422 discriminates) |
+| Migrations on real Postgres | PGlite 0.5.17 (Postgres 17), auth schema stubbed, apply 001→004 | Applied; second active job rejected by `haki_hearing_jobs_one_active`; claim UPDATE: 1 row for the first worker, 0 for the second; reclaim blocked while the lease is valid, allowed after; RLS on |
+| Frontend | `npx vitest run` / `npx tsc --noEmit` | 22 passed / only the 2 pre-existing errors |
+| Tracker click-through | headless Edge via `playwright-core`; backend demo + `local_only` (Ollama deliberately unreachable), temp store | Full flow passed (08 row E7); LLM extraction showed "LLM error" as designed, rules item grounded |
+| Restart resume (real processes) | stop backend, mark a job `running` in the store, start backend | Worker resumed it: attempt 2, `done`, hearing `transcribed` |
+
+Not verified: a live Supabase project (production routes ran only against the fake client and PGlite), multi-server workers against real Postgres concurrency, the Trigger relay against Trigger.dev cloud.
+
 ## Results at end of Stage D (2026-11-23, Windows 11, i5-8250U, 16 GB, no GPU)
 
 | Suite | Command | Result |

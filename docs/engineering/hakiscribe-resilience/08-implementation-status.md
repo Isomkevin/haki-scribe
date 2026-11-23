@@ -74,10 +74,24 @@ Host unblocked: disk freed to 4.4 GB; Ollama's missing CPU runner (`lib/ollama`,
 | --- | --- | --- |
 | ADR-012 (a) audit | **Done** | Persistence paths + docs |
 | ADR-012 (b) production hearings | **Done** | `/production/hearings`, RLS-scoped repo, webhook tenancy |
-| Durable `/process` queue | **Done** | Trigger `process-hearing` + `/internal/process-hearing`; `local_only` stays in-process |
+| Durable `/process` queue | **Superseded by E3** | Trigger relay alone left demo/local_only in-process, and production in-process jobs stuck `queued` after a restart |
 | Live bots (2C) | **Done (contract)** | ADR-015; 1B live join pending credentials |
 | Verification 1A | **Done** | `verification/` harnesses + scripts |
 | Verification 1B | **Blocked** | No Zoom/Teams/Kiswahili credentials provided this run — not marked verified |
+
+## Production hearings, job queue, Tracker click-through (Claude Code, 2026-11-23)
+
+Review of the Close Open Gaps commit (`5a3a2e9`) found production hearings unusable end to end and the `/process` queue not durable. Fixed:
+
+| # | Item | Status | Evidence / gap |
+| --- | --- | --- | --- |
+| E1 | `GET /production/hearings` reachable | **Fixed, tested** | Was captured by `production_sessions` `GET /production/{session_id}` → 422 (routers mounted in the wrong order). Hearings/matters/contacts routers now mount first. `test_list_routes_are_not_captured_by_session_routes`. |
+| E2 | Production matters + contacts | **Done, tested (fake Supabase)** | `/production/matters`, `/production/contacts` (`production_matters.py`). Without them no org had matters, so no hearing could ever be confirmed. Visibility follows the `haki_matters` RLS policy (matter members + owners/admins); creator gets a matter membership; cross-org ids → 404. Frontend `listMatters/createMatter/*Contact` switch on `VITE_PRODUCTION_AUTH`. |
+| E3 | Durable `/process` job queue (ADR-016) | **Done, tested + real-process verified (demo)** | `hearing_jobs.py`: job rows (demo snapshot / `haki_hearing_jobs`), lease + heartbeat, reclaim after a dead worker, retry transient failures (max 3), no retry for `PipelineError`, one active job per hearing. Real restart: a job left `running` by a killed backend resumed automatically (attempt 2 → done). Production claim SQL verified on Postgres 17 (PGlite); no live Supabase run. |
+| E4 | Production re-process duplicated sessions/segments | **Fixed, tested** | Pipeline saved a stale hearing copy, wiping `session_id`; segments were appended on every run. Now re-reads before saves and replaces segments (batched inserts). |
+| E5 | Deployment-wide connectors in multi-tenant production | **Fixed, tested** | Calendar/Teams/Zoom import, fetch and live capture used one server-wide account for every org. Now only `HAKISCRIBE_INTEGRATIONS_ORGANISATION_ID` may use them (403 otherwise). Per-org OAuth connections: **not implemented**. |
+| E6 | `/internal/*` without a secret in production | **Fixed, tested** | Fails closed (503). `/internal/process-hearing` now takes only `job_id`; org/workspace/user come from the job row. |
+| E7 | Tracker UI in a browser | **Verified (headless Edge, demo mode)** | Login → add manual hearing → candidates (93%, case ref match) → confirm → VTT upload → process (queued job + poll) → proceedings (rules: 12 Mar 2025, quote-grounded) → reviewed → open session. No console errors. Not run: audio upload (Whisper off), production-mode UI (no Supabase project here). |
 
 ## Frontier / hybrid invariants
 
