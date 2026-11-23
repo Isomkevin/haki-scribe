@@ -24,8 +24,11 @@ All agents (Cursor, Claude Code, reviewers) must:
 | [09-testing-and-verification.md](./09-testing-and-verification.md) | Test plan |
 | [10-decisions-and-risks.md](./10-decisions-and-risks.md) | ADRs |
 | [11-is-hakiscribe-done.md](./11-is-hakiscribe-done.md) | Plain-English completion verdict (honest scorecard) |
+| [12-hakichain-integration-contracts.md](./12-hakichain-integration-contracts.md) | Bidirectional HakiChain ingress contracts (`2026-11`) |
+| [fixtures/hakichain-ingress-2026-11.json](./fixtures/hakichain-ingress-2026-11.json) | Shared ingress request/response fixtures |
 | [handoffs/cursor-to-claude.md](./handoffs/cursor-to-claude.md) | Stage A → B handoff |
 | [handoffs/claude-to-cursor.md](./handoffs/claude-to-cursor.md) | Stage B → C handoff (filled by Claude Code) |
+| [handoffs/cursor-to-claude-hakichain-alignment.md](./handoffs/cursor-to-claude-hakichain-alignment.md) | Phase-1 HakiChain alignment handoff |
 
 ## Modes at a glance
 

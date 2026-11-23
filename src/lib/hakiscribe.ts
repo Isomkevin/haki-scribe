@@ -78,7 +78,19 @@ export interface Matter {
   matter_name: string;
   session_ids?: string[];
   contact_ids?: string[];
+  hakichain_client_id?: string | null;
+  hakichain_workspace_id?: string | null;
+  hakichain_linked_at?: string | null;
   created_at: string;
+}
+
+export interface HakiChainRemoteMatter {
+  workspace_id: string;
+  client_id: string;
+  name: string;
+  client: string;
+  matter_details?: Record<string, unknown>;
+  role?: string;
 }
 
 export interface Contact {
@@ -710,6 +722,22 @@ export const hakiApi = {
     productionAuthEnabled
       ? request<Matter>("/production/matters", { method: "POST", headers: productionSessionHeaders(true), body: JSON.stringify(body) })
       : request<Matter>("/matters", { method: "POST", body: JSON.stringify(body) }),
+  listHakiChainMatters: () =>
+    request<{ ok: boolean; matters: HakiChainRemoteMatter[] }>("/integrations/hakichain/matters"),
+  linkHakiChainMatter: (body: {
+    scribe_matter_id: string;
+    workspace_id?: string;
+    client_id?: string;
+  }) =>
+    request<{
+      ok: boolean;
+      matter: Matter | null;
+      workspace_url?: string | null;
+      hakichain?: Record<string, unknown>;
+    }>("/integrations/hakichain/link-matter", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listContacts: () =>
     productionAuthEnabled
       ? request<Contact[]>("/production/contacts", { headers: productionSessionHeaders() })

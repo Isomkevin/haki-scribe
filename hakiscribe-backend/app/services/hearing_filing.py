@@ -1,10 +1,10 @@
 """File a reviewed hearing pack into the lawyer's HakiChain WorkSpace.
 
-Uses the existing hakiscribe-ingress actions only:
-  file_matter → file_document (transcript) → file_document (proceedings) → file_reminder (next dates)
-
-Never presents AI summaries as authenticated court orders. Filing is explicit
-(after human /review) and fails clearly when HakiChain is not connected.
+Phase 1 (contract 2026-11):
+  Prefer link_matter → upsert_hearing → finalize_transcript against an existing
+  HakiChain workspace (no inventing disconnected hs-… matters when linked).
+  Fall back to legacy file_matter / file_document when no HC FK is present.
+  Next dates still use file_reminder.
 """
 
 from __future__ import annotations
@@ -41,10 +41,24 @@ def _transcript_segments(session_id: UUID, store: Any) -> list[Any]:
     return list(storage.get_transcript(session_id) or [])
 
 
+def _segments_payload(session_id: UUID, store: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for seg in _transcript_segments(session_id, store):
+        out.append(
+            {
+                "start_ms": getattr(seg, "start_ms", None),
+                "end_ms": getattr(seg, "end_ms", None),
+                "speaker": getattr(seg, "speaker", None),
+                "text": getattr(seg, "text", "") or "",
+                "redacted": bool(getattr(seg, "redacted", False)),
+            }
+        )
+    return out
+
+
 def _format_transcript(session_id: UUID, store: Any) -> str:
-    segments = _transcript_segments(session_id, store)
     lines: list[str] = []
-    for seg in segments:
+    for seg in _transcript_segments(session_id, store):
         if getattr(seg, "redacted", False):
             continue
         stamp = ""
@@ -109,7 +123,6 @@ def _format_proceedings(hearing: Hearing) -> str:
 
 
 def _next_dates(hearing: Hearing) -> list[dict[str, str]]:
-    """Collect next-date style items suitable for HakiChain reminders."""
     meta = hearing.platform_metadata or {}
     proc = meta.get("proceedings") or {}
     rules = list(proc.get("rules") or [])
@@ -133,17 +146,16 @@ def _next_dates(hearing: Hearing) -> list[dict[str, str]]:
     return out
 
 
+def _proceedings_dict(hearing: Hearing) -> dict[str, Any]:
+    return dict((hearing.platform_metadata or {}).get("proceedings") or {})
+
+
 async def file_hearing_pack(
     hearing_id: UUID,
     *,
     actor: str = "workspace",
     store: Any = None,
 ) -> dict[str, Any]:
-    """File matter + transcript + proceedings + date reminders to HakiChain.
-
-    ``store`` may be the demo ``hearings`` module API or a production repo
-    exposing get_hearing / mark_filed (and optionally get_matter / get_transcript_segments).
-    """
     store = store or hearings_service
     hearing = store.get_hearing(hearing_id)
     if hearing is None:
@@ -160,77 +172,169 @@ async def file_hearing_pack(
 
     matter = _matter_for(hearing, store)
     session_id = str(hearing.session_id)
-    client_id_hint = f"hs-{matter.id}"
     results: dict[str, Any] = {
         "hearing_id": str(hearing_id),
         "filed_at": datetime.utcnow().isoformat(),
         "actor": actor,
+        "contract_version": hakichain_client.CONTRACT_VERSION,
         "steps": {},
         "errors": [],
     }
 
-    matter_filed = await hakichain_client.file_matter(
-        action_key=f"hearing-matter:{hearing_id}",
-        scribe_matter_id=str(matter.id),
-        matter_name=matter.matter_name,
-        client_name=matter.client_name,
-        session_id=session_id,
-    )
-    if matter_filed:
-        results["steps"]["matter"] = {
-            "ok": True,
-            "client_id": matter_filed.get("client_id"),
-            "workspace_url": matter_filed.get("workspace_url")
-            or hakichain_client.workspace_url(matter_filed.get("client_id")),
-        }
-        client_id_hint = str(matter_filed.get("client_id") or client_id_hint)
-    else:
-        results["errors"].append(f"file_matter: {hakichain_client.last_error() or 'failed'}")
-        results["steps"]["matter"] = {"ok": False, "error": hakichain_client.last_error()}
+    hc_workspace_id = getattr(matter, "hakichain_workspace_id", None)
+    hc_client_id = getattr(matter, "hakichain_client_id", None)
+    client_id_hint = hc_client_id or f"hs-{matter.id}"
 
-    transcript_text = _format_transcript(hearing.session_id, store)
-    transcript_filed = await hakichain_client.file_document(
-        action_key=f"hearing-transcript:{hearing_id}",
-        session_id=session_id,
-        title=f"Hearing transcript — {hearing.title}",
-        document_text=transcript_text,
-        client_id=client_id_hint,
-        matter_name=matter.matter_name,
-        client_name=matter.client_name,
-    )
-    if transcript_filed:
-        results["steps"]["transcript"] = {
-            "ok": True,
-            "workspace_url": transcript_filed.get("workspace_url")
-            or hakichain_client.workspace_url(transcript_filed.get("client_id")),
-            "client_id": transcript_filed.get("client_id"),
-        }
-        client_id_hint = str(transcript_filed.get("client_id") or client_id_hint)
+    # Prefer binding to an existing HakiChain workspace when FKs are present.
+    if hc_workspace_id or hc_client_id:
+        linked = await hakichain_client.link_matter(
+            action_key=f"link:{matter.id}",
+            workspace_id=hc_workspace_id,
+            client_id=hc_client_id,
+            scribe_matter_id=str(matter.id),
+        )
+        if linked:
+            results["steps"]["link_matter"] = {
+                "ok": True,
+                "client_id": linked.get("client_id"),
+                "workspace_id": linked.get("workspace_id"),
+                "workspace_url": linked.get("workspace_url")
+                or hakichain_client.workspace_url(linked.get("client_id")),
+                "reused": linked.get("reused"),
+            }
+            client_id_hint = str(linked.get("client_id") or client_id_hint)
+            hc_workspace_id = str(linked.get("workspace_id") or hc_workspace_id or "")
+            if hasattr(storage, "link_hakichain_matter") and matter.id:
+                storage.link_hakichain_matter(
+                    matter.id,
+                    hakichain_client_id=client_id_hint,
+                    hakichain_workspace_id=hc_workspace_id,
+                )
+        else:
+            results["errors"].append(f"link_matter: {hakichain_client.last_error() or 'failed'}")
+            results["steps"]["link_matter"] = {"ok": False, "error": hakichain_client.last_error()}
     else:
-        results["errors"].append(f"file_document(transcript): {hakichain_client.last_error() or 'failed'}")
-        results["steps"]["transcript"] = {"ok": False, "error": hakichain_client.last_error()}
+        # Legacy invent path when the local matter was never linked to HakiChain.
+        matter_filed = await hakichain_client.file_matter(
+            action_key=f"hearing-matter:{hearing_id}",
+            scribe_matter_id=str(matter.id),
+            matter_name=matter.matter_name,
+            client_name=matter.client_name,
+            session_id=session_id,
+        )
+        if matter_filed:
+            results["steps"]["matter"] = {
+                "ok": True,
+                "client_id": matter_filed.get("client_id"),
+                "workspace_url": matter_filed.get("workspace_url")
+                or hakichain_client.workspace_url(matter_filed.get("client_id")),
+            }
+            client_id_hint = str(matter_filed.get("client_id") or client_id_hint)
+            hc_workspace_id = str(matter_filed.get("workspace_id") or "")
+        else:
+            results["errors"].append(f"file_matter: {hakichain_client.last_error() or 'failed'}")
+            results["steps"]["matter"] = {"ok": False, "error": hakichain_client.last_error()}
 
-    proceedings_text = _format_proceedings(hearing)
-    proceedings_filed = await hakichain_client.file_document(
-        action_key=f"hearing-proceedings:{hearing_id}",
-        session_id=session_id,
-        title=f"Hearing proceedings pack — {hearing.title}",
-        document_text=proceedings_text,
+    # First-class hearing row on HakiChain.
+    upserted = await hakichain_client.upsert_hearing(
+        scribe_hearing_id=str(hearing_id),
+        workspace_id=hc_workspace_id,
         client_id=client_id_hint,
-        matter_name=matter.matter_name,
-        client_name=matter.client_name,
+        title=hearing.title,
+        status="filed" if hearing.status == HearingStatus.filed else "reviewed",
+        case_reference=hearing.case_reference,
+        starts_at=hearing.starts_at.isoformat() if hearing.starts_at else None,
+        meeting_url=hearing.meeting_url,
+        metadata={"source": getattr(hearing.source, "value", str(hearing.source))},
     )
-    if proceedings_filed:
-        results["steps"]["proceedings"] = {
+    if upserted:
+        results["steps"]["upsert_hearing"] = {
             "ok": True,
-            "workspace_url": proceedings_filed.get("workspace_url")
-            or hakichain_client.workspace_url(proceedings_filed.get("client_id")),
-            "client_id": proceedings_filed.get("client_id"),
+            "hearing_id": upserted.get("hearing_id"),
+            "workspace_url": upserted.get("workspace_url")
+            or hakichain_client.workspace_url(upserted.get("client_id")),
         }
-        client_id_hint = str(proceedings_filed.get("client_id") or client_id_hint)
+        client_id_hint = str(upserted.get("client_id") or client_id_hint)
+        hc_workspace_id = str(upserted.get("workspace_id") or hc_workspace_id or "")
     else:
-        results["errors"].append(f"file_document(proceedings): {hakichain_client.last_error() or 'failed'}")
-        results["steps"]["proceedings"] = {"ok": False, "error": hakichain_client.last_error()}
+        # Older ingress without upsert_hearing — continue with document path.
+        err = hakichain_client.last_error() or "upsert_hearing unavailable"
+        results["steps"]["upsert_hearing"] = {"ok": False, "error": err}
+        results["errors"].append(f"upsert_hearing: {err}")
+
+    finalized = await hakichain_client.finalize_transcript(
+        action_key=f"hearing-finalize:{hearing_id}",
+        scribe_hearing_id=str(hearing_id),
+        workspace_id=hc_workspace_id,
+        client_id=client_id_hint,
+        segments=_segments_payload(hearing.session_id, store),
+        proceedings=_proceedings_dict(hearing),
+        title=hearing.title,
+    )
+    if finalized:
+        results["steps"]["finalize_transcript"] = {
+            "ok": True,
+            "hearing_id": finalized.get("hearing_id"),
+            "transcript_doc_id": finalized.get("transcript_doc_id"),
+            "proceedings_doc_id": finalized.get("proceedings_doc_id"),
+            "workspace_url": finalized.get("workspace_url")
+            or hakichain_client.workspace_url(finalized.get("client_id")),
+            "client_id": finalized.get("client_id"),
+        }
+        client_id_hint = str(finalized.get("client_id") or client_id_hint)
+    else:
+        # Fallback: legacy dual file_document when finalize_transcript is not deployed yet.
+        err = hakichain_client.last_error() or "finalize_transcript unavailable"
+        results["steps"]["finalize_transcript"] = {"ok": False, "error": err}
+        results["errors"].append(f"finalize_transcript: {err}")
+
+        transcript_text = _format_transcript(hearing.session_id, store)
+        transcript_filed = await hakichain_client.file_document(
+            action_key=f"hearing-transcript:{hearing_id}",
+            session_id=session_id,
+            title=f"Hearing transcript — {hearing.title}",
+            document_text=transcript_text,
+            client_id=client_id_hint,
+            matter_name=matter.matter_name,
+            client_name=matter.client_name,
+        )
+        if transcript_filed:
+            results["steps"]["transcript"] = {
+                "ok": True,
+                "workspace_url": transcript_filed.get("workspace_url")
+                or hakichain_client.workspace_url(transcript_filed.get("client_id")),
+                "client_id": transcript_filed.get("client_id"),
+            }
+            client_id_hint = str(transcript_filed.get("client_id") or client_id_hint)
+        else:
+            results["errors"].append(
+                f"file_document(transcript): {hakichain_client.last_error() or 'failed'}"
+            )
+            results["steps"]["transcript"] = {"ok": False, "error": hakichain_client.last_error()}
+
+        proceedings_text = _format_proceedings(hearing)
+        proceedings_filed = await hakichain_client.file_document(
+            action_key=f"hearing-proceedings:{hearing_id}",
+            session_id=session_id,
+            title=f"Hearing proceedings pack — {hearing.title}",
+            document_text=proceedings_text,
+            client_id=client_id_hint,
+            matter_name=matter.matter_name,
+            client_name=matter.client_name,
+        )
+        if proceedings_filed:
+            results["steps"]["proceedings"] = {
+                "ok": True,
+                "workspace_url": proceedings_filed.get("workspace_url")
+                or hakichain_client.workspace_url(proceedings_filed.get("client_id")),
+                "client_id": proceedings_filed.get("client_id"),
+            }
+            client_id_hint = str(proceedings_filed.get("client_id") or client_id_hint)
+        else:
+            results["errors"].append(
+                f"file_document(proceedings): {hakichain_client.last_error() or 'failed'}"
+            )
+            results["steps"]["proceedings"] = {"ok": False, "error": hakichain_client.last_error()}
 
     reminders: list[dict[str, Any]] = []
     for idx, date_item in enumerate(_next_dates(hearing)):
@@ -243,7 +347,7 @@ async def file_hearing_pack(
             client_id=client_id_hint,
             matter_name=matter.matter_name,
             client_name=matter.client_name,
-            reminder_type="meeting",
+            reminder_type="court-date",
         )
         if filed:
             reminders.append(
@@ -262,15 +366,17 @@ async def file_hearing_pack(
     results["steps"]["reminders"] = reminders
 
     workspace_url: Optional[str] = None
-    for step in ("proceedings", "transcript", "matter"):
+    for step in ("finalize_transcript", "upsert_hearing", "link_matter", "proceedings", "transcript", "matter"):
         info = results["steps"].get(step) or {}
         if info.get("workspace_url"):
             workspace_url = info["workspace_url"]
             break
     results["workspace_url"] = workspace_url
     results["client_id"] = client_id_hint
+    results["workspace_id"] = hc_workspace_id
     results["ok"] = bool(
-        (results["steps"].get("transcript") or {}).get("ok")
+        (results["steps"].get("finalize_transcript") or {}).get("ok")
+        or (results["steps"].get("transcript") or {}).get("ok")
         or (results["steps"].get("proceedings") or {}).get("ok")
     )
 

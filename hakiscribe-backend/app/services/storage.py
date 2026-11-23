@@ -312,6 +312,24 @@ def list_matters() -> list[Matter]:
     return list(_matters.values())
 
 
+def link_hakichain_matter(
+    matter_id: uuid.UUID,
+    *,
+    hakichain_client_id: str,
+    hakichain_workspace_id: str,
+) -> Optional[Matter]:
+    from datetime import datetime
+
+    matter = _matters.get(matter_id)
+    if matter is None:
+        return None
+    matter.hakichain_client_id = hakichain_client_id
+    matter.hakichain_workspace_id = hakichain_workspace_id
+    matter.hakichain_linked_at = datetime.utcnow()
+    _persist()
+    return matter
+
+
 def find_matter_by_client(client_name: str) -> Optional[Matter]:
     """Best-effort case-insensitive match — good enough for a demo; swap
     for real fuzzy matching against the CRM/Workspace client list later."""

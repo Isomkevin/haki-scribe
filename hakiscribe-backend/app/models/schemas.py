@@ -83,6 +83,10 @@ class Matter(BaseModel):
     session_ids: list[uuid.UUID] = []
     contact_ids: list[uuid.UUID] = []
     ambiguous_deal_id: Optional[str] = None  # set once mirrored into Ambiguous CRM
+    # HakiChain WorkSpace foreign keys (canonical matter lives in HakiChain).
+    hakichain_client_id: Optional[str] = None
+    hakichain_workspace_id: Optional[str] = None
+    hakichain_linked_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

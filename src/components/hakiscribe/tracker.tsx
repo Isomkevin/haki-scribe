@@ -444,6 +444,10 @@ function HearingsPanel() {
     const m = matters.data?.find((row) => row.id === id);
     return m ? `${m.client_name} — ${m.matter_name}` : `Matter ${id.slice(0, 8)}…`;
   };
+  const matterLinked = (id: string | null | undefined) => {
+    if (!id) return null;
+    return matters.data?.find((row) => row.id === id) ?? null;
+  };
   const [languageHint, setLanguageHint] = useState("");
   const [title, setTitle] = useState("");
   const [caseRef, setCaseRef] = useState("");
@@ -451,6 +455,12 @@ function HearingsPanel() {
   const [proceedings, setProceedings] = useState<Record<string, HearingProceedings>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hcMatters, setHcMatters] = useState<
+    { workspace_id: string; client_id: string; name: string; client: string; role?: string }[]
+  >([]);
+  const [hcPickerMatterId, setHcPickerMatterId] = useState<string>("");
+  const [hcPickerWorkspaceId, setHcPickerWorkspaceId] = useState<string>("");
+  const [hcBusy, setHcBusy] = useState(false);
 
   async function refreshHearings() {
     await queryClient.invalidateQueries({ queryKey: ["hearings"] });
@@ -611,6 +621,52 @@ function HearingsPanel() {
     }
   }
 
+  async function loadHakiChainMatters() {
+    setHcBusy(true);
+    try {
+      const result = await hakiApi.listHakiChainMatters();
+      setHcMatters(result.matters ?? []);
+      if ((result.matters ?? []).length === 0) {
+        toast.message("No HakiChain matters returned for this token");
+      } else {
+        toast.success(`Loaded ${result.matters.length} HakiChain matter(s)`);
+      }
+    } catch (error) {
+      toast.error(
+        friendlyErrorMessage(
+          error,
+          "Could not list HakiChain matters — connect a hkc_ token under Settings → Connectors.",
+        ),
+      );
+    } finally {
+      setHcBusy(false);
+    }
+  }
+
+  async function linkSelectedHakiChainMatter() {
+    if (!hcPickerMatterId || !hcPickerWorkspaceId) {
+      toast.error("Pick a local matter and a HakiChain workspace");
+      return;
+    }
+    setHcBusy(true);
+    try {
+      const result = await hakiApi.linkHakiChainMatter({
+        scribe_matter_id: hcPickerMatterId,
+        workspace_id: hcPickerWorkspaceId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["matters"] });
+      toast.success(
+        result.workspace_url
+          ? "Linked to HakiChain WorkSpace — File to HakiChain will use this matter"
+          : "Linked to HakiChain matter",
+      );
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not link HakiChain matter."));
+    } finally {
+      setHcBusy(false);
+    }
+  }
+
   async function onFileToHakiChain(hearing: HearingRecord) {
     setBusyId(hearing.id);
     try {
@@ -670,10 +726,11 @@ function HearingsPanel() {
             <Gavel className="size-3.5" />
             Virtual hearings
           </p>
-          <h2 className="mt-1 font-serif text-xl font-semibold">Match → ingest → process → review</h2>
+          <h2 className="mt-1 font-serif text-xl font-semibold">            Match → ingest → process → review → File to HakiChain</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Connected to Stage B pipeline. Matter matches never attach silently. AI summaries are not court orders —
-            grounded items cite transcript quotes; ungrounded items are flagged.
+            grounded items cite transcript quotes; ungrounded items are flagged. Link a HakiChain WorkSpace so filing
+            does not invent a disconnected matter.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -705,6 +762,54 @@ function HearingsPanel() {
         <Button type="button" size="sm" disabled={busy} onClick={() => void importManual()}>
           Add manual hearing
         </Button>
+      </div>
+
+      <div className="mt-3 rounded-md border border-dashed border-border/80 bg-muted/10 p-3">
+        <p className="text-xs font-medium text-muted-foreground">Link local matter → HakiChain WorkSpace</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={hcBusy} onClick={() => void loadHakiChainMatters()}>
+            {hcBusy ? "Loading…" : "Load HakiChain matters"}
+          </Button>
+          <select
+            aria-label="Local matter to link"
+            className="h-9 max-w-xs rounded-md border border-input bg-background px-2 text-sm"
+            value={hcPickerMatterId}
+            onChange={(e) => setHcPickerMatterId(e.target.value)}
+          >
+            <option value="">Local matter…</option>
+            {(matters.data ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.client_name} — {m.matter_name}
+                {m.hakichain_workspace_id ? " (linked)" : ""}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="HakiChain workspace"
+            className="h-9 max-w-xs rounded-md border border-input bg-background px-2 text-sm"
+            value={hcPickerWorkspaceId}
+            onChange={(e) => setHcPickerWorkspaceId(e.target.value)}
+          >
+            <option value="">HakiChain workspace…</option>
+            {hcMatters.map((m) => (
+              <option key={m.workspace_id} value={m.workspace_id}>
+                {m.client} — {m.name}
+                {m.role ? ` (${m.role})` : ""}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            size="sm"
+            disabled={hcBusy || !hcPickerMatterId || !hcPickerWorkspaceId}
+            onClick={() => void linkSelectedHakiChainMatter()}
+          >
+            Link WorkSpace
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
         <select
           aria-label="Hearing language"
           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -758,6 +863,7 @@ function HearingsPanel() {
                 platformFetch &&
                 (hearing.status === "matched" || hearing.status === "capturing");
               const captureActive = hearing.status === "capturing";
+              const linkedMatter = matterLinked(hearing.matter_id);
 
               return (
                 <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
@@ -771,6 +877,7 @@ function HearingsPanel() {
                           ? ` · confidence ${(hearing.match_confidence * 100).toFixed(0)}%`
                           : ""}
                         {hearing.recording_object_key ? " · recording on file" : ""}
+                        {linkedMatter?.hakichain_workspace_id ? " · HakiChain linked" : ""}
                       </p>
                       {pipeline?.state && (
                         <p

@@ -72,14 +72,43 @@ class ProductionMattersRepo:
 
     def _to_matter(self, row: dict[str, Any], sessions: list[dict[str, Any]], contacts: list[dict[str, Any]]) -> Matter:
         mid = str(row["id"])
+        linked_at = row.get("hakichain_linked_at")
         return Matter(
             id=UUID(mid),
             client_name=row["client_name"],
             matter_name=row["matter_name"],
             session_ids=[UUID(str(s["id"])) for s in sessions if str(s.get("matter_id")) == mid],
             contact_ids=[UUID(str(c["id"])) for c in contacts if str(c.get("matter_id")) == mid],
+            hakichain_client_id=row.get("hakichain_client_id"),
+            hakichain_workspace_id=row.get("hakichain_workspace_id"),
+            hakichain_linked_at=linked_at,
             created_at=row.get("created_at") or _now(),
         )
+
+    def link_hakichain(
+        self,
+        matter_id: UUID,
+        *,
+        hakichain_client_id: str,
+        hakichain_workspace_id: str,
+    ) -> Matter:
+        self._matter_row(matter_id)
+        updated = (
+            self.client.table("haki_matters")
+            .update(
+                {
+                    "hakichain_client_id": hakichain_client_id,
+                    "hakichain_workspace_id": hakichain_workspace_id,
+                    "hakichain_linked_at": _now(),
+                }
+            )
+            .eq("id", str(matter_id))
+            .eq("organisation_id", str(self.organisation_id))
+            .execute()
+        )
+        if not updated.data:
+            raise HTTPException(status_code=500, detail="Could not link HakiChain matter")
+        return self.get_matter(matter_id)
 
     def _org_sessions(self) -> list[dict[str, Any]]:
         result = (

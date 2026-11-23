@@ -37,7 +37,7 @@ Think of it as: **the house is built and the lights work in the workshop; the co
 | 5 | Correct matter association | **Done** | Confidence matching + required human confirm; never silent attach. |
 | 6 | Hearing audio capture/ingest | **Partial** | Upload, VTT, and platform fetch work. Live meeting bots exist as official SDK adapters but **were not proven against real meetings.** |
 | 7 | Transcripts + proceedings + review | **Done for English demo** | End-to-end process and review verified. Kiswahili with the small Whisper model is **not court-grade** (measured WER ~0.66). |
-| 8 | HakiChain matter / WorkSpace | **Done (code path)** | Local matter/session link + explicit post-review filing of hearing packs via `POST …/hearings/{id}/file` (demo + production) into HakiChain ingress (`file_matter` / `file_document` / `file_reminder`). Tracker “File to HakiChain”. Still needs a live `hkc_` token against real ingress to prove in production. |
+| 8 | HakiChain matter / WorkSpace | **Done (Phase 1 code)** | Bidirectional contract `2026-11`: pull/list/link matters, first-class hearings + finalize transcript, Workspace Hearings panel, Tracker link picker + File to HakiChain. Still needs live ingress deploy + `hkc_` proof. |
 | 9 | Security / access control | **Partial** | Tenancy, RLS migrations, and production route gates exist and are unit-tested. **Live Supabase production was not proven.** Demo mode is still not for real client data. |
 | 10 | Existing features intact | **Done** | Default remains cloud; frontier connectors were not removed. |
 | 11 | Tests + documented limits | **Done** | Large automated suite passes; limitations are written down in this pack. |

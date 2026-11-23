@@ -1,0 +1,62 @@
+{
+  "contract_version": "2026-11",
+  "examples": {
+    "list_matters_response": {
+      "ok": true,
+      "matters": [
+        {
+          "workspace_id": "11111111-1111-1111-1111-111111111111",
+          "client_id": "ws-acme-lease",
+          "name": "HCCC E123 of 2024 lease",
+          "client": "Acme Holdings",
+          "matter_details": { "caseNumber": "E123/2024", "courtName": "Milimani" },
+          "role": "owner"
+        }
+      ]
+    },
+    "link_matter_request": {
+      "action": "link_matter",
+      "contract_version": "2026-11",
+      "action_key": "link:22222222-2222-2222-2222-222222222222",
+      "workspace_id": "11111111-1111-1111-1111-111111111111",
+      "scribe_matter_id": "22222222-2222-2222-2222-222222222222"
+    },
+    "upsert_hearing_request": {
+      "action": "upsert_hearing",
+      "contract_version": "2026-11",
+      "scribe_hearing_id": "33333333-3333-3333-3333-333333333333",
+      "workspace_id": "11111111-1111-1111-1111-111111111111",
+      "title": "Acme Holdings mention",
+      "status": "reviewed",
+      "case_reference": "E123/2024"
+    },
+    "finalize_transcript_request": {
+      "action": "finalize_transcript",
+      "contract_version": "2026-11",
+      "action_key": "hearing-finalize:33333333-3333-3333-3333-333333333333",
+      "scribe_hearing_id": "33333333-3333-3333-3333-333333333333",
+      "workspace_id": "11111111-1111-1111-1111-111111111111",
+      "segments": [
+        {
+          "start_ms": 1000,
+          "end_ms": 4000,
+          "speaker": "Court",
+          "text": "Matter stood over to 15th January 2025 for mention.",
+          "redacted": false
+        }
+      ],
+      "proceedings": {
+        "rules": [
+          {
+            "kind": "next_date",
+            "method": "rules",
+            "date": "2025-01-15T09:00:00",
+            "quote": "Matter stood over to 15th January 2025",
+            "purpose": "Mention"
+          }
+        ],
+        "llm": { "items": [], "ungrounded": [] }
+      }
+    }
+  }
+}

@@ -127,10 +127,16 @@ class HearingFilingTests(IsolatedStoreTestCase):
         with patch("app.integrations.hakichain_client.configured", return_value=True), patch(
             "app.integrations.hakichain_client.file_matter", new=AsyncMock(side_effect=fake_matter)
         ) as file_matter, patch(
+            "app.integrations.hakichain_client.upsert_hearing", new=AsyncMock(return_value=None)
+        ), patch(
+            "app.integrations.hakichain_client.finalize_transcript", new=AsyncMock(return_value=None)
+        ), patch(
             "app.integrations.hakichain_client.file_document", new=AsyncMock(side_effect=fake_document)
         ) as file_document, patch(
             "app.integrations.hakichain_client.file_reminder", new=AsyncMock(side_effect=fake_reminder)
-        ) as file_reminder:
+        ) as file_reminder, patch(
+            "app.integrations.hakichain_client.last_error", return_value="not deployed"
+        ):
             result = _run(hearing_filing.file_hearing_pack(hearing.id))
 
         self.assertTrue(result["ok"])
@@ -146,12 +152,68 @@ class HearingFilingTests(IsolatedStoreTestCase):
         self.assertIn("hakichain_filing", filed.platform_metadata or {})
         self.assertIn("workspace?ws=", result["workspace_url"] or "")
 
+    def test_linked_matter_uses_finalize_path(self):
+        hearing, matter = self._reviewed_hearing()
+        assert hearing is not None
+        storage.link_hakichain_matter(
+            matter.id,
+            hakichain_client_id="ws-acme",
+            hakichain_workspace_id="11111111-1111-1111-1111-111111111111",
+        )
+
+        with patch("app.integrations.hakichain_client.configured", return_value=True), patch(
+            "app.integrations.hakichain_client.link_matter",
+            new=AsyncMock(
+                return_value={
+                    "ok": True,
+                    "client_id": "ws-acme",
+                    "workspace_id": "11111111-1111-1111-1111-111111111111",
+                    "workspace_url": "https://hakichain.com/workspace?ws=ws-acme",
+                }
+            ),
+        ) as link_matter, patch(
+            "app.integrations.hakichain_client.upsert_hearing",
+            new=AsyncMock(return_value={"ok": True, "hearing_id": "hh", "client_id": "ws-acme"}),
+        ), patch(
+            "app.integrations.hakichain_client.finalize_transcript",
+            new=AsyncMock(
+                return_value={
+                    "ok": True,
+                    "hearing_id": "hh",
+                    "client_id": "ws-acme",
+                    "workspace_url": "https://hakichain.com/workspace?ws=ws-acme",
+                    "transcript_doc_id": "d1",
+                    "proceedings_doc_id": "d2",
+                }
+            ),
+        ) as finalize, patch(
+            "app.integrations.hakichain_client.file_matter", new=AsyncMock()
+        ) as file_matter, patch(
+            "app.integrations.hakichain_client.file_document", new=AsyncMock()
+        ) as file_document, patch(
+            "app.integrations.hakichain_client.file_reminder",
+            new=AsyncMock(return_value={"ok": True, "client_id": "ws-acme"}),
+        ):
+            result = _run(hearing_filing.file_hearing_pack(hearing.id))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(link_matter.await_count, 1)
+        self.assertEqual(finalize.await_count, 1)
+        self.assertEqual(file_matter.await_count, 0)
+        self.assertEqual(file_document.await_count, 0)
+        self.assertTrue(result["steps"]["finalize_transcript"]["ok"])
+        self.assertEqual(hearings.get_hearing(hearing.id).status, HearingStatus.filed)
+
     def test_partial_document_failure_raises(self):
         hearing, _ = self._reviewed_hearing()
 
         with patch("app.integrations.hakichain_client.configured", return_value=True), patch(
             "app.integrations.hakichain_client.file_matter",
             new=AsyncMock(return_value={"ok": True, "client_id": "hs-x"}),
+        ), patch(
+            "app.integrations.hakichain_client.upsert_hearing", new=AsyncMock(return_value=None)
+        ), patch(
+            "app.integrations.hakichain_client.finalize_transcript", new=AsyncMock(return_value=None)
         ), patch(
             "app.integrations.hakichain_client.file_document", new=AsyncMock(return_value=None)
         ), patch(

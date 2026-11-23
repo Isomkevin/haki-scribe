@@ -204,3 +204,98 @@ async def file_reminder(
             "reminder_type": reminder_type,
         }
     )
+
+
+CONTRACT_VERSION = "2026-11"
+
+
+async def list_matters() -> Optional[dict[str, Any]]:
+    return await _request({"action": "list_matters", "contract_version": CONTRACT_VERSION})
+
+
+async def get_matter(
+    *,
+    workspace_id: str | None = None,
+    client_id: str | None = None,
+) -> Optional[dict[str, Any]]:
+    return await _request(
+        {
+            "action": "get_matter",
+            "contract_version": CONTRACT_VERSION,
+            "workspace_id": workspace_id,
+            "client_id": client_id,
+        }
+    )
+
+
+async def link_matter(
+    *,
+    action_key: str,
+    workspace_id: str | None = None,
+    client_id: str | None = None,
+    scribe_matter_id: str | None = None,
+) -> Optional[dict[str, Any]]:
+    return await _request(
+        {
+            "action": "link_matter",
+            "contract_version": CONTRACT_VERSION,
+            "action_key": action_key,
+            "workspace_id": workspace_id,
+            "client_id": client_id,
+            "scribe_matter_id": scribe_matter_id,
+        }
+    )
+
+
+async def upsert_hearing(
+    *,
+    scribe_hearing_id: str,
+    workspace_id: str | None = None,
+    client_id: str | None = None,
+    title: str,
+    status: str = "scheduled",
+    case_reference: str | None = None,
+    starts_at: str | None = None,
+    meeting_url: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Optional[dict[str, Any]]:
+    return await _request(
+        {
+            "action": "upsert_hearing",
+            "contract_version": CONTRACT_VERSION,
+            "scribe_hearing_id": scribe_hearing_id,
+            "workspace_id": workspace_id,
+            "client_id": client_id,
+            "title": title,
+            "status": status,
+            "case_reference": case_reference,
+            "starts_at": starts_at,
+            "meeting_url": meeting_url,
+            "metadata": metadata or {},
+        }
+    )
+
+
+async def finalize_transcript(
+    *,
+    action_key: str,
+    scribe_hearing_id: str,
+    workspace_id: str | None = None,
+    client_id: str | None = None,
+    segments: list[dict[str, Any]],
+    proceedings: dict[str, Any] | None = None,
+    title: str | None = None,
+) -> Optional[dict[str, Any]]:
+    return await _request(
+        {
+            "action": "finalize_transcript",
+            "contract_version": CONTRACT_VERSION,
+            "action_key": action_key,
+            "scribe_hearing_id": scribe_hearing_id,
+            "workspace_id": workspace_id,
+            "client_id": client_id,
+            "segments": segments,
+            "proceedings": proceedings or {},
+            "title": title,
+        }
+    )

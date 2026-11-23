@@ -184,6 +184,91 @@ async def run_diagnostics():
     }
 
 
+class HakiChainLinkMatterBody(BaseModel):
+    scribe_matter_id: str
+    workspace_id: Optional[str] = None
+    client_id: Optional[str] = None
+
+
+@router.get("/hakichain/matters")
+async def hakichain_list_matters():
+    """Proxy list_matters from HakiChain ingress (contract 2026-11)."""
+    from app.integrations import hakichain_client
+
+    if not hakichain_client.configured():
+        raise HTTPException(
+            status_code=400,
+            detail="HakiChain is not connected. Link a hkc_… token under Settings → Connectors → HakiChain.",
+        )
+    result = await hakichain_client.list_matters()
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=hakichain_client.last_error() or "HakiChain list_matters failed",
+        )
+    return result
+
+
+@router.get("/hakichain/matters/{workspace_id}")
+async def hakichain_get_matter(workspace_id: str):
+    from app.integrations import hakichain_client
+
+    if not hakichain_client.configured():
+        raise HTTPException(status_code=400, detail="HakiChain is not connected")
+    result = await hakichain_client.get_matter(workspace_id=workspace_id)
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail=hakichain_client.last_error() or "HakiChain get_matter failed",
+        )
+    return result
+
+
+@router.post("/hakichain/link-matter")
+async def hakichain_link_matter(body: HakiChainLinkMatterBody):
+    """Bind a local HakiScribe matter to an existing HakiChain workspace."""
+    from uuid import UUID
+
+    from app.integrations import hakichain_client
+
+    if not hakichain_client.configured():
+        raise HTTPException(status_code=400, detail="HakiChain is not connected")
+    if not body.workspace_id and not body.client_id:
+        raise HTTPException(status_code=400, detail="workspace_id or client_id required")
+    try:
+        matter_uuid = UUID(body.scribe_matter_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="scribe_matter_id must be a UUID") from exc
+    matter = storage.get_matter(matter_uuid)
+    if matter is None:
+        raise HTTPException(status_code=404, detail="Local matter not found")
+
+    linked = await hakichain_client.link_matter(
+        action_key=f"link:{body.scribe_matter_id}",
+        workspace_id=body.workspace_id,
+        client_id=body.client_id,
+        scribe_matter_id=body.scribe_matter_id,
+    )
+    if linked is None:
+        raise HTTPException(
+            status_code=502,
+            detail=hakichain_client.last_error() or "HakiChain link_matter failed",
+        )
+    client_id = str(linked.get("client_id") or body.client_id or "")
+    workspace_id = str(linked.get("workspace_id") or body.workspace_id or "")
+    updated = storage.link_hakichain_matter(
+        matter_uuid,
+        hakichain_client_id=client_id,
+        hakichain_workspace_id=workspace_id,
+    )
+    return {
+        "ok": True,
+        "matter": updated.model_dump(mode="json") if updated else None,
+        "hakichain": linked,
+        "workspace_url": linked.get("workspace_url") or hakichain_client.workspace_url(client_id),
+    }
+
+
 @router.post("/{provider_id}/check")
 async def check_integration(provider_id: str):
     if integrations.provider_def(provider_id) is None:
