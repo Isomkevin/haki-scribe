@@ -145,4 +145,28 @@ See [`fixtures/hakichain-ingress-2026-11.json`](./fixtures/hakichain-ingress-202
 
 ## Explicit non-goals (Phase 1)
 
-SSO replacement, `hakichain_v2`, realtime segment streaming, deep HakiDraft/Lens/Review/Portal, firm-wide tokens.
+SSO replacement, `hakichain_v2`, realtime segment streaming during live capture.
+
+## Phase 2 / 3 extensions
+
+### Content update (replace-by-action_key)
+
+`file_document` and `file_reminder` **update** existing rows when `action_key` is reused (`updated: true`). Freeze-only no-ops are retired.
+
+### Outbound webhooks (HakiChain → HakiScribe)
+
+Lawyer JWT actions: `register_webhook`, `list_webhooks`, `revoke_webhook`.
+
+Events: `matter.updated`, `hearing.scheduled`, `hearing.cancelled`, `hearing.filed`.
+
+Delivery headers: `X-HakiChain-Event`, `X-HakiChain-Signature: sha256=…` (HMAC of body with `HAKISCRIBE_WEBHOOK_SIGNING_SECRET`), `X-HakiChain-Delivery`.
+
+HakiScribe receiver: `POST /webhooks/hakichain` (verify with `HAKICHAIN_WEBHOOK_SECRET`). Reconcile: `POST /webhooks/hakichain/reconcile`.
+
+### Firm-scoped tokens
+
+`create_token` accepts `scope: personal|firm` and `firm_id` when firm. Ingress still ACL-checks workspace access.
+
+### Client Portal
+
+`publish_hearing_summary` (JWT) or Workspace Hearings panel publishes `client_summary` + `client_visible`. Portal shows summaries only — never raw segments.

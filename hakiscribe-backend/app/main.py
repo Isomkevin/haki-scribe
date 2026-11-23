@@ -36,6 +36,7 @@ from app.routers import (
     auth,
     court_webhooks,
     demo,
+    hakichain_webhooks,
     hearings,
     integrations,
     internal,
@@ -117,6 +118,10 @@ app.include_router(production_sessions.router, prefix="/production", tags=["prod
 app.include_router(internal.router, prefix="/internal", tags=["internal"])
 # Zoom/Teams webhooks are signed; production resolves tenant via ZOOM_HOST_ORG_MAP.
 app.include_router(court_webhooks.router, prefix="/webhooks", tags=["court-webhooks"])
+# HakiChain → HakiScribe signed event bus (Phase 2).
+app.include_router(hakichain_webhooks.router, prefix="/webhooks", tags=["hakichain-webhooks"])
+# Connectors + HakiChain pull/link APIs (needed in production for WorkSpace bridge).
+app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 
 if not production_auth_enabled_flag:
     # Demo-era routers share in-process / snapshot storage. Production never
@@ -133,7 +138,6 @@ if not production_auth_enabled_flag:
     app.include_router(demo.router, prefix="/demo", tags=["demo"])
     app.include_router(news.router, prefix="/news", tags=["news"])
     app.include_router(news.webhook_router, prefix="/webhooks", tags=["exa"])
-    app.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
 
 
 @app.get("/")

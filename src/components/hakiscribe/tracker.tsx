@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { CalendarClock, ExternalLink, FileText, Flag, Gavel, RefreshCw, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -461,6 +461,20 @@ function HearingsPanel() {
   const [hcPickerMatterId, setHcPickerMatterId] = useState<string>("");
   const [hcPickerWorkspaceId, setHcPickerWorkspaceId] = useState<string>("");
   const [hcBusy, setHcBusy] = useState(false);
+  const [focusHearingId, setFocusHearingId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return new URLSearchParams(window.location.search).get("hearing")?.trim() || null;
+    } catch {
+      return null;
+    }
+  });
+  const trackerSearch = useSearch({ from: "/tracker" });
+
+  useEffect(() => {
+    const id = trackerSearch.hearing?.trim();
+    if (id) setFocusHearingId(id);
+  }, [trackerSearch.hearing]);
 
   async function refreshHearings() {
     await queryClient.invalidateQueries({ queryKey: ["hearings"] });
@@ -607,6 +621,15 @@ function HearingsPanel() {
       toast.error(friendlyErrorMessage(error, "Could not load proceedings."));
     }
   }
+
+  useEffect(() => {
+    if (!focusHearingId || !hearings.data?.some((h) => h.id === focusHearingId)) return;
+    const el = document.getElementById(`hearing-${focusHearingId}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    void onLoadProceedings(focusHearingId);
+    // Only when focus target appears in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot deep-link focus
+  }, [focusHearingId, hearings.data]);
 
   async function onReview(hearing: HearingRecord) {
     setBusyId(hearing.id);
@@ -866,7 +889,15 @@ function HearingsPanel() {
               const linkedMatter = matterLinked(hearing.matter_id);
 
               return (
-                <li key={hearing.id} className="rounded-md border border-border/80 bg-muted/20 p-3">
+                <li
+                  id={`hearing-${hearing.id}`}
+                  key={hearing.id}
+                  className={`rounded-md border p-3 ${
+                    focusHearingId === hearing.id
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                      : "border-border/80 bg-muted/20"
+                  }`}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">{hearing.title}</p>

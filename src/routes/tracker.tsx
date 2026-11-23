@@ -3,6 +3,9 @@ import { RequireAuth } from "@/components/hakiscribe/auth-gate";
 import { TrackerPage } from "@/components/hakiscribe/tracker";
 
 export const Route = createFileRoute("/tracker")({
+  validateSearch: (search: Record<string, unknown>): { hearing?: string } => ({
+    hearing: typeof search.hearing === "string" ? search.hearing : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Case Tracker — HakiScribe" },

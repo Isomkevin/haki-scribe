@@ -25,12 +25,18 @@
 
 ## Claude Code follow-ups
 
-1. **Deploy** migration + edge function to the live Supabase project used by HakiScribe `HAKICHAIN_API_BASE`.
-2. Harden ingress tests (Deno) for ACL denial (403) and idempotent finalize content replace.
-3. Polish Hearings tab empty/error states to match Haki design tokens if anything looks off.
-4. Phase 2 stubs: webhook receiver design, HakiDocs “Hearings” folder, Reminder parity.
-5. Confirm `workspace_members` column names match production (`user_id` / `workspace_id`) — adjust ingress if the live schema differs.
-6. Live `hkc_` proof against checklist; update `08-implementation-status.md` E8/E9 with evidence.
+1. **Deploy** both migrations + edge function; set `HAKISCRIBE_WEBHOOK_SIGNING_SECRET` (and Scribe `HAKICHAIN_WEBHOOK_SECRET`).
+2. Harden ingress Deno tests for ACL 403, firm-scope list_matters, content-update, webhook delivery.
+3. Polish Hearings / Portal summary UI to design tokens if needed.
+4. Confirm `workspace_members` column names; adjust ingress if live schema differs.
+5. Live `hkc_` + webhook + portal proof; tick checklist evidence.
+
+## Phase 2–3 landed (Cursor)
+
+- Content-update `file_*`; webhooks register/dispatch; Scribe `/webhooks/hakichain` + reconcile
+- Deep links preserved through `/haki-*` → tool-suite redirects; Draft/Review/Lens hydrate from `?hearing=`
+- HakiDocs virtual **Hearings** folder (`hakiscribe-hearings`); Client Portal summaries
+- Firm-scoped token ACL in ingress + Settings mint/webhook UI; Tracker `?hearing=` focus
 
 ## Action schemas (quick)
 
